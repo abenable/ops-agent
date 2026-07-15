@@ -46,9 +46,11 @@ def _run_api(_args):
 
 
 def _run_incident(args):
+    import asyncio
+
     from agent.workflows.incident import run_incident_workflow
 
-    print(run_incident_workflow(args.service))
+    print(asyncio.run(run_incident_workflow(args.service)))
 
 
 def _run_report(args):

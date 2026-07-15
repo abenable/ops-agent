@@ -1,7 +1,5 @@
 """Incident investigation workflow."""
 
-import asyncio
-
 from agent.llm.client import get_llm
 from agent.storage.repository import store_incident
 from agent.tools.logs import get_recent_logs
@@ -9,11 +7,11 @@ from agent.tools.metrics import get_service_metrics
 from agent.tools.services import get_service_status
 
 
-def run_incident_workflow(service: str) -> str:
-    """Collect signals for a service and return a short incident summary."""
-    status = asyncio.run(get_service_status(service))
-    metrics = asyncio.run(get_service_metrics(service))
-    logs = asyncio.run(get_recent_logs(service, lines=20))
+async def run_incident_workflow(service: str) -> dict:
+    """Collect signals for a service and return an incident id and summary."""
+    status = await get_service_status(service)
+    metrics = await get_service_metrics(service)
+    logs = await get_recent_logs(service, lines=20)
 
     prompt = (
         f"Service {service} has an open incident.\n"
@@ -24,9 +22,9 @@ def run_incident_workflow(service: str) -> str:
     )
 
     try:
-        summary = get_llm().invoke(prompt).content
+        summary = (await get_llm().ainvoke(prompt)).content
     except Exception as exc:  # LLM may be offline during early testing
         summary = f"LLM unavailable ({exc}); raw context: {prompt}"
 
-    store_incident(service, summary)
-    return summary
+    incident_id = store_incident(service, summary)
+    return {"incident_id": incident_id, "summary": summary}

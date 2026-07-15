@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 
+from agent.tools.health import check_endpoint
 from agent.tools.logs import get_recent_logs
 from agent.tools.metrics import get_service_metrics
 from agent.tools.services import get_service_status
@@ -32,4 +33,9 @@ async def service_metrics(service: str):
 
 @router.post("/incidents/{service}")
 async def create_incident(service: str):
-    return {"summary": run_incident_workflow(service)}
+    return await run_incident_workflow(service)
+
+
+@router.get("/health-check")
+async def health_check(url: str):
+    return await check_endpoint(url)
