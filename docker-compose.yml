@@ -3,7 +3,7 @@ services:
     build: .
     env_file: .env
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "8123:8000"
     volumes:
       - ./data:/app/data
       # Uncomment to let Docker tools talk to the host daemon.
