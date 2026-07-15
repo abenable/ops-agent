@@ -1,9 +1,12 @@
 """SSH-based server tools using the system `ssh` binary."""
 
 import asyncio
+import re
+
+_SYSTEMD_UNIT_RE = re.compile(r"^[A-Za-z0-9._@-]+$")
 
 
-async def run_ssh_command(host: str, command: str, user: str = "root") -> dict:
+async def run_ssh_command(host: str, command: str, user: str) -> dict:
     """Run a command on a remote host over SSH.
 
     Assumes password-less/key-based SSH is configured for the target host.
@@ -36,7 +39,7 @@ async def run_ssh_command(host: str, command: str, user: str = "root") -> dict:
     }
 
 
-async def check_server_load(host: str, user: str = "root") -> dict:
+async def check_server_load(host: str, user: str) -> dict:
     """Return CPU/memory/load averages from a remote server."""
     result = await run_ssh_command(
         host,
@@ -46,6 +49,8 @@ async def check_server_load(host: str, user: str = "root") -> dict:
     return {"host": host, "raw": result}
 
 
-async def restart_service(host: str, service: str, user: str = "root") -> dict:
+async def restart_service(host: str, service: str, user: str) -> dict:
     """Restart a systemd service on a remote host."""
+    if not _SYSTEMD_UNIT_RE.match(service):
+        raise ValueError(f"invalid systemd service name: {service}")
     return await run_ssh_command(host, f"sudo systemctl restart {service}", user)

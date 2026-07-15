@@ -22,15 +22,16 @@ class Settings(BaseSettings):
     discord_alert_channel_id: int | None = None
 
     # Self-hosted LLM (OpenAI-compatible)
-    llm_base_url: str = "https://litellm.byte10x.dev/v1"
-    llm_model: str = "Kimi-K2.7-Code"
+    llm_base_url: str = "http://localhost:11434/v1"
+    llm_model: str = "mistral"
     llm_api_key: str = Field(
         default="",
-        validation_alias="OPENAI_API_KEY",
+        validation_alias="LLM_API_KEY",
     )
 
     # API server
-    api_host: str = "0.0.0.0"
+    api_key: str = Field(default="", validation_alias="API_KEY")
+    api_host: str = "127.0.0.1"
     api_port: int = 8000
 
     # Monitoring / logging integrations
