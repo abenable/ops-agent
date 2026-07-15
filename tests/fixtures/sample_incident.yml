@@ -1,0 +1,7 @@
+service: web
+symptom: elevated latency on /api/status
+expected_status: degraded
+known_good:
+  p99_latency_ms: 45
+observed:
+  p99_latency_ms: 1200
