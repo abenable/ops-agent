@@ -18,13 +18,30 @@ alert (see below).
 
 ## Monitoring workflow
 
-`agent.bot.monitor` polls each `MONITORED_ENDPOINTS` entry every `MONITOR_INTERVAL_SECONDS`:
+`agent.bot.monitor` runs every `MONITOR_INTERVAL_SECONDS`.
+
+### HTTP-endpoint liveness
+
+For each `MONITORED_ENDPOINTS` entry:
 
 1. `check_endpoint(url)` — reachable and status `< 500` counts as **up**.
 2. Compare to the previous state (kept in memory):
    - any up↔down change → post to the status channel;
    - healthy→down → post a critical alert **and** run the incident workflow, opening a thread.
 3. Store the new state.
+
+### PromQL alert rules
+
+For each `PROMETHEUS_ALERT_RULES` entry:
+
+1. `query_prometheus(expr)` — a rule is **firing** when the result set is non-empty.
+2. Compare to the previous state (kept in memory):
+   - not-firing→firing → post a critical alert **and** run the incident workflow, opening a thread;
+   - firing→not-firing → post a recovery note to the status channel.
+3. Store the new state.
+
+Prometheus/Loki queries use a 10s timeout and optional bearer tokens from
+`PROMETHEUS_TOKEN` / `LOKI_TOKEN`.
 
 ## Incident lifecycle
 

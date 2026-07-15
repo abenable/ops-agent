@@ -1,12 +1,13 @@
 """Tests for the background Discord endpoint monitor."""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from agent.bot import monitor
 from agent.config.settings import Settings
+from agent.tools.sources import loki, prometheus
 
 
 @pytest.fixture
@@ -75,3 +76,149 @@ def test_poll_once_escalates_on_healthy_to_down(monkeypatch):
     assert send_alert.await_args.kwargs["severity"] == "critical"
     run_workflow.assert_awaited_once()
     open_thread.assert_awaited_once()
+
+
+def test_alert_rules_parsing(monkeypatch):
+    monkeypatch.setattr(
+        monitor,
+        "settings",
+        Settings(prometheus_alert_rules="target_down=up == 0, high_load=node_load1 > 4"),
+    )
+    assert monitor._alert_rules() == {
+        "target_down": "up == 0",
+        "high_load": "node_load1 > 4",
+    }
+
+
+def test_alert_rules_empty_by_default(monkeypatch):
+    monkeypatch.setattr(monitor, "settings", Settings())
+    assert monitor._alert_rules() == {}
+
+
+def test_evaluate_rules_fires_once_on_edge_and_skips_empty(monkeypatch):
+    settings = Settings(
+        prometheus_alert_rules="target_down=up == 0",
+        discord_alert_channel_id=1,
+    )
+    monkeypatch.setattr(monitor, "settings", settings)
+    monitor._rule_state.clear()
+
+    bot = MagicMock()
+    query_mock = AsyncMock(
+        side_effect=[
+            {"data": {"result": []}},
+            {"data": {"result": [{"metric": {}}]}},
+            {"data": {"result": [{"metric": {}}]}},
+        ]
+    )
+    monkeypatch.setattr(monitor, "query_prometheus", query_mock)
+    send_alert = AsyncMock()
+    monkeypatch.setattr(monitor.discord_alert, "send_alert", send_alert)
+    run_workflow = AsyncMock(return_value={"incident_id": "xyz", "summary": "bad"})
+    monkeypatch.setattr(monitor, "run_incident_workflow", run_workflow)
+    open_thread = AsyncMock()
+    monkeypatch.setattr(monitor.discord_alert, "open_incident_thread", open_thread)
+
+    # Empty result: no alert.
+    asyncio.run(monitor._evaluate_rules(bot))
+    send_alert.assert_not_awaited()
+    run_workflow.assert_not_awaited()
+
+    # Transition to firing: alert + incident thread exactly once.
+    asyncio.run(monitor._evaluate_rules(bot))
+    send_alert.assert_awaited_once()
+    run_workflow.assert_awaited_once()
+    open_thread.assert_awaited_once()
+
+    # Still firing: no additional alert.
+    asyncio.run(monitor._evaluate_rules(bot))
+    assert send_alert.await_count == 1
+    assert run_workflow.await_count == 1
+
+
+def _assert_source_client_headers(module, token_setting, monkeypatch):
+    """Helper: assert the source client sends Bearer <token> when configured."""
+    monkeypatch.setattr(module.settings, token_setting, "secret")
+    captured = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {}
+
+    fake_client = MagicMock()
+    fake_client.get = AsyncMock(return_value=FakeResponse())
+
+    fake_cm = MagicMock()
+    fake_cm.__aenter__ = AsyncMock(return_value=fake_client)
+    fake_cm.__aexit__ = AsyncMock(return_value=False)
+
+    with patch.object(module.httpx, "AsyncClient", return_value=fake_cm) as Client:
+        asyncio.run(module.query_prometheus("up") if hasattr(module, "query_prometheus") else module.query_loki("{app=\"x\"}"))
+        captured["kwargs"] = Client.call_args.kwargs
+
+    assert captured["kwargs"]["headers"] == {"Authorization": "Bearer secret"}
+
+
+def test_prometheus_token_sent_when_set(monkeypatch):
+    # Ensure no token leakage from global settings.
+    monkeypatch.setattr(prometheus.settings, "prometheus_token", "")
+    captured = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {}
+
+    fake_client = MagicMock()
+    fake_client.get = AsyncMock(return_value=FakeResponse())
+    fake_cm = MagicMock()
+    fake_cm.__aenter__ = AsyncMock(return_value=fake_client)
+    fake_cm.__aexit__ = AsyncMock(return_value=False)
+
+    with patch.object(prometheus.httpx, "AsyncClient", return_value=fake_cm) as Client:
+        asyncio.run(prometheus.query_prometheus("up"))
+        captured["kwargs"] = Client.call_args.kwargs
+
+    assert captured["kwargs"]["timeout"] == 10.0
+    assert captured["kwargs"]["headers"] == {}
+
+    # Now with a token set.
+    monkeypatch.setattr(prometheus.settings, "prometheus_token", "secret")
+    with patch.object(prometheus.httpx, "AsyncClient", return_value=fake_cm) as Client:
+        asyncio.run(prometheus.query_prometheus("up"))
+        assert Client.call_args.kwargs["headers"] == {"Authorization": "Bearer secret"}
+
+
+def test_loki_token_sent_when_set(monkeypatch):
+    monkeypatch.setattr(loki.settings, "loki_token", "")
+    captured = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {}
+
+    fake_client = MagicMock()
+    fake_client.get = AsyncMock(return_value=FakeResponse())
+    fake_cm = MagicMock()
+    fake_cm.__aenter__ = AsyncMock(return_value=fake_client)
+    fake_cm.__aexit__ = AsyncMock(return_value=False)
+
+    with patch.object(loki.httpx, "AsyncClient", return_value=fake_cm) as Client:
+        asyncio.run(loki.query_loki('{app="x"}'))
+        captured["kwargs"] = Client.call_args.kwargs
+
+    assert captured["kwargs"]["timeout"] == 10.0
+    assert captured["kwargs"]["headers"] == {}
+
+    monkeypatch.setattr(loki.settings, "loki_token", "secret")
+    with patch.object(loki.httpx, "AsyncClient", return_value=fake_cm) as Client:
+        asyncio.run(loki.query_loki('{app="x"}'))
+        assert Client.call_args.kwargs["headers"] == {"Authorization": "Bearer secret"}

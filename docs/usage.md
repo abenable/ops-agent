@@ -10,6 +10,7 @@ All commands use the `!` prefix and run in `#agent-commands` (or wherever the bo
 | `!logs <service> [n]` | Last `n` log lines (default 10) |
 | `!metrics <service>` | Current metrics for a service |
 | `!health <url>` | Reachability and latency of an HTTP endpoint |
+| `!watching` | List endpoints configured for background monitoring |
 | `!incident <service>` | Run the incident investigation workflow; posts summary + incident id, opens an incident thread, and alerts the alert channel |
 | `!scenario <name>` | Run a simulated scenario from `scenarios/<name>.yml` (restricted to the test-scenarios channel if configured) |
 | `!ack <incident_id>` | Acknowledge a stored incident (and post to its thread) |
@@ -18,8 +19,10 @@ All commands use the `!` prefix and run in `#agent-commands` (or wherever the bo
 ## Conversational replies
 
 Tag the bot in a message (e.g. `@Oracle hello`) and it will reply using the
-configured LLM. Prefix commands (`!status`, `!incident`, etc.) still work as
-usual.
+configured LLM. The prompt includes the monitored endpoints, configured
+channels, Prometheus/Loki URLs, and available commands so answers are grounded
+in this environment. Prefix commands (`!status`, `!incident`, etc.) still work
+as usual.
 
 ## HTTP API
 
@@ -46,14 +49,31 @@ Interactive docs are available at `/docs` (Swagger UI) when the API is running.
 
 ## Background monitoring
 
-Set `MONITORED_ENDPOINTS` to a comma-separated list of `name=url` pairs. Every
-`MONITOR_INTERVAL_SECONDS` the bot polls each endpoint and:
+The bot runs two complementary checks on every `MONITOR_INTERVAL_SECONDS` cycle.
+
+### HTTP endpoint liveness
+
+Set `MONITORED_ENDPOINTS` to a comma-separated list of `name=url` pairs. The bot
+polls each endpoint and:
 
 - posts **every** up↔down transition to the status channel, and
 - on a healthy→down transition, posts a critical alert to the alert channel and opens a
   threaded incident (running the incident workflow for that endpoint name).
 
-The monitor is disabled when `MONITORED_ENDPOINTS` is empty. See
+Disabled when `MONITORED_ENDPOINTS` is empty.
+
+### PromQL alert rules
+
+Set `PROMETHEUS_ALERT_RULES` to comma-separated `name=<PromQL>` pairs. Each cycle
+the bot evaluates every rule against `PROMETHEUS_URL`. A rule fires when the query
+returns one or more series, and the bot alerts only on the first
+not-firing → firing transition.
+
+- firing → posts a critical alert to `#alerts` and opens an incident thread.
+- recovering → posts an info note to `#status-updates`.
+- `PROMETHEUS_TOKEN` is sent as a bearer token when set.
+
+Disabled when `PROMETHEUS_ALERT_RULES` is empty. See
 [workflows.md](workflows.md) for the full flow.
 
 ## Alerting from your own code

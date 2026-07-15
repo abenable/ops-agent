@@ -43,7 +43,10 @@ cp .env.example .env
 | `API_HOST` | no | `127.0.0.1` | API bind address (use `0.0.0.0` only behind a trusted network) |
 | `API_PORT` | no | `8000` | API port |
 | `PROMETHEUS_URL` | no | `http://localhost:9090` | Prometheus base URL for metrics |
+| `PROMETHEUS_TOKEN` | no | *(empty)* | Optional bearer token for Prometheus |
+| `PROMETHEUS_ALERT_RULES` | no | *(empty)* | Comma-separated `name=<PromQL>` pairs; rule fires when query returns ≥1 series |
 | `LOKI_URL` | no | `http://localhost:3100` | Loki base URL for logs |
+| `LOKI_TOKEN` | no | *(empty)* | Optional bearer token for Loki |
 | `DATABASE_URL` | no | `sqlite:///data/agent.db` | SQLite database location |
 
 Example `MONITORED_ENDPOINTS`: `api=http://localhost:8000/health, site=https://example.com`

@@ -8,7 +8,7 @@ import discord
 from discord.ext import commands
 
 from agent.bot.commands import setup_commands
-from agent.bot.monitor import start_monitor
+from agent.bot.monitor import get_alert_rules, get_monitored_endpoints, start_monitor
 from agent.config.settings import settings
 from agent.llm.client import get_llm
 
@@ -64,6 +64,24 @@ def _attach_discord_log_handler(bot: discord.Client) -> None:
     asyncio.create_task(handler.pump())
 
 
+def _environment_context() -> str:
+    endpoints = get_monitored_endpoints()
+    endpoint_lines = [f"- {name}: {url}" for name, url in endpoints.items()]
+    rules = get_alert_rules()
+    rule_lines = [f"- {name}: {expr}" for name, expr in rules.items()]
+    return (
+        "Environment context:\n"
+        f"Monitored endpoints:\n{'\n'.join(endpoint_lines) if endpoint_lines else '- none configured'}\n"
+        f"PromQL alert rules:\n{'\n'.join(rule_lines) if rule_lines else '- none configured'}\n"
+        f"Alert channel: {settings.discord_alert_channel_id or 'not set'}\n"
+        f"Status channel: {settings.discord_status_channel_id or 'not set'}\n"
+        f"Incident channel: {settings.discord_incident_channel_id or 'not set'}\n"
+        f"Prometheus: {settings.prometheus_url}\n"
+        f"Loki: {settings.loki_url}\n"
+        "Available tools: status, logs, metrics, health, incident, scenario, ack, resolve, watching"
+    )
+
+
 def run_bot():
     intents = discord.Intents.default()
     intents.message_content = True
@@ -98,7 +116,9 @@ def run_bot():
                 cleaned = "Hello!"
 
             prompt = (
-                "You are Oracle, a concise infrastructure-operations assistant.\n"
+                "You are Oracle, a concise infrastructure-operations assistant. "
+                "Use the environment context below to answer. Be brief; if you don't know, say so.\n\n"
+                f"{_environment_context()}\n\n"
                 f"User: {cleaned}\nOracle:"
             )
             try:

@@ -3,8 +3,12 @@
 import asyncio
 
 from agent.tools.logs import get_recent_logs
-from agent.tools.metrics import get_service_metrics
+from agent.tools.metrics import _escape_label_value, get_service_metrics
 from agent.tools.services import get_service_status
+
+
+def test_escape_label_value_escapes_quotes_and_backslashes():
+    assert _escape_label_value('a"b\\c') == 'a\\"b\\\\c'
 
 
 def test_service_status_stub():

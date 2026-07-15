@@ -7,6 +7,7 @@ import yaml
 from discord.ext import commands
 
 from agent.alerting import discord as discord_alert
+from agent.bot.monitor import get_monitored_endpoints
 from agent.config.settings import settings
 from agent.storage.repository import get_incident, update_incident_status
 from agent.tools.health import check_endpoint
@@ -104,3 +105,12 @@ def setup_commands(bot: commands.Bot) -> None:
             f"{'Reachable' if result['reachable'] else 'Unreachable'} "
             f"({result.get('status_code')} in {result['response_time_ms']} ms)"
         )
+
+    @bot.command(name="watching")
+    async def watching(ctx: commands.Context):
+        endpoints = get_monitored_endpoints()
+        if not endpoints:
+            await ctx.send("No endpoints are configured for monitoring.")
+            return
+        lines = ["**Monitored endpoints**"] + [f"- {name}: <{url}>" for name, url in endpoints.items()]
+        await ctx.send("\n".join(lines))
