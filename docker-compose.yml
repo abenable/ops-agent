@@ -1,0 +1,29 @@
+services:
+  api:
+    build: .
+    env_file: .env
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ./data:/app/data
+      # Uncomment to let Docker tools talk to the host daemon.
+      # - /var/run/docker.sock:/var/run/docker.sock
+    command: ["python", "-m", "agent", "api"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  bot:
+    build: .
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+    command: ["python", "-m", "agent", "bot"]
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
