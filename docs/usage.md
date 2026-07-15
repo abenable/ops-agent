@@ -2,12 +2,16 @@
 
 ## Discord commands
 
-| Command                 | Description                            |
-| ----------------------- | -------------------------------------- |
-| `!status <service>`     | Check the current status of a service  |
-| `!logs <service> [n]`   | Return the last `n` log lines          |
-| `!metrics <service>`    | Return current metrics for a service   |
-| `!incident <service>`   | Run the incident investigation workflow |
+| Command                   | Description                                          |
+| ------------------------- | ---------------------------------------------------- |
+| `!status <service>`       | Check the current status of a service                |
+| `!logs <service> [n]`     | Return the last `n` log lines                        |
+| `!metrics <service>`      | Return current metrics for a service                 |
+| `!incident <service>`     | Run the incident investigation workflow              |
+| `!scenario <name>`        | Run a simulated scenario from `scenarios/<name>.yml`  |
+| `!ack <incident_id>`      | Acknowledge a stored incident                        |
+| `!resolve <incident_id>`  | Resolve a stored incident                            |
+| `!health <url>`           | Check reachability and latency of an HTTP endpoint   |
 
 ## HTTP API
 

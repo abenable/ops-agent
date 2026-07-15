@@ -1,10 +1,64 @@
 """Discord bot client setup."""
 
+import asyncio
+import logging
+
 import discord
 from discord.ext import commands
 
 from agent.bot.commands import setup_commands
+from agent.bot.monitor import start_monitor
 from agent.config.settings import settings
+
+logger = logging.getLogger(__name__)
+
+
+class DiscordLogHandler(logging.Handler):
+    """Forward WARNING+ logs to a Discord channel without blocking emit()."""
+
+    def __init__(self, bot: discord.Client, channel_id: int):
+        super().__init__(level=logging.WARNING)
+        self.bot = bot
+        self.channel_id = channel_id
+        self.queue: asyncio.Queue[str] = asyncio.Queue()
+
+    def emit(self, record: logging.LogRecord) -> None:
+        # Never route discord.py's own logs back into Discord (avoid loops)
+        if record.name.startswith("discord"):
+            return
+        try:
+            self.queue.put_nowait(self.format(record))
+        except Exception:  # pragma: no cover
+            pass
+
+    async def pump(self) -> None:
+        channel = self.bot.get_channel(self.channel_id)
+        if channel is None:
+            logger.warning("Discord log channel %s not found", self.channel_id)
+            return
+        while True:
+            msg = await self.queue.get()
+            try:
+                await channel.send(f"```{msg[:1900]}```")
+            except Exception as exc:  # pragma: no cover
+                logger.error("Failed to send log to Discord: %s", exc)
+
+
+def _setup_logging() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
+
+def _attach_discord_log_handler(bot: discord.Client) -> None:
+    if not settings.discord_log_channel_id:
+        return
+    handler = DiscordLogHandler(bot, settings.discord_log_channel_id)
+    handler.setFormatter(logging.Formatter("%(levelname)s %(name)s\n%(message)s"))
+    root = logging.getLogger()
+    root.addHandler(handler)
+    asyncio.create_task(handler.pump())
 
 
 def run_bot():
@@ -15,9 +69,12 @@ def run_bot():
 
     @bot.event
     async def on_ready():
-        print(f"Bot logged in as {bot.user}")  # noqa: T201
+        logger.info("Bot logged in as %s", bot.user)
+        start_monitor(bot)
+        _attach_discord_log_handler(bot)
 
     setup_commands(bot)
+    _setup_logging()
 
     if not settings.discord_bot_token:
         raise RuntimeError("DISCORD_BOT_TOKEN is not set")

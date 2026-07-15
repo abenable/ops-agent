@@ -20,6 +20,14 @@ class Settings(BaseSettings):
     discord_bot_token: str = Field(default="", validation_alias="DISCORD_BOT_TOKEN")
     discord_guild_id: int | None = None
     discord_alert_channel_id: int | None = None
+    discord_incident_channel_id: int | None = None
+    discord_status_channel_id: int | None = None
+    discord_log_channel_id: int | None = None
+    discord_test_scenarios_channel_id: int | None = None
+
+    # Endpoint monitoring loop
+    monitored_endpoints: str = ""
+    monitor_interval_seconds: int = 60
 
     # Self-hosted LLM (OpenAI-compatible)
     llm_base_url: str = "http://localhost:11434/v1"

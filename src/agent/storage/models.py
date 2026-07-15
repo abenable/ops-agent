@@ -10,6 +10,7 @@ class Incident:
     service: str
     summary: str
     status: str = "open"
+    thread_id: int | None = None
     created_at: str | None = None
 
     def __post_init__(self):
