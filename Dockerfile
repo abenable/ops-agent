@@ -6,11 +6,13 @@ WORKDIR /app
 # Install uv.
 RUN pip install --no-cache-dir uv
 
-# Copy project metadata and source.
+# Copy project metadata and install dependencies first (cached layer).
 COPY pyproject.toml uv.lock README.md ./
-COPY src ./src
+RUN uv sync --frozen --no-dev --no-install-project
 
-# Install production dependencies.
+# Copy source and scenarios after dependencies are installed.
+COPY src ./src
+COPY scenarios ./scenarios
 RUN uv sync --frozen --no-dev
 
 # Default to the API server; docker-compose overrides this for the bot.

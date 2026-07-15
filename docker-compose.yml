@@ -24,6 +24,4 @@ services:
       - ./data:/app/data
     command: ["python", "-m", "agent", "bot"]
     restart: unless-stopped
-    depends_on:
-      api:
-        condition: service_healthy
+    # ponytail: bot does not call the API; it shares the SQLite file via the data volume
