@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import sys
 
 import discord
 from discord.ext import commands
@@ -41,7 +42,8 @@ class DiscordLogHandler(logging.Handler):
             try:
                 await channel.send(f"```{msg[:1900]}```")
             except Exception as exc:  # pragma: no cover
-                logger.error("Failed to send log to Discord: %s", exc)
+                # Write to stderr, not the root logger, to avoid re-entering this handler.
+                print(f"Failed to send log to Discord: {exc}", file=sys.stderr)
 
 
 def _setup_logging() -> None:
