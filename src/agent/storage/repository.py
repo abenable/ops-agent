@@ -6,7 +6,10 @@ from uuid import uuid4
 
 from agent.config.settings import settings
 
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 _DB_PATH = Path(settings.database_url.replace("sqlite:///", ""))
+if not _DB_PATH.is_absolute():
+    _DB_PATH = _REPO_ROOT / _DB_PATH
 _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 
@@ -27,11 +30,6 @@ def init_db() -> None:
             )
             """
         )
-        # ponytail: lightweight migration for existing MVP databases
-        try:
-            conn.execute("ALTER TABLE incidents ADD COLUMN status TEXT NOT NULL DEFAULT 'open'")
-        except sqlite3.OperationalError:
-            pass
 
 
 def store_incident(service: str, summary: str, status: str = "open") -> str:
