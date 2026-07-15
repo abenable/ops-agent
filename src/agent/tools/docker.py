@@ -12,7 +12,7 @@ def _docker_client():
 
     if docker_host.startswith("unix://"):
         socket_path = docker_host[7:]
-        transport = httpx.HTTPTransport(uds=socket_path)
+        transport = httpx.AsyncHTTPTransport(uds=socket_path)
         base_url = "http://docker"
     else:
         parsed = urlparse(docker_host)
@@ -27,7 +27,9 @@ def _docker_available() -> bool:
     docker_host = os.environ.get("DOCKER_HOST", "unix:///var/run/docker.sock")
     if docker_host.startswith("tcp://"):
         return True
-    return os.path.exists(docker_host[7:])
+    if docker_host.startswith("unix://"):
+        return os.path.exists(docker_host[7:])
+    return False
 
 
 async def list_containers(all_containers: bool = True) -> list[dict]:
