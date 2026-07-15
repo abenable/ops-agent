@@ -15,6 +15,12 @@ All commands use the `!` prefix and run in `#agent-commands` (or wherever the bo
 | `!ack <incident_id>` | Acknowledge a stored incident (and post to its thread) |
 | `!resolve <incident_id>` | Resolve a stored incident (and post to its thread) |
 
+## Conversational replies
+
+Tag the bot in a message (e.g. `@Oracle hello`) and it will reply using the
+configured LLM. Prefix commands (`!status`, `!incident`, etc.) still work as
+usual.
+
 ## HTTP API
 
 | Method & path | Description |

@@ -10,6 +10,7 @@ from discord.ext import commands
 from agent.bot.commands import setup_commands
 from agent.bot.monitor import start_monitor
 from agent.config.settings import settings
+from agent.llm.client import get_llm
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,38 @@ def run_bot():
         logger.info("Bot logged in as %s", bot.user)
         start_monitor(bot)
         _attach_discord_log_handler(bot)
+
+    @bot.event
+    async def on_message(message: discord.Message):
+        # Ignore own messages and other bots.
+        if message.author == bot.user or message.author.bot:
+            return
+
+        # Let prefix commands through as usual.
+        if message.content.strip().startswith("!"):
+            await bot.process_commands(message)
+            return
+
+        # If the bot is pinged, answer via the configured LLM.
+        if bot.user in message.mentions:
+            cleaned = (
+                message.content.replace(f"<@!{bot.user.id}>", "")
+                .replace(f"<@{bot.user.id}>", "")
+                .strip()
+            )
+            if not cleaned:
+                cleaned = "Hello!"
+
+            prompt = (
+                "You are Oracle, a concise infrastructure-operations assistant.\n"
+                f"User: {cleaned}\nOracle:"
+            )
+            try:
+                response = await get_llm().ainvoke(prompt)
+                await message.reply(response.content)
+            except Exception as exc:  # pragma: no cover - LLM may be unavailable
+                logger.warning("LLM mention response failed: %s", exc)
+                await message.reply("My LLM is unreachable right now — try a `!` command instead.")
 
     setup_commands(bot)
     _setup_logging()
