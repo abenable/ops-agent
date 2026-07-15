@@ -32,3 +32,13 @@ def test_update_status_and_list(tmp_database):
 
     ack_incidents = list_incidents(status="acknowledged")
     assert any(i["id"] == incident_id for i in ack_incidents)
+
+
+def test_update_thread_id(tmp_database):
+    from agent.storage.repository import update_incident_thread_id
+
+    incident_id = store_incident("test-svc", "summary text")
+    updated = update_incident_thread_id(incident_id, 123456789)
+    assert updated is not None
+    assert updated["thread_id"] == 123456789
+    assert get_incident(incident_id)["thread_id"] == 123456789
