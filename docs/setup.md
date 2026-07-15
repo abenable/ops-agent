@@ -47,6 +47,9 @@ cp .env.example .env
 | `PROMETHEUS_ALERT_RULES` | no | *(empty)* | Comma-separated `name=<PromQL>` pairs; rule fires when query returns ≥1 series |
 | `LOKI_URL` | no | `http://localhost:3100` | Loki base URL for logs |
 | `LOKI_TOKEN` | no | *(empty)* | Optional bearer token for Loki |
+| `MAX_TOOL_STEPS` | no | `6` | Bound on the number of LLM tool calls per investigation |
+| `LOKI_MAX_LIMIT` | no | `500` | Maximum Loki log lines a single tool call may request |
+| `RANGE_MAX_HOURS` | no | `6` | Maximum Prometheus range-query window in hours |
 | `DATABASE_URL` | no | `sqlite:///data/agent.db` | SQLite database location |
 
 Example `MONITORED_ENDPOINTS`: `api=http://localhost:8000/health, site=https://example.com`
@@ -54,6 +57,13 @@ Example `MONITORED_ENDPOINTS`: `api=http://localhost:8000/health, site=https://e
 To get a Discord channel id: enable **Developer Mode** (User Settings → Advanced), then
 right-click a channel → **Copy ID**. Enable the **Message Content Intent** for your bot in the
 Developer Portal — the prefix commands depend on it.
+
+## Model requirements
+
+The agentic investigation loop (`!incident`, `!ask`) requires a model that supports
+OpenAI-style tool calling. If the configured model does not, the workflow degrades to a
+static status+metrics+logs summary. You can verify support by checking whether
+`llm_supports_tool_calls()` returns `true` at runtime.
 
 ## Run
 

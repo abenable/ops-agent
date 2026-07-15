@@ -19,7 +19,25 @@ returns real data or a placeholder in the current MVP.
 | `tools.incidents.resolve_incident` | `(incident_id) -> dict\|None` | SQLite |
 | `tools.incidents.list_incidents` | `(status=None, limit=50) -> list` | SQLite |
 | `tools.sources.prometheus.query_prometheus` | `(query) -> dict` | Prometheus `/api/v1/query` |
+| `tools.sources.prometheus.list_metric_names` | `(match="") -> list[str]` | Prometheus `/api/v1/label/__name__/values` |
+| `tools.sources.prometheus.get_label_values` | `(label) -> list[str]` | Prometheus `/api/v1/label/<label>/values` |
+| `tools.sources.prometheus.query_prometheus_range` | `(promql, minutes) -> dict` | Prometheus `/api/v1/query_range` |
 | `tools.sources.loki.query_loki` | `(query, limit=100) -> dict` | Loki `/loki/api/v1/query` |
+| `tools.query_tools.query_prometheus` | LangChain tool wrapping the instant query | (see above) |
+| `tools.query_tools.list_metric_names` | LangChain tool for metric discovery | (see above) |
+| `tools.query_tools.get_label_values` | LangChain tool for label discovery | (see above) |
+| `tools.query_tools.query_prometheus_range` | LangChain tool for range queries | (see above) |
+| `tools.query_tools.query_loki` | LangChain tool wrapping Loki query | (see above) |
+
+## Agentic query tools
+
+During an investigation (`!incident`, `!ask`, `POST /incidents`) the LLM is given
+read-only LangChain tools from `tools.query_tools`. The model decides which
+PromQL/LogQL to write and what metadata to fetch first. Results are truncated
+and the loop is bounded by `MAX_TOOL_STEPS`.
+
+These tools never mutate infrastructure; Docker/SSH restart tools are kept out
+of the agent loop.
 
 ## Exposure
 

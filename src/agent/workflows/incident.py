@@ -1,14 +1,43 @@
 """Incident investigation workflow."""
 
+import logging
+
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+
+from agent.config.settings import settings
 from agent.llm.client import get_llm
 from agent.storage.repository import store_incident
 from agent.tools.logs import get_recent_logs
 from agent.tools.metrics import get_service_metrics
+from agent.tools.query_tools import (
+    get_label_values,
+    list_metric_names,
+    query_loki,
+    query_prometheus,
+    query_prometheus_range,
+)
 from agent.tools.services import get_service_status
 
+logger = logging.getLogger(__name__)
 
-async def run_incident_workflow(service: str) -> dict:
-    """Collect signals for a service and return an incident id and summary."""
+TOOLS = [
+    query_prometheus,
+    list_metric_names,
+    get_label_values,
+    query_prometheus_range,
+    query_loki,
+]
+
+SYSTEM_PROMPT = (
+    "You are Oracle, an infrastructure-operations investigator. "
+    "Use the available read-only tools to investigate the service or question. "
+    "First discover metric names and label values, then write cheap PromQL/LogQL queries. "
+    "Prefer short time windows. Summarize findings in one paragraph."
+)
+
+
+async def _static_summary(service: str) -> str:
+    """Fallback summary when the agentic loop is unavailable or yields nothing."""
     status = await get_service_status(service)
     metrics = await get_service_metrics(service)
     logs = await get_recent_logs(service, lines=20)
@@ -22,9 +51,64 @@ async def run_incident_workflow(service: str) -> dict:
     )
 
     try:
-        summary = (await get_llm().ainvoke(prompt)).content
+        return (await get_llm().ainvoke(prompt)).content
     except Exception as exc:  # LLM may be offline during early testing
-        summary = f"LLM unavailable ({exc}); raw context: {prompt}"
+        return f"LLM unavailable ({exc}); raw context: {prompt}"
+
+
+async def run_agentic_investigation(prompt: str) -> str:
+    """Bounded tool-calling loop. Returns the LLM's final answer or a fallback message."""
+    by_name = {t.name: t for t in TOOLS}
+    llm = get_llm().bind_tools(TOOLS)
+    messages = [SystemMessage(SYSTEM_PROMPT), HumanMessage(prompt)]
+
+    ai = None
+    for step in range(settings.max_tool_steps):
+        ai = await llm.ainvoke(messages)
+        messages.append(ai)
+        if not ai.tool_calls:
+            break
+
+        for call in ai.tool_calls:
+            name = call.get("name")
+            args = call.get("args") or {}
+            tool_id = call.get("id", "call")
+            logger.info("Tool call: %s(%s)", name, args)
+            try:
+                out = await by_name[name].ainvoke(args)
+            except Exception as exc:
+                out = f"tool error: {exc}"
+            messages.append(ToolMessage(str(out)[:4000], tool_call_id=tool_id))
+
+    return (ai.content if ai else "") or "No summary produced."
+
+
+async def run_incident_workflow(service: str) -> dict:
+    """Collect signals for a service and return an incident id and summary."""
+    prompt = f"Investigate service {service}."
+    try:
+        summary = await run_agentic_investigation(prompt)
+    except Exception as exc:
+        logger.warning("Agentic workflow failed for %s: %s", service, exc)
+        summary = await _static_summary(service)
+
+    if not summary or summary == "No summary produced.":
+        summary = await _static_summary(service)
 
     incident_id = store_incident(service, summary)
     return {"incident_id": incident_id, "summary": summary}
+
+
+async def run_ask_workflow(question: str) -> str:
+    """Free-form agentic answer; does not persist an incident."""
+    return await run_agentic_investigation(question)
+
+
+async def llm_supports_tool_calls() -> bool:
+    """Probe the configured LLM to see if it can emit tool_calls via bind_tools."""
+    try:
+        llm = get_llm().bind_tools(TOOLS)
+        response = await llm.ainvoke([HumanMessage("Pick a tool to call.")])
+        return bool(response.tool_calls)
+    except Exception:
+        return False

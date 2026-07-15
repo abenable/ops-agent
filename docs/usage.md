@@ -11,6 +11,7 @@ All commands use the `!` prefix and run in `#agent-commands` (or wherever the bo
 | `!metrics <service>` | Current metrics for a service |
 | `!health <url>` | Reachability and latency of an HTTP endpoint |
 | `!watching` | List endpoints configured for background monitoring |
+| `!ask <question>` | Free-form agentic investigation using read-only Prometheus/Loki tools |
 | `!incident <service>` | Run the incident investigation workflow; posts summary + incident id, opens an incident thread, and alerts the alert channel |
 | `!scenario <name>` | Run a simulated scenario from `scenarios/<name>.yml` (restricted to the test-scenarios channel if configured) |
 | `!ack <incident_id>` | Acknowledge a stored incident (and post to its thread) |

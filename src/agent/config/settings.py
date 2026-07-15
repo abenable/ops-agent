@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     prometheus_token: str = ""
     loki_token: str = ""
 
+    # Agentic investigation loop
+    max_tool_steps: int = 6
+    loki_max_limit: int = 500
+    range_max_hours: int = 6
+
     # Storage
     database_url: str = "sqlite:///data/agent.db"
 

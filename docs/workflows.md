@@ -5,16 +5,24 @@
 `agent.workflows.incident.run_incident_workflow(service)` — async, returns
 `{incident_id, summary}`.
 
-1. Collect service status (`get_service_status`).
-2. Collect recent metrics (`get_service_metrics` → Prometheus, else stub).
-3. Collect recent logs (`get_recent_logs` → Loki, else stub).
-4. Build a prompt and call the self-hosted LLM (`ainvoke`); on failure, fall back to a summary
-   that embeds the raw context.
+1. Start a bounded, read-only tool-calling loop (`run_agentic_investigation`).
+   The LLM can call:
+   - `list_metric_names` / `get_label_values` (Prometheus discovery)
+   - `query_prometheus` / `query_prometheus_range` (PromQL)
+   - `query_loki` (LogQL)
+2. Tool results are truncated to 4,000 chars and fed back to the model.
+3. The loop runs at most `MAX_TOOL_STEPS` (default 6) times and stops when the
+   model returns a final answer instead of a tool call.
+4. If the LLM fails or produces no usable answer, fall back to the static
+   status+metrics+logs summary.
 5. Persist the incident to SQLite and return its id + summary.
 
-Triggers: `!incident <service>`, `POST /incidents/{service}`, `python -m agent incident`, or
-the background monitor. For Discord triggers the bot also opens an incident thread and posts an
-alert (see below).
+`run_ask_workflow(question)` uses the same loop for free-form questions without
+storing an incident.
+
+Triggers: `!incident <service>`, `!ask <question>`, `POST /incidents/{service}`,
+`python -m agent incident`, or the background monitor. For Discord triggers the bot
+also opens an incident thread and posts an alert (see below).
 
 ## Monitoring workflow
 

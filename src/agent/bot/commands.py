@@ -14,7 +14,7 @@ from agent.tools.health import check_endpoint
 from agent.tools.logs import get_recent_logs
 from agent.tools.metrics import get_service_metrics
 from agent.tools.services import get_service_status
-from agent.workflows.incident import run_incident_workflow
+from agent.workflows.incident import run_ask_workflow, run_incident_workflow
 
 
 def setup_commands(bot: commands.Bot) -> None:
@@ -114,3 +114,8 @@ def setup_commands(bot: commands.Bot) -> None:
             return
         lines = ["**Monitored endpoints**"] + [f"- {name}: <{url}>" for name, url in endpoints.items()]
         await ctx.send("\n".join(lines))
+
+    @bot.command(name="ask")
+    async def ask(ctx: commands.Context, *, question: str):
+        answer = await run_ask_workflow(question)
+        await ctx.send(answer)
