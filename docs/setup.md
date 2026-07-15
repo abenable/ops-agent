@@ -83,7 +83,6 @@ docker compose up --build api
 docker compose up --build bot
 ```
 
-The `api` service exposes port `8000` and has a healthcheck; the `bot` service waits until the
-API healthcheck passes. Both mount `./data` so the SQLite database persists across restarts.
-To let the Docker tools reach the host daemon, uncomment the docker-socket volume in
-`docker-compose.yml`.
+The `api` service exposes port `8000` and has a healthcheck. Both services mount `./data`
+so the SQLite database persists across restarts. To let the Docker tools reach the host
+daemon, uncomment the docker-socket volume in `docker-compose.yml`.

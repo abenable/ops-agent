@@ -81,4 +81,14 @@ def run_bot():
     if not settings.discord_bot_token:
         raise RuntimeError("DISCORD_BOT_TOKEN is not set")
 
-    bot.run(settings.discord_bot_token)
+    try:
+        bot.run(settings.discord_bot_token)
+    except discord.errors.PrivilegedIntentsRequired:
+        logger.critical(
+            "Privileged 'Message Content Intent' is not enabled for this bot. "
+            "Enable it at https://discord.com/developers/applications"
+        )
+        raise SystemExit(1) from None
+    except discord.errors.LoginFailure:
+        logger.critical("Invalid DISCORD_BOT_TOKEN")
+        raise SystemExit(1) from None
