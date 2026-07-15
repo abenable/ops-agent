@@ -40,7 +40,15 @@ async def query_prometheus_range(promql: str, minutes: int) -> str:
 
 @tool
 async def query_loki(logql: str, limit: int = 100) -> str:
-    """Run a LogQL query against Loki. Use this to pull logs the query scopes itself.
+    """Run an instant LogQL query against Loki. Use this to pull logs the query scopes itself.
     Keep `limit` small; it is clamped to the configured maximum."""
     limit = max(1, min(limit, settings.loki_max_limit))
     return str(await loki.query_loki(logql, limit))[:4000]
+
+
+@tool
+async def query_loki_range(logql: str, minutes: int, limit: int = 100) -> str:
+    """Run a LogQL range query over the last `minutes`. Prefer this when the user
+    asks for logs over a recent window. The window and limit are clamped."""
+    limit = max(1, min(limit, settings.loki_max_limit))
+    return str(await loki.query_loki_range(logql, minutes, limit))[:4000]

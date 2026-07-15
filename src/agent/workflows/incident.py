@@ -13,6 +13,7 @@ from agent.tools.query_tools import (
     get_label_values,
     list_metric_names,
     query_loki,
+    query_loki_range,
     query_prometheus,
     query_prometheus_range,
 )
@@ -26,6 +27,7 @@ TOOLS = [
     get_label_values,
     query_prometheus_range,
     query_loki,
+    query_loki_range,
 ]
 
 SYSTEM_PROMPT = (
@@ -80,6 +82,10 @@ async def run_agentic_investigation(prompt: str) -> str:
                 out = f"tool error: {exc}"
             messages.append(ToolMessage(str(out)[:4000], tool_call_id=tool_id))
 
+    # If we exited because of the step cap with pending tool calls, ask for a final summary.
+    if ai and ai.tool_calls:
+        ai = await llm.ainvoke(messages)
+
     return (ai.content if ai else "") or "No summary produced."
 
 
@@ -101,7 +107,11 @@ async def run_incident_workflow(service: str) -> dict:
 
 async def run_ask_workflow(question: str) -> str:
     """Free-form agentic answer; does not persist an incident."""
-    return await run_agentic_investigation(question)
+    try:
+        return await run_agentic_investigation(question)
+    except Exception as exc:
+        logger.warning("Ask workflow failed: %s", exc)
+        return f"Ask workflow failed ({exc}); the LLM may be offline or unsupported."
 
 
 async def llm_supports_tool_calls() -> bool:

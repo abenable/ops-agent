@@ -9,8 +9,9 @@ from discord.ext import commands
 
 from agent.bot.commands import setup_commands
 from agent.bot.monitor import get_alert_rules, get_monitored_endpoints, start_monitor
+from agent.bot.utils import split_discord_text
 from agent.config.settings import settings
-from agent.llm.client import get_llm
+from agent.workflows.incident import llm_supports_tool_calls, run_ask_workflow
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,13 @@ def run_bot():
         start_monitor(bot)
         _attach_discord_log_handler(bot)
 
+        supports_tools = await llm_supports_tool_calls()
+        if not supports_tools:
+            logger.warning(
+                "Configured LLM does not appear to support OpenAI-style tool calls. "
+                "Investigations will fall back to static summaries; tool-calling will not work."
+            )
+
     @bot.event
     async def on_message(message: discord.Message):
         # Ignore own messages and other bots.
@@ -105,7 +113,7 @@ def run_bot():
             await bot.process_commands(message)
             return
 
-        # If the bot is pinged, answer via the configured LLM.
+        # If the bot is pinged, route through the agentic investigation loop.
         if bot.user in message.mentions:
             cleaned = (
                 message.content.replace(f"<@!{bot.user.id}>", "")
@@ -116,17 +124,25 @@ def run_bot():
                 cleaned = "Hello!"
 
             prompt = (
-                "You are Oracle, a concise infrastructure-operations assistant. "
-                "Use the environment context below to answer. Be brief; if you don't know, say so.\n\n"
+                "You are Oracle, an infrastructure-operations assistant. "
+                "Use the environment context below, and the read-only Prometheus/Loki tools if needed. "
+                "Be brief; if you don't know, say so.\n\n"
                 f"{_environment_context()}\n\n"
-                f"User: {cleaned}\nOracle:"
+                f"Question: {cleaned}"
             )
             try:
-                response = await get_llm().ainvoke(prompt)
-                await message.reply(response.content)
-            except Exception as exc:  # pragma: no cover - LLM may be unavailable
-                logger.warning("LLM mention response failed: %s", exc)
-                await message.reply("My LLM is unreachable right now — try a `!` command instead.")
+                answer = await run_ask_workflow(prompt)
+            except Exception as exc:  # pragma: no cover
+                logger.warning("Mention response failed: %s", exc)
+                answer = "My agent is unreachable right now — try a `!` command instead."
+
+            chunks = split_discord_text(answer)
+            if not chunks:
+                await message.reply("(no response)")
+                return
+            await message.reply(chunks[0])
+            for chunk in chunks[1:]:
+                await message.channel.send(chunk)
 
     setup_commands(bot)
     _setup_logging()

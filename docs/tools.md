@@ -22,12 +22,14 @@ returns real data or a placeholder in the current MVP.
 | `tools.sources.prometheus.list_metric_names` | `(match="") -> list[str]` | Prometheus `/api/v1/label/__name__/values` |
 | `tools.sources.prometheus.get_label_values` | `(label) -> list[str]` | Prometheus `/api/v1/label/<label>/values` |
 | `tools.sources.prometheus.query_prometheus_range` | `(promql, minutes) -> dict` | Prometheus `/api/v1/query_range` |
-| `tools.sources.loki.query_loki` | `(query, limit=100) -> dict` | Loki `/loki/api/v1/query` |
+| `tools.sources.loki.query_loki` | `(query, limit=100) -> dict` | Loki `/loki/api/v1/query` (instant) |
+| `tools.sources.loki.query_loki_range` | `(query, minutes, limit=100) -> dict` | Loki `/loki/api/v1/query_range` |
 | `tools.query_tools.query_prometheus` | LangChain tool wrapping the instant query | (see above) |
 | `tools.query_tools.list_metric_names` | LangChain tool for metric discovery | (see above) |
 | `tools.query_tools.get_label_values` | LangChain tool for label discovery | (see above) |
 | `tools.query_tools.query_prometheus_range` | LangChain tool for range queries | (see above) |
-| `tools.query_tools.query_loki` | LangChain tool wrapping Loki query | (see above) |
+| `tools.query_tools.query_loki` | LangChain tool wrapping Loki instant query | (see above) |
+| `tools.query_tools.query_loki_range` | LangChain tool for Loki range queries | (see above) |
 
 ## Agentic query tools
 

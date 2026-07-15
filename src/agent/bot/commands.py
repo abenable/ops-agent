@@ -8,6 +8,7 @@ from discord.ext import commands
 
 from agent.alerting import discord as discord_alert
 from agent.bot.monitor import get_monitored_endpoints
+from agent.bot.utils import split_discord_text
 from agent.config.settings import settings
 from agent.storage.repository import get_incident, update_incident_status
 from agent.tools.health import check_endpoint
@@ -26,7 +27,8 @@ def setup_commands(bot: commands.Bot) -> None:
     @bot.command(name="logs")
     async def logs(ctx: commands.Context, service: str, lines: int = 10):
         result = await get_recent_logs(service, lines)
-        await ctx.send(result)
+        for chunk in split_discord_text(result):
+            await ctx.send(chunk)
 
     @bot.command(name="metrics")
     async def metrics(ctx: commands.Context, service: str):
@@ -36,15 +38,18 @@ def setup_commands(bot: commands.Bot) -> None:
     @bot.command(name="incident")
     async def incident(ctx: commands.Context, service: str):
         result = await run_incident_workflow(service)
-        reply = result["summary"] + f"\nIncident ID: {result['incident_id']}"
-        await ctx.send(reply)
+        summary = result["summary"]
+        for chunk in split_discord_text(summary):
+            await ctx.send(chunk)
+        await ctx.send(f"Incident ID: {result['incident_id']}")
 
         await discord_alert.open_incident_thread(
-            bot, service, result["summary"], result["incident_id"]
+            bot, service, summary, result["incident_id"]
         )
 
         if settings.discord_alert_channel_id is not None:
-            alert_message = f"Incident reported for {service}: {result['summary']}"
+            # Keep the alert embed description short; Discord allows 4096 chars there.
+            alert_message = f"Incident reported for {service}: {summary[:1000]}"
             await discord_alert.send_alert(
                 settings.discord_alert_channel_id,
                 alert_message,
@@ -96,7 +101,8 @@ def setup_commands(bot: commands.Bot) -> None:
             f"▶ Simulating: {data['name']} — {data.get('symptom', '')}"
         )
         result = await run_incident_workflow(data["service"])
-        await ctx.send(result["summary"])
+        for chunk in split_discord_text(result["summary"]):
+            await ctx.send(chunk)
 
     @bot.command(name="health")
     async def health(ctx: commands.Context, url: str):
@@ -117,5 +123,9 @@ def setup_commands(bot: commands.Bot) -> None:
 
     @bot.command(name="ask")
     async def ask(ctx: commands.Context, *, question: str):
-        answer = await run_ask_workflow(question)
-        await ctx.send(answer)
+        try:
+            answer = await run_ask_workflow(question)
+        except Exception as exc:  # LLM may be offline
+            answer = f"Ask failed: {exc}"
+        for chunk in split_discord_text(answer):
+            await ctx.send(chunk)
