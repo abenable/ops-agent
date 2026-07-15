@@ -8,6 +8,5 @@ __pycache__
 data/
 tests/
 docs/
-scenarios/
 *.md
 !README.md
