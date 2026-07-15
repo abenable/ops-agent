@@ -82,9 +82,10 @@ async def run_agentic_investigation(prompt: str) -> str:
                 out = f"tool error: {exc}"
             messages.append(ToolMessage(str(out)[:4000], tool_call_id=tool_id))
 
-    # If we exited because of the step cap with pending tool calls, ask for a final summary.
+    # If we exited because of the step cap with pending tool calls, ask for a final summary
+    # using a tool-less LLM so it returns prose instead of issuing more tool calls.
     if ai and ai.tool_calls:
-        ai = await llm.ainvoke(messages)
+        ai = await get_llm().ainvoke(messages)
 
     return (ai.content if ai else "") or "No summary produced."
 

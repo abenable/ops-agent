@@ -15,6 +15,9 @@ from agent.workflows.incident import llm_supports_tool_calls, run_ask_workflow
 
 logger = logging.getLogger(__name__)
 
+# Guard on_ready re-entrancy after Discord gateway reconnects.
+_setup_done = False
+
 
 class DiscordLogHandler(logging.Handler):
     """Forward WARNING+ logs to a Discord channel without blocking emit()."""
@@ -91,7 +94,14 @@ def run_bot():
 
     @bot.event
     async def on_ready():
+        global _setup_done
         logger.info("Bot logged in as %s", bot.user)
+
+        if _setup_done:
+            logger.info("Skipping duplicate setup after reconnect")
+            return
+        _setup_done = True
+
         start_monitor(bot)
         _attach_discord_log_handler(bot)
 
