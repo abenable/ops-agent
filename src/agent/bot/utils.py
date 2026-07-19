@@ -40,6 +40,17 @@ def format_prometheus(result: dict) -> str:
     return "\n".join(lines)
 
 
+def format_status(result: dict) -> str:
+    """Render a get_service_status() dict as a one-line human summary."""
+    if result["status"] == "not found":
+        return f"No container matching '{result['service']}'."
+    dot = "🟢" if result["status"] == "running" else "🔴"
+    return (
+        f"{dot} {result['container']} — {result['status']} "
+        f"({result['detail']}) · {result['image']}"
+    )
+
+
 def format_loki(result: dict, limit: int = 25) -> str:
     """Render a Loki query response as plain log lines, not JSON."""
     streams = result.get("data", {}).get("result", [])

@@ -98,7 +98,7 @@ def _environment_context() -> str:
         f"Incident channel: {settings.discord_incident_channel_id or 'not set'}\n"
         f"Prometheus: {settings.prometheus_url}\n"
         f"Loki: {settings.loki_url}\n"
-        "Available tools: status, containers, logs, metrics, health, incident, scenario, ack, resolve, watching"
+        "Available tools: menu, status, containers, logs, metrics, health, incident, scenario, ack, resolve, watching"
     )
 
 

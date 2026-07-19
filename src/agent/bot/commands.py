@@ -8,7 +8,8 @@ from discord.ext import commands
 
 from agent.alerting import discord as discord_alert
 from agent.bot.monitor import get_monitored_endpoints
-from agent.bot.utils import format_prometheus, split_discord_text
+from agent.bot.menu import MenuView
+from agent.bot.utils import format_prometheus, format_status, split_discord_text
 from agent.config.settings import settings
 from agent.storage.repository import get_incident, update_incident_status
 from agent.tools import docker
@@ -20,17 +21,19 @@ from agent.workflows.incident import run_ask_workflow, run_incident_workflow
 
 
 def setup_commands(bot: commands.Bot) -> None:
+    @bot.command(name="menu")
+    async def menu(ctx: commands.Context):
+        items = await docker.list_containers(all_containers=True)
+        names = [docker.container_name(c) for c in items]
+        if not names:
+            await ctx.send("No containers found (is the Docker socket mounted?).")
+            return
+        await ctx.send("Pick a container:", view=MenuView(names))
+
     @bot.command(name="status")
     async def status(ctx: commands.Context, service: str):
         result = await get_service_status(service)
-        if result["status"] == "not found":
-            await ctx.send(f"No container matching '{service}'.")
-            return
-        dot = "🟢" if result["status"] == "running" else "🔴"
-        await ctx.send(
-            f"{dot} {result['container']} — {result['status']} "
-            f"({result['detail']}) · {result['image']}"
-        )
+        await ctx.send(format_status(result))
 
     @bot.command(name="containers")
     async def containers(ctx: commands.Context):

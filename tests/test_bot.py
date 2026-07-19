@@ -1,6 +1,11 @@
 """Smoke tests for Discord command wiring."""
 
-from agent.bot.utils import format_loki, format_prometheus, split_discord_text
+from agent.bot.utils import (
+    format_loki,
+    format_prometheus,
+    format_status,
+    split_discord_text,
+)
 
 
 def test_split_discord_text_chunks_at_limit_and_prefers_newlines():
@@ -33,6 +38,13 @@ def test_format_loki_renders_plain_log_lines():
     ]}}
     assert format_loki(result) == "line a\nline b"
     assert format_loki({"data": {"result": []}}) == "No logs."
+
+
+def test_format_status_running_and_missing():
+    running = {"service": "web", "container": "web-1", "status": "running",
+               "detail": "Up 2 hours", "image": "nginx"}
+    assert "🟢 web-1 — running" in format_status(running)
+    assert format_status({"service": "ghost", "status": "not found"}) == "No container matching 'ghost'."
 
 
 def test_commands_registered():
