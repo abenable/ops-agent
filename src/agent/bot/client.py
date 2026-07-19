@@ -38,10 +38,26 @@ class DiscordLogHandler(logging.Handler):
             pass
 
     async def pump(self) -> None:
+        # Resolve via cache, falling back to an API fetch — get_channel() is often
+        # None right at on_ready before the channel cache is populated.
         channel = self.bot.get_channel(self.channel_id)
         if channel is None:
-            logger.warning("Discord log channel %s not found", self.channel_id)
+            try:
+                channel = await self.bot.fetch_channel(self.channel_id)
+            except Exception as exc:
+                print(
+                    f"Discord log channel {self.channel_id} unreachable: {exc}",
+                    file=sys.stderr,
+                )
+                return
+
+        # Confirm the wiring loudly so an empty channel means "no warnings", not "broken".
+        try:
+            await channel.send("Log forwarding active (WARNING and above).")
+        except Exception as exc:
+            print(f"Cannot send to Discord log channel: {exc}", file=sys.stderr)
             return
+
         while True:
             msg = await self.queue.get()
             try:
