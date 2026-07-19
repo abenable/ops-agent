@@ -11,19 +11,23 @@ Built during the Implementation Phase (Weeks 5–8) of the Marconi industrial tr
 ## Features
 
 - **Discord interface** — prefix commands for status, logs, metrics, health, incident
-  investigation, scenario simulation, and incident acknowledge/resolve.
-- **Background monitoring** — a poll loop checks configured HTTP endpoints and posts status
-  changes and down-alerts to Discord, auto-opening a threaded incident on escalation.
-- **Incident workflow** — collects service status + metrics + logs, asks a self-hosted
-  (OpenAI-compatible) LLM for a summary, and persists it.
+  investigation, free-form questions, scenario simulation, and incident acknowledge/resolve;
+  plus conversational replies when you @mention the bot.
+- **Agentic investigation** — the LLM writes its own PromQL/LogQL through read-only Prometheus
+  and Loki tools (metric/label discovery, instant + range queries), in a bounded tool-calling
+  loop, and summarizes what it finds.
+- **Background monitoring** — a poll loop runs two complementary checks each cycle: HTTP
+  endpoint liveness, and PromQL alert-rule evaluation. It posts status changes and down-alerts
+  to Discord and auto-opens a threaded incident on escalation.
 - **Incident tracking** — SQLite-backed incidents with acknowledge / resolve lifecycle and an
   optional Discord thread per incident.
 - **Backend API** — FastAPI service exposing the same tools over HTTP, with optional
   shared-secret auth.
-- **Monitoring sources** — Prometheus (metrics) and Loki (logs) helpers, with graceful
-  fallback to stubs when a source is unreachable.
+- **Monitoring sources** — Prometheus (metrics) and Loki (logs) with optional bearer-token
+  auth, and graceful fallback to stubs when a source is unreachable.
 - **Self-hosted LLM** — points at any OpenAI-compatible endpoint (Ollama, vLLM,
-  llama.cpp server, a hosted gateway).
+  llama.cpp server, a hosted gateway). Tool-calling support required for agentic investigation
+  (static fallback otherwise).
 
 ## Quick start
 
@@ -45,10 +49,14 @@ See [docs/setup.md](docs/setup.md) for the full configuration reference and Dock
 | `!logs <service> [n]` | Last `n` log lines (default 10) |
 | `!metrics <service>` | Current metrics for a service |
 | `!health <url>` | Reachability + latency of an HTTP endpoint |
+| `!watching` | List endpoints configured for background monitoring |
+| `!ask <question>` | Free-form agentic investigation using read-only Prometheus/Loki tools |
 | `!incident <service>` | Run the incident investigation workflow |
 | `!scenario <name>` | Run a simulated scenario from `scenarios/<name>.yml` |
 | `!ack <incident_id>` | Acknowledge a stored incident |
 | `!resolve <incident_id>` | Resolve a stored incident |
+
+You can also **@mention** the bot with a question; it answers through the same agentic loop.
 
 ## HTTP API
 
@@ -88,8 +96,9 @@ inactive when its channel id is unset). See [docs/discord-channels.md](docs/disc
 │   ├── api/                 # FastAPI server and routes
 │   ├── llm/                 # Self-hosted LLM client
 │   ├── tools/               # Controlled tools (status/logs/metrics/health/docker/ssh)
-│   │   └── sources/         # Prometheus and Loki query helpers
-│   ├── workflows/           # Incident investigation and reporting
+│   │   ├── sources/         # Prometheus and Loki query helpers
+│   │   └── query_tools.py   # Read-only LangChain tools the LLM calls during investigations
+│   ├── workflows/           # Incident investigation (agentic loop) and reporting
 │   ├── storage/             # SQLite incident repository
 │   ├── alerting/            # Discord alert + incident-thread helpers
 │   └── config/              # Environment-based settings
@@ -123,19 +132,22 @@ This is an MVP built for a controlled environment. Known limitations:
   registry or orchestrator.
 - **Metrics/logs depend on Prometheus/Loki** — when those sources are unreachable, the tools
   fall back to placeholder values rather than failing loudly.
-- **Monitoring is HTTP-only** — the background loop checks endpoint reachability, not metric
-  thresholds; anomaly detection beyond up/down is not implemented.
-- **Monitor state is in memory** — alert de-duplication resets when the bot restarts.
+- **Agentic investigation needs a tool-calling model** — if the configured LLM does not support
+  OpenAI-style tool calls, investigations degrade to a static status+metrics+logs summary. The
+  bot logs a warning at startup when tool calls are unsupported.
+- **Alerting is single-environment** — one Prometheus/Loki pair; no named multi-source registry.
+- **Monitor state is in memory** — alert de-duplication resets when the bot restarts, and the
+  monitor loop is (re)started from `on_ready`.
 - **No RBAC** — any member who can see `#agent-commands` can run any command; SSH/Docker
-  tools are library-only and not exposed to chat.
+  tools are library-only and not exposed to chat or the LLM.
 - **Single-node SQLite** — fine for one bot instance; not built for concurrent writers.
 - **Prefix commands, not slash commands** — no autocomplete; commands use the `!` prefix.
 
 ## Future improvements
 
 - Wire `!status` to a real service inventory (Docker/systemd/orchestrator).
-- Metric-threshold and error-rate alerting in the monitor, not just reachability.
+- Named multi-environment monitoring sources (prod/staging registry).
+- Alertmanager webhook receiver (hosted in the bot process) as an alternative to in-bot polling.
 - Slash-command interface with autocomplete (`discord.app_commands`).
 - Persist monitor/alert state so de-duplication survives restarts.
 - Role-based command permissions and an allowlist for SSH/Docker actions.
-- Richer workflow orchestration (e.g. LangGraph) with tool-calling by the LLM.

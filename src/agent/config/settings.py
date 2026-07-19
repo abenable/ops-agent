@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     loki_max_limit: int = 500
     range_max_hours: int = 6
 
+    # Docker container discovery (DOCKER_HOST is read from the env by tools/docker.py)
+    docker_monitor: bool = False
+    docker_name_filter: str = ""
+
     # Storage
     database_url: str = "sqlite:///data/agent.db"
 

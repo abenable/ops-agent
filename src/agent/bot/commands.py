@@ -8,9 +8,10 @@ from discord.ext import commands
 
 from agent.alerting import discord as discord_alert
 from agent.bot.monitor import get_monitored_endpoints
-from agent.bot.utils import split_discord_text
+from agent.bot.utils import format_prometheus, split_discord_text
 from agent.config.settings import settings
 from agent.storage.repository import get_incident, update_incident_status
+from agent.tools import docker
 from agent.tools.health import check_endpoint
 from agent.tools.logs import get_recent_logs
 from agent.tools.metrics import get_service_metrics
@@ -22,7 +23,27 @@ def setup_commands(bot: commands.Bot) -> None:
     @bot.command(name="status")
     async def status(ctx: commands.Context, service: str):
         result = await get_service_status(service)
-        await ctx.send(str(result))
+        if result["status"] == "not found":
+            await ctx.send(f"No container matching '{service}'.")
+            return
+        dot = "🟢" if result["status"] == "running" else "🔴"
+        await ctx.send(
+            f"{dot} {result['container']} — {result['status']} "
+            f"({result['detail']}) · {result['image']}"
+        )
+
+    @bot.command(name="containers")
+    async def containers(ctx: commands.Context):
+        items = await docker.list_containers(all_containers=True)
+        if not items:
+            await ctx.send("No containers found (is the Docker socket mounted?).")
+            return
+        lines = ["**Containers**"]
+        for c in items:
+            dot = "🟢" if c.get("State") == "running" else "🔴"
+            lines.append(f"{dot} {docker.container_name(c)} — {c.get('Status', '')}")
+        for chunk in split_discord_text("\n".join(lines)):
+            await ctx.send(chunk)
 
     @bot.command(name="logs")
     async def logs(ctx: commands.Context, service: str, lines: int = 10):
@@ -33,7 +54,7 @@ def setup_commands(bot: commands.Bot) -> None:
     @bot.command(name="metrics")
     async def metrics(ctx: commands.Context, service: str):
         result = await get_service_metrics(service)
-        await ctx.send(str(result))
+        await ctx.send(format_prometheus(result))
 
     @bot.command(name="incident")
     async def incident(ctx: commands.Context, service: str):

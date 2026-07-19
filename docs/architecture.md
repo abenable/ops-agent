@@ -35,12 +35,15 @@
 - `agent.bot.client` — Discord client bootstrap; on ready it starts the monitor and, if
   configured, a Discord log handler.
 - `agent.bot.commands` — prefix command handlers.
-- `agent.bot.monitor` — background poll loop over `MONITORED_ENDPOINTS`; drives alerts, status
-  updates, and escalation to threaded incidents.
+- `agent.bot.monitor` — background poll loop; each cycle checks HTTP endpoint liveness
+  (`MONITORED_ENDPOINTS`) and evaluates PromQL alert rules (`PROMETHEUS_ALERT_RULES`), driving
+  alerts, status updates, and escalation to threaded incidents.
 - `agent.api` — FastAPI app and routes, with an optional `X-API-Key` dependency.
-- `agent.workflows` — incident investigation and report generation.
+- `agent.workflows` — incident investigation (agentic tool-calling loop) and report generation.
 - `agent.tools` — controlled tools: status, logs, metrics, HTTP health, Docker, SSH.
 - `agent.tools.sources` — Prometheus (metrics) and Loki (logs) query helpers.
+- `agent.tools.query_tools` — read-only LangChain tools (metric/label discovery, PromQL/LogQL
+  instant + range) the LLM calls during an investigation.
 - `agent.llm` — OpenAI-compatible client wrapper (`ChatOpenAI`) for a self-hosted model.
 - `agent.storage` — SQLite repository and the `Incident` dataclass.
 - `agent.alerting` — Discord alert embeds and incident-thread creation.
@@ -49,11 +52,12 @@
 ## Data flow (incident)
 
 1. A trigger arrives — `!incident <service>`, `POST /incidents/{service}`, the CLI, or the
-   monitor escalating a down endpoint.
-2. The workflow gathers status + metrics + logs via the tools (which query Prometheus/Loki,
-   falling back to stubs on failure).
-3. The context is sent to the LLM for a one-paragraph summary (with a graceful fallback if the
-   LLM is offline).
+   monitor escalating a down endpoint / firing PromQL rule.
+2. The workflow runs a bounded agentic loop: the LLM discovers metrics/labels and writes its
+   own PromQL/LogQL through the read-only query tools, up to `MAX_TOOL_STEPS` calls.
+3. The model returns a summary. If it does not support tool calls, fails, or produces nothing,
+   the workflow falls back to a static status+metrics+logs summary (which itself falls back to
+   raw context if the LLM is offline).
 4. The incident is persisted to SQLite and its id returned.
 5. For Discord triggers, a thread is opened in the incidents channel and an alert is posted.
 

@@ -4,6 +4,7 @@ from discord.ext import tasks
 
 from agent.alerting import discord as discord_alert
 from agent.config.settings import settings
+from agent.tools import docker
 from agent.tools.health import check_endpoint
 from agent.tools.sources.prometheus import query_prometheus
 from agent.workflows.incident import run_incident_workflow
@@ -13,6 +14,9 @@ _last_state: dict[str, bool] = {}
 
 # rule_name -> firing (in-memory; fine for an MVP)
 _rule_state: dict[str, bool] = {}
+
+# container name -> last state (in-memory; fine for an MVP)
+_container_state: dict[str, str] = {}
 
 
 def _endpoints() -> dict[str, str]:
@@ -85,6 +89,37 @@ async def _evaluate_rules(bot) -> None:
         _rule_state[rule_name] = firing
 
 
+async def _poll_containers(bot) -> None:
+    """Discover running containers each cycle; alert when one stops running.
+
+    New containers are picked up automatically — no config entry needed.
+    """
+    if not settings.docker_monitor:
+        return
+    try:
+        containers = await docker.list_containers(all_containers=True)
+    except Exception:
+        # ponytail: skip cycle if the Docker socket is unreachable
+        return
+
+    name_filter = settings.docker_name_filter.lower()
+    for c in containers:
+        name = docker.container_name(c)
+        if name_filter and name_filter not in name.lower():
+            continue
+        state = c.get("State", "unknown")
+        prev = _container_state.get(name)
+        if prev == "running" and state != "running" and settings.discord_alert_channel_id:
+            await discord_alert.send_alert(
+                settings.discord_alert_channel_id,
+                f"Container `{name}` is now {state} ({c.get('Status', '')})",
+                bot,
+                severity="critical",
+                title="Container down",
+            )
+        _container_state[name] = state
+
+
 async def _poll_once(bot) -> None:
     """Run one poll iteration across all monitored endpoints."""
     for name, url in _endpoints().items():
@@ -121,6 +156,7 @@ async def _poll_once(bot) -> None:
         _last_state[url] = up
 
     await _evaluate_rules(bot)
+    await _poll_containers(bot)
 
 
 def start_monitor(bot):

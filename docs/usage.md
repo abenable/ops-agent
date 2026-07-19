@@ -19,11 +19,12 @@ All commands use the `!` prefix and run in `#agent-commands` (or wherever the bo
 
 ## Conversational replies
 
-Tag the bot in a message (e.g. `@Oracle hello`) and it will reply using the
-configured LLM. The prompt includes the monitored endpoints, configured
-channels, Prometheus/Loki URLs, and available commands so answers are grounded
-in this environment. Prefix commands (`!status`, `!incident`, etc.) still work
-as usual.
+Tag the bot in a message (e.g. `@Oracle why is web slow?`) and it answers through the
+same agentic loop as `!ask` — it can call the read-only Prometheus/Loki tools to
+investigate. The prompt also includes environment context (monitored endpoints,
+configured channels, Prometheus/Loki URLs) so answers are grounded in this deployment.
+Long replies are split across multiple messages. Prefix commands (`!status`,
+`!incident`, etc.) still work as usual.
 
 ## HTTP API
 

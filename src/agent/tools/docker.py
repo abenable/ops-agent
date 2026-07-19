@@ -37,13 +37,32 @@ async def list_containers(all_containers: bool = True) -> list[dict]:
     if not _docker_available():
         return []
 
-    async with _docker_client() as client:
-        response = await client.get(
-            "/v1.24/containers/json",
-            params={"all": str(all_containers).lower()},
-        )
-        response.raise_for_status()
-        return response.json()
+    try:
+        async with _docker_client() as client:
+            response = await client.get(
+                "/v1.24/containers/json",
+                params={"all": str(all_containers).lower()},
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPError:
+        # ponytail: daemon unreachable or erroring — treat as no containers, like a missing socket
+        return []
+
+
+def container_name(container: dict) -> str:
+    """Human name for a Docker API container object."""
+    names = container.get("Names") or []
+    return names[0].lstrip("/") if names else container.get("Id", "")[:12]
+
+
+async def find_container(service: str) -> dict | None:
+    """Match a container by name substring (case-insensitive). None if not found."""
+    needle = service.lower()
+    for c in await list_containers(all_containers=True):
+        if needle in container_name(c).lower():
+            return c
+    return None
 
 
 async def container_logs(container_id: str, tail: int = 20) -> str:
