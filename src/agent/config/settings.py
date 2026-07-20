@@ -1,6 +1,6 @@
 """Pydantic settings loaded from environment and `.env`."""
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from agent.config.dotenv_loader import load_env
@@ -60,6 +60,21 @@ class Settings(BaseSettings):
 
     # Storage
     database_url: str = "sqlite:///data/agent.db"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _blank_env_to_empty_string(cls, data):
+        # env_parse_none_str="" turns empty env vars into None (needed for the
+        # optional int fields). Keep plain str fields as "" instead of None.
+        if isinstance(data, dict):
+            for name, field in cls.model_fields.items():
+                if field.annotation is not str:
+                    continue
+                alias = field.validation_alias if isinstance(field.validation_alias, str) else None
+                for key in (name, alias):
+                    if key in data and data[key] is None:
+                        data[key] = ""
+        return data
 
 
 settings = Settings()

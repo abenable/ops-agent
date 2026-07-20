@@ -37,7 +37,9 @@ def test_endpoints_ignores_empty_items(monkeypatch):
 
 
 def test_endpoints_empty_by_default(monkeypatch):
-    monkeypatch.setattr(monitor, "settings", Settings())
+    # load_env() pushes .env into os.environ, so clear the key to test the true default.
+    monkeypatch.delenv("MONITORED_ENDPOINTS", raising=False)
+    monkeypatch.setattr(monitor, "settings", Settings(_env_file=None))
     assert monitor._endpoints() == {}
 
 
@@ -91,7 +93,8 @@ def test_alert_rules_parsing(monkeypatch):
 
 
 def test_alert_rules_empty_by_default(monkeypatch):
-    monkeypatch.setattr(monitor, "settings", Settings())
+    monkeypatch.delenv("PROMETHEUS_ALERT_RULES", raising=False)
+    monkeypatch.setattr(monitor, "settings", Settings(_env_file=None))
     assert monitor._alert_rules() == {}
 
 
