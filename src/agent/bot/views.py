@@ -19,15 +19,15 @@ class ServicePanelView(discord.ui.View):
         self.target = next(iter(endpoints), "")
 
         options = [discord.SelectOption(label=name) for name in endpoints]
-        select = discord.ui.Select(
+        self.select = discord.ui.Select(
             placeholder="Pick a service…",
             options=options,
         )
-        select.callback = self._on_select
-        self.add_item(select)
+        self.select.callback = self._on_select
+        self.add_item(self.select)
 
     async def _on_select(self, interaction: discord.Interaction):
-        self.target = self.values[0]
+        self.target = self.select.values[0]
         await interaction.response.send_message(
             f"Selected `{self.target}`. Now click an action.",
             ephemeral=True,
@@ -64,9 +64,10 @@ class ServicePanelView(discord.ui.View):
             await interaction.response.send_message("Pick a service first.", ephemeral=True)
             return
         text = await get_recent_logs(self.target, lines=20)
-        for chunk in split_discord_text(text) or ["No logs."]:
-            await interaction.response.send_message(f"```{chunk[:1900]}```", ephemeral=True)
-            break
+        await interaction.response.defer(ephemeral=True)
+        chunks = split_discord_text(text) or ["No logs."]
+        for chunk in chunks:
+            await interaction.followup.send(f"```{chunk[:1900]}```")
 
     @discord.ui.button(label="Metrics", style=discord.ButtonStyle.secondary, emoji="📈")
     async def metrics(self, interaction: discord.Interaction, _button: discord.ui.Button):

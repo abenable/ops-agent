@@ -6,6 +6,7 @@ prefix commands (`!`) and slash commands (`/`) for the same operations.
 
 from pathlib import Path
 
+import yaml
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -13,10 +14,11 @@ from discord.ext import commands
 from agent.alerting import discord as discord_alert
 from agent.bot.menu import MenuView
 from agent.bot.monitor import get_monitored_endpoints
+from agent.bot.summarize import clean
 from agent.bot.utils import build_info_embed, format_prometheus, format_status, split_discord_text
 from agent.bot.views import ServicePanelView
 from agent.config.settings import settings
-from agent.storage.repository import get_incident, update_incident_status
+from agent.storage.repository import update_incident_status
 from agent.tools import docker
 from agent.tools.health import check_endpoint
 from agent.tools.logs import get_recent_logs
@@ -37,68 +39,77 @@ def setup_slash_commands(bot: commands.Bot) -> None:
     @bot.tree.command(name="status", description="Get the status of a service")
     @app_commands.describe(service="Service or container name")
     async def slash_status(interaction: discord.Interaction, service: str):
-        result = await get_service_status(service)
-        await interaction.response.send_message(
-            format_status(result), ephemeral=True
-        )
+        await interaction.response.defer(ephemeral=True)
+        raw = format_status(await get_service_status(service))
+        summary = await clean(raw, service=service, action="check the status")
+        await interaction.followup.send(summary)
 
     @bot.tree.command(name="containers", description="List running Docker containers")
     async def slash_containers(interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
         items = await docker.list_containers(all_containers=True)
         if not items:
-            await interaction.response.send_message(
-                "No containers found (is the Docker socket mounted?).",
-                ephemeral=True,
+            await interaction.followup.send(
+                "No containers found (is the Docker socket mounted?).", ephemeral=True
             )
             return
         lines = ["**Containers**"]
         for c in items:
             dot = "🟢" if c.get("State") == "running" else "🔴"
             lines.append(f"{dot} {docker.container_name(c)} — {c.get('Status', '')}")
-        text = "\n".join(lines)
-        for chunk in split_discord_text(text):
-            await interaction.response.send_message(chunk, ephemeral=True)
-            break
+        summary = await clean(
+            "\n".join(lines),
+            service="all containers",
+            action="list running Docker containers",
+        )
+        await interaction.followup.send(summary)
 
     @bot.tree.command(name="logs", description="Get recent logs for a service")
     @app_commands.describe(service="Service or container name", lines="Number of log lines")
     async def slash_logs(interaction: discord.Interaction, service: str, lines: int = 10):
-        result = await get_recent_logs(service, lines)
-        for chunk in split_discord_text(result):
-            await interaction.response.send_message(f"```{chunk[:1900]}```", ephemeral=True)
-            break
+        await interaction.response.defer(ephemeral=True)
+        raw = await get_recent_logs(service, lines)
+        summary = await clean(raw, service=service, action="fetch recent logs")
+        await interaction.followup.send(summary)
 
     @bot.tree.command(name="metrics", description="Get Prometheus metrics for a service")
     @app_commands.describe(service="Service or container name")
     async def slash_metrics(interaction: discord.Interaction, service: str):
-        result = await get_service_metrics(service)
-        await interaction.response.send_message(
-            format_prometheus(result), ephemeral=True
-        )
+        await interaction.response.defer(ephemeral=True)
+        raw = format_prometheus(await get_service_metrics(service))
+        summary = await clean(raw, service=service, action="fetch Prometheus metrics")
+        await interaction.followup.send(summary)
 
     @bot.tree.command(name="health", description="Check the health of an HTTP endpoint")
     @app_commands.describe(url="URL to check")
     async def slash_health(interaction: discord.Interaction, url: str):
+        await interaction.response.defer(ephemeral=True)
         result = await check_endpoint(url)
         status = "Reachable" if result["reachable"] else "Unreachable"
         code = result.get("status_code")
-        text = (
-            f"{status} ({code or 'no code'}) in {result['response_time_ms']} ms"
-        )
-        await interaction.response.send_message(text, ephemeral=True)
+        raw = f"{status} ({code or 'no code'}) in {result['response_time_ms']} ms"
+        summary = await clean(raw, service=url, action="check the HTTP health")
+        await interaction.followup.send(summary)
 
     @bot.tree.command(name="watching", description="List configured monitoring endpoints")
     async def slash_watching(interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
         endpoints = get_monitored_endpoints()
         if not endpoints:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "No endpoints are configured for monitoring.", ephemeral=True
             )
             return
-        lines = ["**Monitored endpoints**"] + [
-            f"- {name}: <{url}>" for name, url in endpoints.items()
-        ]
-        await interaction.response.send_message("\n".join(lines), ephemeral=True)
+        raw = "\n".join(
+            ["**Monitored endpoints**"]
+            + [f"- {name}: <{url}>" for name, url in endpoints.items()]
+        )
+        summary = await clean(
+            raw,
+            service="monitoring configuration",
+            action="list monitored endpoints",
+        )
+        await interaction.followup.send(summary)
 
     @bot.tree.command(name="menu", description="Pick a container from a dropdown")
     async def slash_menu(interaction: discord.Interaction):
@@ -134,7 +145,6 @@ def setup_slash_commands(bot: commands.Bot) -> None:
         summary = result["summary"]
         for chunk in split_discord_text(summary):
             await interaction.followup.send(chunk)
-            break
         await interaction.followup.send(f"Incident ID: {result['incident_id']}")
 
         await discord_alert.open_incident_thread(
@@ -185,7 +195,6 @@ def setup_slash_commands(bot: commands.Bot) -> None:
         result = await run_incident_workflow(data["service"])
         for chunk in split_discord_text(result["summary"]):
             await interaction.followup.send(chunk)
-            break
 
     @bot.tree.command(name="ack", description="Acknowledge a stored incident")
     @app_commands.describe(incident_id="Incident ID")
@@ -231,7 +240,6 @@ def setup_slash_commands(bot: commands.Bot) -> None:
             answer = f"Ask failed: {exc}"
         for chunk in split_discord_text(answer):
             await interaction.followup.send(chunk)
-            break
 
     async def on_app_command_error(
         interaction: discord.Interaction, error: app_commands.AppCommandError

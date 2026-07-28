@@ -9,6 +9,7 @@ from discord.ext import commands
 from agent.alerting import discord as discord_alert
 from agent.bot.monitor import get_monitored_endpoints
 from agent.bot.menu import MenuView
+from agent.bot.summarize import clean
 from agent.bot.utils import build_info_embed, format_prometheus, format_status, split_discord_text
 from agent.bot.views import ServicePanelView
 from agent.config.settings import settings
@@ -45,32 +46,42 @@ def setup_commands(bot: commands.Bot) -> None:
 
     @bot.command(name="status")
     async def status(ctx: commands.Context, service: str):
-        result = await get_service_status(service)
-        await ctx.send(format_status(result))
+        async with ctx.typing():
+            raw = format_status(await get_service_status(service))
+            summary = await clean(raw, service=service, action="check the status")
+        await ctx.send(summary)
 
     @bot.command(name="containers")
     async def containers(ctx: commands.Context):
-        items = await docker.list_containers(all_containers=True)
-        if not items:
-            await ctx.send("No containers found (is the Docker socket mounted?).")
-            return
-        lines = ["**Containers**"]
-        for c in items:
-            dot = "🟢" if c.get("State") == "running" else "🔴"
-            lines.append(f"{dot} {docker.container_name(c)} — {c.get('Status', '')}")
-        for chunk in split_discord_text("\n".join(lines)):
-            await ctx.send(chunk)
+        async with ctx.typing():
+            items = await docker.list_containers(all_containers=True)
+            if not items:
+                await ctx.send("No containers found (is the Docker socket mounted?).")
+                return
+            lines = ["**Containers**"]
+            for c in items:
+                dot = "🟢" if c.get("State") == "running" else "🔴"
+                lines.append(f"{dot} {docker.container_name(c)} — {c.get('Status', '')}")
+            summary = await clean(
+                "\n".join(lines),
+                service="all containers",
+                action="list running Docker containers",
+            )
+        await ctx.send(summary)
 
     @bot.command(name="logs")
     async def logs(ctx: commands.Context, service: str, lines: int = 10):
-        result = await get_recent_logs(service, lines)
-        for chunk in split_discord_text(result):
-            await ctx.send(chunk)
+        async with ctx.typing():
+            raw = await get_recent_logs(service, lines)
+            summary = await clean(raw, service=service, action="fetch recent logs")
+        await ctx.send(summary)
 
     @bot.command(name="metrics")
     async def metrics(ctx: commands.Context, service: str):
-        result = await get_service_metrics(service)
-        await ctx.send(format_prometheus(result))
+        async with ctx.typing():
+            raw = format_prometheus(await get_service_metrics(service))
+            summary = await clean(raw, service=service, action="fetch Prometheus metrics")
+        await ctx.send(summary)
 
     @bot.command(name="incident")
     async def incident(ctx: commands.Context, service: str):
@@ -150,20 +161,32 @@ def setup_commands(bot: commands.Bot) -> None:
 
     @bot.command(name="health")
     async def health(ctx: commands.Context, url: str):
-        result = await check_endpoint(url)
-        await ctx.send(
-            f"{'Reachable' if result['reachable'] else 'Unreachable'} "
-            f"({result.get('status_code')} in {result['response_time_ms']} ms)"
-        )
+        async with ctx.typing():
+            result = await check_endpoint(url)
+            raw = (
+                f"{'Reachable' if result['reachable'] else 'Unreachable'} "
+                f"({result.get('status_code')} in {result['response_time_ms']} ms)"
+            )
+            summary = await clean(raw, service=url, action="check the HTTP health")
+        await ctx.send(summary)
 
     @bot.command(name="watching")
     async def watching(ctx: commands.Context):
-        endpoints = get_monitored_endpoints()
-        if not endpoints:
-            await ctx.send("No endpoints are configured for monitoring.")
-            return
-        lines = ["**Monitored endpoints**"] + [f"- {name}: <{url}>" for name, url in endpoints.items()]
-        await ctx.send("\n".join(lines))
+        async with ctx.typing():
+            endpoints = get_monitored_endpoints()
+            if not endpoints:
+                await ctx.send("No endpoints are configured for monitoring.")
+                return
+            raw = "\n".join(
+                ["**Monitored endpoints**"]
+                + [f"- {name}: <{url}>" for name, url in endpoints.items()]
+            )
+            summary = await clean(
+                raw,
+                service="monitoring configuration",
+                action="list monitored endpoints",
+            )
+        await ctx.send(summary)
 
     @bot.command(name="ask")
     async def ask(ctx: commands.Context, *, question: str):
