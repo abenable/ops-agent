@@ -17,9 +17,13 @@ async def clean(raw: str, *, service: str, action: str) -> str:
     prompt = (
         f"You are Oracle, a terse infrastructure-operations assistant.\n"
         f"The user asked you to {action} for `{service}`.\n"
-        f"Summarize the raw output below into a short, clean, human-readable paragraph.\n"
-        f"Highlight any problems, anomalies, or important numbers. Do not include raw JSON,\n"
-        f"and do not repeat every row unless it matters.\n\n"
+        f"Summarize the raw output below using Discord markdown formatting:\n"
+        f"- Use **bold** section headers for each group or category.\n"
+        f"- Use bullet lists (`-`) for items.\n"
+        f"- Wrap container names, IDs, and URLs in backticks.\n"
+        f"- Keep each paragraph short and scannable; avoid one huge wall of text.\n"
+        f"- Put multi-line raw data inside ``` code blocks only if needed.\n"
+        f"Highlight any problems, anomalies, or important numbers.\n\n"
         f"Raw output:\n```\n{raw[:_MAX_RAW_LEN]}\n```"
     )
 
