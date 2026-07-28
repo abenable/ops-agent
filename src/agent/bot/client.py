@@ -9,7 +9,7 @@ from discord.ext import commands
 
 from agent.bot.commands import setup_commands
 from agent.bot.monitor import get_alert_rules, get_monitored_endpoints, start_monitor
-from agent.bot.utils import build_info_embed, split_discord_text
+from agent.bot.utils import split_discord_text
 from agent.config.settings import settings
 from agent.bot.slash import setup_slash_commands
 from agent.workflows.incident import llm_supports_tool_calls, run_ask_workflow
@@ -177,30 +177,24 @@ def run_bot():
             await bot.process_commands(message)
             return
 
-        # Respond to DMs and @mentions. Treat short greetings as a help request;
-        # everything else goes through the agentic loop.
+        # Respond to DMs and @mentions via the agentic loop.
         is_dm = message.guild is None
         if is_dm or bot.user in message.mentions:
             cleaned = (
                 message.content.replace(f"<@!{bot.user.id}>", "")
                 .replace(f"<@{bot.user.id}>", "")
                 .strip()
-                .lower()
             )
-            if cleaned in ("", "help", "info"):
-                await message.reply(embed=build_info_embed(bot.user))
-                return
-            if cleaned in ("hello", "hi"):
+            if not cleaned:
                 await message.reply(
-                    f"Hey {message.author.mention}! I'm Oracle. "
-                    "Ask me infra stuff, or type `!help` / `!info` for the full command list."
+                    "Hey! Ask me anything about the infrastructure, or type `!info` for commands."
                 )
                 return
 
             prompt = (
-                "You are Oracle, an infrastructure-operations assistant. "
+                "You are Oracle, a friendly infrastructure-operations assistant. "
                 "Use the environment context below, and the read-only Prometheus/Loki tools if needed. "
-                "Be brief; if you don't know, say so.\n\n"
+                "Be brief and conversational; if you don't know, say so.\n\n"
                 f"{_environment_context()}\n\n"
                 f"Question: {cleaned}"
             )
