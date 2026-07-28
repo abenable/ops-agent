@@ -3,6 +3,7 @@
 import discord
 
 from agent.config.settings import settings
+from agent.tools import docker
 
 
 def build_info_embed(bot_user: discord.ClientUser | None) -> discord.Embed:
@@ -23,6 +24,26 @@ def build_info_embed(bot_user: discord.ClientUser | None) -> discord.Embed:
     contact = settings.bot_contact or "Not configured"
     embed.add_field(name="Questions / Concerns", value=contact, inline=False)
     return embed
+
+
+def format_container_list(items: list[dict]) -> str:
+    """Render container list grouped by state (running, exited, etc.)."""
+    groups: dict[str, list[dict]] = {}
+    for c in items:
+        state = (c.get("State") or "unknown").lower()
+        groups.setdefault(state, []).append(c)
+
+    # Show running first; keep the rest alphabetical.
+    order = sorted(groups.keys(), key=lambda s: (0 if s == "running" else 1, s))
+
+    lines: list[str] = []
+    for state in order:
+        containers = groups[state]
+        lines.append(f"**{state.capitalize()}** ({len(containers)})")
+        for c in containers:
+            lines.append(f"- `{docker.container_name(c)}` — {c.get('Status', '')}")
+        lines.append("")
+    return "\n".join(lines).strip()
 
 
 def split_discord_text(text: str, max_len: int = 1900) -> list[str]:

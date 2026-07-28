@@ -15,7 +15,7 @@ from agent.alerting import discord as discord_alert
 from agent.bot.menu import MenuView
 from agent.bot.monitor import get_monitored_endpoints
 from agent.bot.summarize import clean
-from agent.bot.utils import build_info_embed, format_prometheus, format_status, split_discord_text
+from agent.bot.utils import build_info_embed, format_container_list, format_prometheus, format_status, split_discord_text
 from agent.bot.views import ServicePanelView
 from agent.config.settings import settings
 from agent.storage.repository import update_incident_status
@@ -44,7 +44,7 @@ def setup_slash_commands(bot: commands.Bot) -> None:
         summary = await clean(raw, service=service, action="check the status")
         await interaction.followup.send(summary)
 
-    @bot.tree.command(name="containers", description="List running Docker containers")
+    @bot.tree.command(name="containers", description="List Docker containers grouped by status")
     async def slash_containers(interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         items = await docker.list_containers(all_containers=True)
@@ -53,14 +53,11 @@ def setup_slash_commands(bot: commands.Bot) -> None:
                 "No containers found (is the Docker socket mounted?).", ephemeral=True
             )
             return
-        lines = ["**Containers**"]
-        for c in items:
-            dot = "🟢" if c.get("State") == "running" else "🔴"
-            lines.append(f"{dot} {docker.container_name(c)} — {c.get('Status', '')}")
+        raw = format_container_list(items)
         summary = await clean(
-            "\n".join(lines),
+            raw,
             service="all containers",
-            action="list running Docker containers",
+            action="list Docker containers grouped by status",
         )
         await interaction.followup.send(summary)
 

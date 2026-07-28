@@ -10,7 +10,7 @@ from agent.alerting import discord as discord_alert
 from agent.bot.monitor import get_monitored_endpoints
 from agent.bot.menu import MenuView
 from agent.bot.summarize import clean
-from agent.bot.utils import build_info_embed, format_prometheus, format_status, split_discord_text
+from agent.bot.utils import build_info_embed, format_container_list, format_prometheus, format_status, split_discord_text
 from agent.bot.views import ServicePanelView
 from agent.config.settings import settings
 from agent.storage.repository import get_incident, update_incident_status
@@ -58,14 +58,11 @@ def setup_commands(bot: commands.Bot) -> None:
             if not items:
                 await ctx.send("No containers found (is the Docker socket mounted?).")
                 return
-            lines = ["**Containers**"]
-            for c in items:
-                dot = "🟢" if c.get("State") == "running" else "🔴"
-                lines.append(f"{dot} {docker.container_name(c)} — {c.get('Status', '')}")
+            raw = format_container_list(items)
             summary = await clean(
-                "\n".join(lines),
+                raw,
                 service="all containers",
-                action="list running Docker containers",
+                action="list Docker containers grouped by status",
             )
         await ctx.send(summary)
 
