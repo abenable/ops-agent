@@ -172,14 +172,15 @@ def run_bot():
         if message.author == bot.user or message.author.bot:
             return
 
-        # Let prefix commands through as usual.
+        # Let prefix commands through as usual (works in DMs and guilds).
         if message.content.strip().startswith("!"):
             await bot.process_commands(message)
             return
 
-        # If the bot is pinged, reply with help for short greetings or the agentic
-        # loop for real questions.
-        if bot.user in message.mentions:
+        # Respond to DMs and @mentions. Treat short greetings as a help request;
+        # everything else goes through the agentic loop.
+        is_dm = message.guild is None
+        if is_dm or bot.user in message.mentions:
             cleaned = (
                 message.content.replace(f"<@!{bot.user.id}>", "")
                 .replace(f"<@{bot.user.id}>", "")
