@@ -117,6 +117,7 @@ uv run pytest -m integration   # live checks (needs a real LLM / Discord token)
 
 ## Documentation
 
+- [Goals](docs/goals.md) — project objectives and current deliverable status
 - [Setup](docs/setup.md) — install, configuration reference, Docker
 - [Usage](docs/usage.md) — commands, API, monitoring
 - [Architecture](docs/architecture.md) — components and data flow
