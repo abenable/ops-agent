@@ -187,8 +187,14 @@ def run_bot():
                 .strip()
                 .lower()
             )
-            if cleaned in ("", "hello", "hi", "help", "info"):
+            if cleaned in ("", "help", "info"):
                 await message.reply(embed=build_info_embed(bot.user))
+                return
+            if cleaned in ("hello", "hi"):
+                await message.reply(
+                    f"Hey {message.author.mention}! I'm Oracle. "
+                    "Ask me infra stuff, or type `!help` / `!info` for the full command list."
+                )
                 return
 
             prompt = (
