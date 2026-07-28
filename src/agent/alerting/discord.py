@@ -48,10 +48,16 @@ async def send_dm(
 
 
 class IncidentActionView(discord.ui.View):
-    """Acknowledge / Resolve buttons attached to an incident thread message."""
+    """Acknowledge / Resolve buttons attached to an incident thread message.
+
+    ``timeout=None`` makes the buttons persistent: they never expire while the
+    bot is running, which matters because incidents are often handled long after
+    the thread opens. ``!ack`` / ``!resolve`` / ``/ack`` / ``/resolve`` remain as
+    fallbacks after a bot restart.
+    """
 
     def __init__(self, incident_id: str):
-        super().__init__(timeout=3600)
+        super().__init__(timeout=None)
         self.incident_id = incident_id
 
     @discord.ui.button(label="Acknowledge", style=discord.ButtonStyle.primary, emoji="✋")
