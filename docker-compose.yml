@@ -1,3 +1,127 @@
+configs:
+  prometheus-config:
+    content: |
+      global:
+        scrape_interval: 15s
+        evaluation_interval: 15s
+
+      scrape_configs:
+        - job_name: 'prometheus'
+          static_configs:
+            - targets: ['localhost:9090']
+
+        - job_name: 'nginx'
+          static_configs:
+            - targets: ['nginx-exporter:9113']
+
+        - job_name: 'node-exporter'
+          static_configs:
+            - targets: ['node-exporter:9100']
+
+        - job_name: 'cadvisor'
+          static_configs:
+            - targets: ['cadvisor:8080']
+
+  loki-config:
+    content: |
+      auth_enabled: false
+
+      server:
+        http_listen_port: 3100
+        grpc_listen_port: 9096
+
+      common:
+        path_prefix: /loki
+        storage:
+          filesystem:
+            chunks_directory: /loki/chunks
+            rules_directory: /loki/rules
+        replication_factor: 1
+        ring:
+          kvstore:
+            store: inmemory
+
+      schema_config:
+        configs:
+          - from: 2020-10-24
+            store: tsdb
+            object_store: filesystem
+            schema: v13
+            index:
+              prefix: index_
+              period: 24h
+
+      analytics:
+        reporting_enabled: false
+
+  nginx-config:
+    content: |
+      user nginx;
+      worker_processes auto;
+      error_log /var/log/nginx-logs/error.log warn;
+      pid /var/run/nginx.pid;
+
+      events {
+          worker_connections 1024;
+      }
+
+      http {
+          include /etc/nginx/mime.types;
+          default_type application/octet-stream;
+
+          log_format main '$$remote_addr - $$remote_user [$$time_local] "$$request" '
+                          '$$status $$body_bytes_sent "$$http_referer" '
+                          '"$$http_user_agent"';
+
+          access_log /var/log/nginx-logs/access.log main;
+
+          server {
+              listen 80;
+              server_name localhost;
+
+              location / {
+                  root /usr/share/nginx/html;
+                  index index.html index.htm;
+              }
+
+              location /nginx_status {
+                  stub_status;
+                  allow all;
+              }
+          }
+      }
+
+  promtail-config:
+    content: |
+      server:
+        http_listen_port: 9080
+        grpc_listen_port: 0
+
+      positions:
+        filename: /tmp/positions.yaml
+
+      clients:
+        - url: http://loki:3100/loki/api/v1/push
+
+      scrape_configs:
+        - job_name: nginx-access-logs
+          static_configs:
+            - targets:
+                - localhost
+              labels:
+                job: nginx-access-logs
+                service: nginx
+                __path__: /var/log/nginx-logs/access.log
+
+        - job_name: nginx-error-logs
+          static_configs:
+            - targets:
+                - localhost
+              labels:
+                job: nginx-error-logs
+                service: nginx
+                __path__: /var/log/nginx-logs/error.log
+
 services:
   api:
     container_name: marconi-agent-api
@@ -52,8 +176,10 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prom_data:/prometheus
+    configs:
+      - source: prometheus-config
+        target: /etc/prometheus/prometheus.yml
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
@@ -68,8 +194,10 @@ services:
     ports:
       - "3100:3100"
     volumes:
-      - ./config/loki-config.yml:/etc/loki/local-config.yaml:ro
       - loki_data:/loki
+    configs:
+      - source: loki-config
+        target: /etc/loki/local-config.yaml
     command: -config.file=/etc/loki/local-config.yaml
     restart: unless-stopped
 
@@ -79,8 +207,10 @@ services:
     ports:
       - "8090:80"
     volumes:
-      - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
       - nginx_logs:/var/log/nginx-logs
+    configs:
+      - source: nginx-config
+        target: /etc/nginx/nginx.conf
     # Nginx images symlink /var/log/nginx/*.log to stdout/stderr. We need real
     # files in the shared volume so Promtail can ship them to Loki.
     command: ["/bin/sh", "-c", "rm -f /var/log/nginx-logs/*.log && exec nginx -g 'daemon off;'"]
@@ -130,8 +260,10 @@ services:
     container_name: marconi-agent-promtail
     image: grafana/promtail:latest
     volumes:
-      - ./config/promtail.yml:/etc/promtail/config.yml:ro
       - nginx_logs:/var/log/nginx-logs
+    configs:
+      - source: promtail-config
+        target: /etc/promtail/config.yml
     command: -config.file=/etc/promtail/config.yml
     depends_on:
       - loki
