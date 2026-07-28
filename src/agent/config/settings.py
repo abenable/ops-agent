@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     discord_status_channel_id: int | None = None
     discord_log_channel_id: int | None = None
     discord_test_scenarios_channel_id: int | None = None
+    # User ID to DM when incidents are created (optional).
+    discord_dm_user_id: int | None = None
 
     # Endpoint monitoring loop
     monitored_endpoints: str = ""

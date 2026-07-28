@@ -71,6 +71,13 @@ def setup_commands(bot: commands.Bot) -> None:
             bot, service, summary, result["incident_id"]
         )
 
+        if settings.discord_dm_user_id is not None:
+            await discord_alert.send_dm(
+                bot,
+                settings.discord_dm_user_id,
+                f"Incident {result['incident_id']} for `{service}`\n\n{summary[:1500]}",
+            )
+
         if settings.discord_alert_channel_id is not None:
             # Keep the alert embed description short; Discord allows 4096 chars there.
             alert_message = f"Incident reported for {service}: {summary[:1000]}"

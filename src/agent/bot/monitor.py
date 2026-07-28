@@ -16,6 +16,12 @@ async def _open_incident(bot, name: str):
     """Run the incident workflow and open a Discord thread without blocking the monitor loop."""
     result = await run_incident_workflow(name)
     await discord_alert.open_incident_thread(bot, name, result["summary"], result["incident_id"])
+    if settings.discord_dm_user_id is not None:
+        await discord_alert.send_dm(
+            bot,
+            settings.discord_dm_user_id,
+            f"Incident {result['incident_id']} for `{name}`\n\n{result['summary'][:1500]}",
+        )
 
 
 # url -> reachable (in-memory; fine for an MVP)

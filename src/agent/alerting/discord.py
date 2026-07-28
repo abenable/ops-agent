@@ -1,9 +1,13 @@
-"""Send alert messages to a Discord channel."""
+"""Send alert messages to a Discord channel or user DM."""
+
+import logging
 
 import discord
 
 from agent.config.settings import settings
 from agent.storage.repository import update_incident_thread_id
+
+logger = logging.getLogger(__name__)
 
 _COLORS = {"info": 0x3498DB, "warning": 0xE67E22, "critical": 0xE74C3C}
 
@@ -26,6 +30,21 @@ async def send_alert(
         color=_COLORS.get(severity, _COLORS["info"]),
     )
     await channel.send(embed=embed)
+
+
+async def send_dm(
+    bot: discord.Client,
+    user_id: int,
+    message: str,
+) -> None:
+    """Send a direct message to a user, swallowing errors caused by closed DMs."""
+    try:
+        user = await bot.fetch_user(user_id)
+        await user.send(message[:2000])
+    except discord.Forbidden:
+        logger.warning("Cannot DM user %s (DMs disabled)", user_id)
+    except discord.HTTPException as exc:
+        logger.warning("Failed to DM user %s: %s", user_id, exc)
 
 
 async def open_incident_thread(
