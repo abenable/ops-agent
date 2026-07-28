@@ -13,7 +13,7 @@ def _docker_client():
     if docker_host.startswith("unix://"):
         socket_path = docker_host[7:]
         transport = httpx.AsyncHTTPTransport(uds=socket_path)
-        # Use localhost as the hostname so the Docker daemon accepts the request.
+        # Docker API over a Unix socket expects a localhost Host header.
         base_url = "http://localhost"
     else:
         parsed = urlparse(docker_host)
@@ -41,7 +41,7 @@ async def list_containers(all_containers: bool = True) -> list[dict]:
     try:
         async with _docker_client() as client:
             response = await client.get(
-                "/v1.24/containers/json",
+                "/v1.40/containers/json",
                 params={"all": str(all_containers).lower()},
             )
             response.raise_for_status()
@@ -70,7 +70,7 @@ async def container_logs(container_id: str, tail: int = 20) -> str:
     """Fetch the last `tail` lines of a container's combined stdout/stderr."""
     async with _docker_client() as client:
         response = await client.get(
-            f"/v1.24/containers/{container_id}/logs",
+            f"/v1.40/containers/{container_id}/logs",
             params={
                 "stdout": "true",
                 "stderr": "true",
@@ -85,7 +85,7 @@ async def restart_container(container_id: str, timeout: int = 10) -> dict:
     """Restart a Docker container."""
     async with _docker_client() as client:
         response = await client.post(
-            f"/v1.24/containers/{container_id}/restart",
+            f"/v1.40/containers/{container_id}/restart",
             params={"t": timeout},
         )
         response.raise_for_status()
