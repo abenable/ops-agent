@@ -5,7 +5,7 @@ import logging
 import discord
 
 from agent.config.settings import settings
-from agent.storage.repository import update_incident_thread_id
+from agent.storage.repository import update_incident_status, update_incident_thread_id
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,32 @@ async def send_dm(
         logger.warning("Failed to DM user %s: %s", user_id, exc)
 
 
+class IncidentActionView(discord.ui.View):
+    """Acknowledge / Resolve buttons attached to an incident thread message."""
+
+    def __init__(self, incident_id: str):
+        super().__init__(timeout=3600)
+        self.incident_id = incident_id
+
+    @discord.ui.button(label="Acknowledge", style=discord.ButtonStyle.primary, emoji="✋")
+    async def ack(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        if update_incident_status(self.incident_id, "acknowledged") is None:
+            await interaction.response.send_message("Incident not found.", ephemeral=True)
+            return
+        await interaction.response.send_message(
+            f"Incident `{self.incident_id}` acknowledged.", ephemeral=True
+        )
+
+    @discord.ui.button(label="Resolve", style=discord.ButtonStyle.success, emoji="✅")
+    async def resolve(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        if update_incident_status(self.incident_id, "resolved") is None:
+            await interaction.response.send_message("Incident not found.", ephemeral=True)
+            return
+        await interaction.response.send_message(
+            f"Incident `{self.incident_id}` resolved.", ephemeral=True
+        )
+
+
 async def open_incident_thread(
     bot: discord.Client,
     service: str,
@@ -64,5 +90,6 @@ async def open_incident_thread(
         type=discord.ChannelType.public_thread,
     )
     await thread.send(summary)
+    await thread.send("Actions:", view=IncidentActionView(incident_id))
     update_incident_thread_id(incident_id, thread.id)
     return thread.id

@@ -9,7 +9,8 @@ from discord.ext import commands
 from agent.alerting import discord as discord_alert
 from agent.bot.monitor import get_monitored_endpoints
 from agent.bot.menu import MenuView
-from agent.bot.utils import format_prometheus, format_status, split_discord_text
+from agent.bot.utils import build_info_embed, format_prometheus, format_status, split_discord_text
+from agent.bot.views import ServicePanelView
 from agent.config.settings import settings
 from agent.storage.repository import get_incident, update_incident_status
 from agent.tools import docker
@@ -21,6 +22,10 @@ from agent.workflows.incident import run_ask_workflow, run_incident_workflow
 
 
 def setup_commands(bot: commands.Bot) -> None:
+    @bot.command(name="info")
+    async def info(ctx: commands.Context):
+        await ctx.send(embed=build_info_embed(bot.user))
+
     @bot.command(name="menu")
     async def menu(ctx: commands.Context):
         items = await docker.list_containers(all_containers=True)
@@ -29,6 +34,14 @@ def setup_commands(bot: commands.Bot) -> None:
             await ctx.send("No containers found (is the Docker socket mounted?).")
             return
         await ctx.send("Pick a container:", view=MenuView(names))
+
+    @bot.command(name="panel")
+    async def panel(ctx: commands.Context):
+        endpoints = get_monitored_endpoints()
+        if not endpoints:
+            await ctx.send("No monitored endpoints configured for the panel.")
+            return
+        await ctx.send("Pick a service and action:", view=ServicePanelView(endpoints))
 
     @bot.command(name="status")
     async def status(ctx: commands.Context, service: str):

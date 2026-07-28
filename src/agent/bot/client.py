@@ -9,8 +9,9 @@ from discord.ext import commands
 
 from agent.bot.commands import setup_commands
 from agent.bot.monitor import get_alert_rules, get_monitored_endpoints, start_monitor
-from agent.bot.utils import split_discord_text
+from agent.bot.utils import build_info_embed, split_discord_text
 from agent.config.settings import settings
+from agent.bot.slash import setup_slash_commands
 from agent.workflows.incident import llm_supports_tool_calls, run_ask_workflow
 
 logger = logging.getLogger(__name__)
@@ -119,6 +120,19 @@ def run_bot():
         _setup_done = True
 
         start_monitor(bot)
+        # Sync slash commands once on startup. Guild sync is faster during testing;
+        # global sync is used when no guild id is configured.
+        try:
+            if settings.discord_guild_id:
+                guild = discord.Object(id=settings.discord_guild_id)
+                bot.tree.copy_global_to(guild=guild)
+                synced = await bot.tree.sync(guild=guild)
+            else:
+                synced = await bot.tree.sync()
+            logger.info("Synced %d slash command(s)", len(synced))
+        except Exception as exc:
+            logger.warning("Slash-command sync failed: %s", exc)
+
         _attach_discord_log_handler(bot)
 
         # Check LLM capability in the background; a slow LLM probe should not delay
@@ -133,6 +147,26 @@ def run_bot():
         asyncio.create_task(_check_tools())
 
     @bot.event
+    async def on_command_error(ctx: commands.Context, error: commands.CommandError):
+        """Surface common command failures to the user instead of crashing silently."""
+        if isinstance(error, commands.CommandNotFound):
+            return
+        if isinstance(error, commands.MissingPermissions):
+            await ctx.send(f"You need permission: `{', '.join(error.missing_permissions)}`")
+            return
+        if isinstance(error, commands.BotMissingPermissions):
+            await ctx.send(f"I need permission: `{', '.join(error.missing_permissions)}`")
+            return
+        if isinstance(error, commands.CommandOnCooldown):
+            await ctx.send(f"Cooldown: try again in {error.retry_after:.1f}s.")
+            return
+        if isinstance(error, commands.MissingRequiredArgument):
+            await ctx.send(f"Missing argument: `{error.param.name}`. Check `!help {ctx.command}`.")
+            return
+        logger.exception("Command error: %s", error)
+        await ctx.send(f"Command failed: `{error}`")
+
+    @bot.event
     async def on_message(message: discord.Message):
         # Ignore own messages and other bots.
         if message.author == bot.user or message.author.bot:
@@ -143,15 +177,18 @@ def run_bot():
             await bot.process_commands(message)
             return
 
-        # If the bot is pinged, route through the agentic investigation loop.
+        # If the bot is pinged, reply with help for short greetings or the agentic
+        # loop for real questions.
         if bot.user in message.mentions:
             cleaned = (
                 message.content.replace(f"<@!{bot.user.id}>", "")
                 .replace(f"<@{bot.user.id}>", "")
                 .strip()
+                .lower()
             )
-            if not cleaned:
-                cleaned = "Hello!"
+            if cleaned in ("", "hello", "hi", "help", "info"):
+                await message.reply(embed=build_info_embed(bot.user))
+                return
 
             prompt = (
                 "You are Oracle, an infrastructure-operations assistant. "
@@ -175,6 +212,7 @@ def run_bot():
                 await message.channel.send(chunk)
 
     setup_commands(bot)
+    setup_slash_commands(bot)
     _setup_logging()
 
     if not settings.discord_bot_token:
