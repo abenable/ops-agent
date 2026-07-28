@@ -75,3 +75,34 @@ async def query_loki_range(logql: str, minutes: int, limit: int = 100) -> str:
     asks for logs over a recent window. The window and limit are clamped."""
     limit = max(1, min(limit, settings.loki_max_limit))
     return str(await loki.query_loki_range(logql, minutes, limit))[:4000]
+
+
+@tool
+async def docker_status(container: str) -> str:
+    """Return the state of a Docker container (read-only): state, status, image.
+    Use a container name returned by list_services. Matching is separator-agnostic
+    so 'agent_api' matches 'marconi-agent-api'."""
+    target = await docker.find_container(container)
+    if target is None:
+        return f"(no container matching '{container}')"
+    name = docker.container_name(target)
+    return (
+        f"{name}: state={target.get('State')}, "
+        f"status={target.get('Status')}, image={target.get('Image')}"
+    )
+
+
+@tool
+async def docker_logs(container: str, tail: int = 50) -> str:
+    """Fetch the last `tail` lines of a Docker container's stdout/stderr logs
+    (read-only). Use this when Loki has no logs for a container, or to read a
+    container's own output directly. Use a container name from list_services;
+    `tail` is capped at 200."""
+    tail = max(1, min(tail, 200))
+    target = await docker.find_container(container)
+    if target is None:
+        return f"(no container matching '{container}')"
+    raw = await docker.container_logs(target.get("Id") or docker.container_name(target), tail=tail)
+    # Strip Docker's stream-framing control bytes so the output is readable.
+    cleaned = "".join(c for c in raw if c.isprintable() or c in "\n\t")
+    return cleaned[:4000] or "(no logs)"

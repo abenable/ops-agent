@@ -10,6 +10,8 @@ from agent.storage.repository import store_incident
 from agent.tools.logs import get_recent_logs
 from agent.tools.metrics import get_service_metrics
 from agent.tools.query_tools import (
+    docker_logs,
+    docker_status,
     get_label_values,
     list_metric_names,
     list_services,
@@ -24,6 +26,8 @@ logger = logging.getLogger(__name__)
 
 TOOLS = [
     list_services,
+    docker_status,
+    docker_logs,
     query_prometheus,
     list_metric_names,
     get_label_values,
@@ -37,6 +41,7 @@ SYSTEM_PROMPT = (
     "Start by calling list_services to learn the real container and endpoint names, "
     "then discover metric names and label values. "
     "Use the actual names you discover, not the user's spelling, for your queries. "
+    "Use docker_status and docker_logs to inspect containers Prometheus/Loki do not cover. "
     "Write cheap PromQL/LogQL queries and prefer short time windows. "
     "Summarize findings in one paragraph."
 )
