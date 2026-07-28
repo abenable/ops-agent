@@ -1,29 +1,144 @@
 services:
   api:
+    container_name: marconi-agent-api
     build: .
     env_file: .env
-    ports:
-      - "8123:8000"
+    # Use host networking so the API can reach the host-mapped Prometheus/Loki
+    # ports on localhost and the external LLM endpoint (the default bridge here
+    # has no outbound internet access).
+    network_mode: host
     volumes:
       - ./data:/app/data
       # Read-only host daemon access for the Docker tools (container discovery, logs).
       - /var/run/docker.sock:/var/run/docker.sock:ro
     command: ["python", "-m", "agent", "api"]
     restart: unless-stopped
+    environment:
+      # Keep the same host port that was previously mapped by compose.
+      API_PORT: 8123
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8123/health')"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 5s
+    depends_on:
+      - prometheus
+      - loki
 
   bot:
+    container_name: marconi-agent-bot
     build: .
     env_file: .env
+    # Use host networking so the bot can reach Prometheus/Loki on localhost
+    # and the external LLM endpoint, just like the API.
+    network_mode: host
     volumes:
       - ./data:/app/data
       # Read-only host daemon access so !status/!containers/menu see host containers.
       - /var/run/docker.sock:/var/run/docker.sock:ro
     command: ["python", "-m", "agent", "bot"]
     restart: unless-stopped
-    # ponytail: bot does not call the API; it shares the SQLite file via the data volume
+    environment:
+      # Monitor the local services that are reachable from the host network.
+      MONITORED_ENDPOINTS: "agent_api=http://localhost:8123/health,nginx=http://localhost:8090"
+    depends_on:
+      - prometheus
+      - loki
+
+  prometheus:
+    container_name: marconi-agent-prometheus
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prom_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--web.enable-lifecycle"
+    restart: unless-stopped
+
+  loki:
+    container_name: marconi-agent-loki
+    image: grafana/loki:latest
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    restart: unless-stopped
+
+  nginx:
+    container_name: marconi-agent-nginx
+    image: nginx:alpine
+    ports:
+      - "8090:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - nginx_logs:/var/log/nginx-logs
+    # Nginx images symlink /var/log/nginx/*.log to stdout/stderr. We need real
+    # files in the shared volume so Promtail can ship them to Loki.
+    command: ["/bin/sh", "-c", "rm -f /var/log/nginx-logs/*.log && exec nginx -g 'daemon off;'"]
+    restart: unless-stopped
+
+  nginx-exporter:
+    container_name: marconi-agent-nginx-exporter
+    image: nginx/nginx-prometheus-exporter:latest
+    command:
+      - -nginx.scrape-uri=http://nginx:80/nginx_status
+    ports:
+      - "9113:9113"
+    depends_on:
+      - nginx
+    restart: unless-stopped
+
+  node-exporter:
+    container_name: marconi-agent-node-exporter
+    image: prom/node-exporter:latest
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+    ports:
+      - "9100:9100"
+    restart: unless-stopped
+
+  cadvisor:
+    container_name: marconi-agent-cadvisor
+    image: gcr.io/cadvisor/cadvisor:latest
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    ports:
+      - "8081:8080"
+    restart: unless-stopped
+
+  promtail:
+    container_name: marconi-agent-promtail
+    image: grafana/promtail:latest
+    volumes:
+      - ./promtail.yml:/etc/promtail/config.yml:ro
+      - nginx_logs:/var/log/nginx-logs
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+      - nginx
+    restart: unless-stopped
+
+volumes:
+  prom_data:
+  loki_data:
+  nginx_logs:
