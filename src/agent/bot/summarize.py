@@ -2,21 +2,40 @@
 
 from agent.llm.client import get_llm
 
+# How much raw output we feed to the LLM for context.
 _MAX_RAW_LEN = 3500
+# How much raw output we show in the fallback code block (keeps the whole
+# message inside Discord's 2000-char limit with room for the prefix line).
+_MAX_DISPLAY = 1800
+# Hard cap on anything we return, so a caller can always send it in one message.
+_MAX_OUT_LEN = 1900
+
+
+def _sanitize(value: str) -> str:
+    """Collapse whitespace and cap length so user input cannot inject prompt lines."""
+    return " ".join(str(value).split())[:200]
+
+
+def _fit(text: str) -> str:
+    """Cap a string so it always fits in a single Discord message."""
+    if len(text) <= _MAX_OUT_LEN:
+        return text
+    return text[: _MAX_OUT_LEN - 1].rstrip() + "\u2026"
 
 
 async def clean(raw: str, *, service: str, action: str) -> str:
     """Ask the configured LLM to turn raw tool output into a concise summary.
 
-    Falls back to the raw output (truncated) if the LLM is unreachable, so commands
-    never fail silently.
+    Falls back to the (truncated) raw output if the LLM is unreachable or returns
+    an empty answer, so commands never fail silently.
     """
     if not raw.strip():
         return "Nothing to show."
 
+    svc = _sanitize(service)
     prompt = (
         f"You are Oracle, a terse infrastructure-operations assistant.\n"
-        f"The user asked you to {action} for `{service}`.\n"
+        f"The user asked you to {action} for `{svc}`.\n"
         f"Summarize the raw output below using Discord markdown formatting:\n"
         f"- Use **bold** section headers for each group or category.\n"
         f"- Use bullet lists (`-`) for items.\n"
@@ -28,9 +47,14 @@ async def clean(raw: str, *, service: str, action: str) -> str:
     )
 
     try:
-        return (await get_llm(temperature=0.0).ainvoke(prompt)).content.strip()
+        result = (await get_llm(temperature=0.0).ainvoke(prompt)).content.strip()
     except Exception as exc:
-        return (
+        return _fit(
             f"*LLM clean unavailable ({exc}); showing raw output:*\n"
-            f"```\n{raw[:2000]}\n```"
+            f"```\n{raw[:_MAX_DISPLAY]}\n```"
         )
+
+    if not result:
+        # LLM returned nothing usable; show the raw output instead of an empty message.
+        return _fit(f"```\n{raw[:_MAX_DISPLAY]}\n```")
+    return _fit(result)

@@ -2,7 +2,8 @@
 
 import discord
 
-from agent.bot.utils import format_prometheus, format_status, split_discord_text
+from agent.bot.summarize import clean
+from agent.bot.utils import format_prometheus, format_status
 from agent.tools.health import check_endpoint
 from agent.tools.logs import get_recent_logs
 from agent.tools.metrics import get_service_metrics
@@ -63,19 +64,22 @@ class ServicePanelView(discord.ui.View):
         if not self.target:
             await interaction.response.send_message("Pick a service first.", ephemeral=True)
             return
-        text = await get_recent_logs(self.target, lines=20)
         await interaction.response.defer(ephemeral=True)
-        chunks = split_discord_text(text) or ["No logs."]
-        for chunk in chunks:
-            await interaction.followup.send(f"```{chunk[:1900]}```")
+        text = await get_recent_logs(self.target, lines=20)
+        summary = await clean(text, service=self.target, action="fetch recent logs")
+        await interaction.followup.send(summary)
 
     @discord.ui.button(label="Metrics", style=discord.ButtonStyle.secondary, emoji="📈")
     async def metrics(self, interaction: discord.Interaction, _button: discord.ui.Button):
         if not self.target:
             await interaction.response.send_message("Pick a service first.", ephemeral=True)
             return
+        await interaction.response.defer(ephemeral=True)
         result = await get_service_metrics(self.target)
-        await interaction.response.send_message(format_prometheus(result), ephemeral=True)
+        summary = await clean(
+            format_prometheus(result), service=self.target, action="fetch Prometheus metrics"
+        )
+        await interaction.followup.send(summary)
 
     @discord.ui.button(label="Incident", style=discord.ButtonStyle.danger, emoji="🚨")
     async def incident(self, interaction: discord.Interaction, _button: discord.ui.Button):
