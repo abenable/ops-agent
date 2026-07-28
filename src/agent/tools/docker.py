@@ -13,7 +13,8 @@ def _docker_client():
     if docker_host.startswith("unix://"):
         socket_path = docker_host[7:]
         transport = httpx.AsyncHTTPTransport(uds=socket_path)
-        base_url = "http://docker"
+        # Use localhost as the hostname so the Docker daemon accepts the request.
+        base_url = "http://localhost"
     else:
         parsed = urlparse(docker_host)
         base_url = f"{parsed.scheme}://{parsed.hostname}:{parsed.port or 2375}"

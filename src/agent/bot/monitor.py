@@ -1,5 +1,7 @@
 """Background endpoint monitoring loop for Discord alerts and status updates."""
 
+import asyncio
+
 from discord.ext import tasks
 
 from agent.alerting import discord as discord_alert
@@ -8,6 +10,13 @@ from agent.tools import docker
 from agent.tools.health import check_endpoint
 from agent.tools.sources.prometheus import query_prometheus
 from agent.workflows.incident import run_incident_workflow
+
+
+async def _open_incident(bot, name: str):
+    """Run the incident workflow and open a Discord thread without blocking the monitor loop."""
+    result = await run_incident_workflow(name)
+    await discord_alert.open_incident_thread(bot, name, result["summary"], result["incident_id"])
+
 
 # url -> reachable (in-memory; fine for an MVP)
 _last_state: dict[str, bool] = {}
@@ -72,10 +81,7 @@ async def _evaluate_rules(bot) -> None:
                 severity="critical",
                 title=f"Alert: {rule_name}",
             )
-            result_wf = await run_incident_workflow(rule_name)
-            await discord_alert.open_incident_thread(
-                bot, rule_name, result_wf["summary"], result_wf["incident_id"]
-            )
+            asyncio.create_task(_open_incident(bot, rule_name))
 
         if prev and not firing and settings.discord_status_channel_id:
             await discord_alert.send_alert(
@@ -147,11 +153,9 @@ async def _poll_once(bot) -> None:
                 severity="critical",
                 title="Service down",
             )
-            # Create a threaded incident for the escalation
-            result = await run_incident_workflow(name)
-            await discord_alert.open_incident_thread(
-                bot, name, result["summary"], result["incident_id"]
-            )
+            # Create a threaded incident for the escalation in the background so a
+            # slow LLM call doesn't stall the gateway heartbeat.
+            asyncio.create_task(_open_incident(bot, name))
 
         _last_state[url] = up
 

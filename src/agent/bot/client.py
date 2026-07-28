@@ -121,12 +121,16 @@ def run_bot():
         start_monitor(bot)
         _attach_discord_log_handler(bot)
 
-        supports_tools = await llm_supports_tool_calls()
-        if not supports_tools:
-            logger.warning(
-                "Configured LLM does not appear to support OpenAI-style tool calls. "
-                "Investigations will fall back to static summaries; tool-calling will not work."
-            )
+        # Check LLM capability in the background; a slow LLM probe should not delay
+        # the gateway heartbeat/ready acknowledgement.
+        async def _check_tools():
+            if not await llm_supports_tool_calls():
+                logger.warning(
+                    "Configured LLM does not appear to support OpenAI-style tool calls. "
+                    "Investigations will fall back to static summaries; tool-calling will not work."
+                )
+
+        asyncio.create_task(_check_tools())
 
     @bot.event
     async def on_message(message: discord.Message):
