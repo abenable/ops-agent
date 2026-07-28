@@ -3,7 +3,30 @@
 from langchain_core.tools import tool
 
 from agent.config.settings import settings
+from agent.tools import docker
 from agent.tools.sources import loki, prometheus
+
+
+@tool
+async def list_services() -> str:
+    """List known infrastructure targets by their real names: Docker container
+    names and configured monitored endpoints. Call this FIRST when you are unsure
+    of the exact service name, then use the names it returns for your queries."""
+    containers = await docker.list_containers(all_containers=True)
+    names = [docker.container_name(c) for c in containers]
+    endpoints: list[str] = []
+    for pair in settings.monitored_endpoints.split(","):
+        if "=" in pair:
+            n, u = pair.split("=", 1)
+            n, u = n.strip(), u.strip()
+            if n and u:
+                endpoints.append(f"{n}={u}")
+    lines = [
+        "Containers: " + (", ".join(names) if names else "(none / docker unreachable)"),
+        "Monitored endpoints: "
+        + (", ".join(endpoints) if endpoints else "(none configured)"),
+    ]
+    return "\n".join(lines)[:4000]
 
 
 @tool

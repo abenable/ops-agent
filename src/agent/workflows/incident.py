@@ -12,6 +12,7 @@ from agent.tools.metrics import get_service_metrics
 from agent.tools.query_tools import (
     get_label_values,
     list_metric_names,
+    list_services,
     query_loki,
     query_loki_range,
     query_prometheus,
@@ -22,6 +23,7 @@ from agent.tools.services import get_service_status
 logger = logging.getLogger(__name__)
 
 TOOLS = [
+    list_services,
     query_prometheus,
     list_metric_names,
     get_label_values,
@@ -32,9 +34,11 @@ TOOLS = [
 
 SYSTEM_PROMPT = (
     "You are Oracle, an infrastructure-operations investigator. "
-    "Use the available read-only tools to investigate the service or question. "
-    "First discover metric names and label values, then write cheap PromQL/LogQL queries. "
-    "Prefer short time windows. Summarize findings in one paragraph."
+    "Start by calling list_services to learn the real container and endpoint names, "
+    "then discover metric names and label values. "
+    "Use the actual names you discover, not the user's spelling, for your queries. "
+    "Write cheap PromQL/LogQL queries and prefer short time windows. "
+    "Summarize findings in one paragraph."
 )
 
 

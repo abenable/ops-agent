@@ -5,6 +5,8 @@ from urllib.parse import urlparse
 
 import httpx2 as httpx
 
+from agent.tools.normalize import normalize
+
 
 def _docker_client():
     """Build an httpx client for the local Docker socket or TCP host."""
@@ -58,10 +60,10 @@ def container_name(container: dict) -> str:
 
 
 async def find_container(service: str) -> dict | None:
-    """Match a container by name substring (case-insensitive). None if not found."""
-    needle = service.lower()
+    """Match a container by name, separator-agnostic. None if not found."""
+    needle = normalize(service)
     for c in await list_containers(all_containers=True):
-        if needle in container_name(c).lower():
+        if needle in normalize(container_name(c)):
             return c
     return None
 
