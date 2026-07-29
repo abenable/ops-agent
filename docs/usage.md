@@ -2,28 +2,41 @@
 
 ## Discord commands
 
-All commands use the `!` prefix and run in `#agent-commands` (or wherever the bot can read).
+Commands run in `#agent-commands` (or wherever the bot can read) and have both a prefix (`!`)
+and a slash (`/`) form. Verbose commands accept a `raw` flag/option to skip the LLM summary and
+show the full output.
 
 | Command | Description |
 | --- | --- |
-| `!status <service>` | Current status of a service |
-| `!logs <service> [n]` | Last `n` log lines (default 10) |
-| `!metrics <service>` | Current metrics for a service |
-| `!health <url>` | Reachability and latency of an HTTP endpoint |
-| `!watching` | List endpoints configured for background monitoring |
-| `!ask <question>` | Free-form agentic investigation using read-only Prometheus/Loki tools |
-| `!incident <service>` | Run the incident investigation workflow; posts summary + incident id, opens an incident thread, and alerts the alert channel |
-| `!scenario <name>` | Run a simulated scenario from `scenarios/<name>.yml` (restricted to the test-scenarios channel if configured) |
-| `!ack <incident_id>` | Acknowledge a stored incident (and post to its thread) |
-| `!resolve <incident_id>` | Resolve a stored incident (and post to its thread) |
+| `!status <service>` / `/status` | Current status of a service via Docker container discovery |
+| `!containers [raw]` / `/containers [raw]` | List Docker containers grouped by state |
+| `!logs <service> [n] [raw]` / `/logs ...` | Last `n` log lines (default 10) from Loki |
+| `!metrics <service> [raw]` / `/metrics ...` | Current metrics for a service from Prometheus |
+| `!health <url>` / `/health` | Reachability and latency of an HTTP endpoint |
+| `!watching` / `/watching` | List endpoints configured for background monitoring |
+| `!ask <question>` / `/ask` | Free-form agentic investigation using read-only tools |
+| `!incident <service>` / `/incident` | Run the incident investigation workflow; posts summary + incident id, opens an incident thread, and alerts the alert channel |
+| `!scenario <name>` / `/scenario` | Run a simulated scenario from `scenarios/<name>.yml` (restricted to the test-scenarios channel if configured) |
+| `!ack <incident_id>` / `/ack` | Acknowledge a stored incident (and post to its thread) |
+| `!resolve <incident_id>` / `/resolve` | Resolve a stored incident (and post to its thread) |
+| `!menu` / `/menu` | Interactive container picker with Status/Logs/Metrics buttons |
+| `!panel` / `/panel` | Service picker with Status/Health/Logs/Metrics/Incident buttons |
+| `!info` / `/info` | Bot info and support links |
+
+## Reply summarisation
+
+Verbose commands (`containers`, `logs`, `metrics`) route their output through the LLM to
+produce a short, scannable Discord summary. Pass `raw` (a flag for prefix commands, an option
+for slash commands) to bypass the summary and see the complete output. Short commands
+(`status`, `health`, `watching`) return raw output for low latency.
 
 ## Conversational replies
 
-Tag the bot in a message (e.g. `@Oracle why is web slow?`) and it answers through the
-same agentic loop as `!ask` — it can call the read-only Prometheus/Loki tools to
-investigate. The prompt also includes environment context (monitored endpoints,
-configured channels, Prometheus/Loki URLs) so answers are grounded in this deployment.
-Long replies are split across multiple messages. Prefix commands (`!status`,
+Tag the bot in a message or DM it (e.g. `@Oracle why is web slow?`) and it answers through
+the same agentic loop as `!ask` — it can call the read-only Prometheus/Loki and Docker tools
+to investigate. The prompt also includes environment context (monitored endpoints, configured
+channels, Prometheus/Loki URLs, and the available tool list) so answers are grounded in this
+deployment. Long replies are split across multiple messages. Prefix commands (`!status`,
 `!incident`, etc.) still work as usual.
 
 ## HTTP API

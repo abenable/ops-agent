@@ -7,9 +7,11 @@
 
 1. Start a bounded, read-only tool-calling loop (`run_agentic_investigation`).
    The LLM can call:
+   - `list_services` (discover real container + endpoint names; call this first)
    - `list_metric_names` / `get_label_values` (Prometheus discovery)
    - `query_prometheus` / `query_prometheus_range` (PromQL)
    - `query_loki` (LogQL)
+   - `docker_status` / `docker_logs` (read-only container inspection)
 2. Tool results are truncated to 4,000 chars and fed back to the model.
 3. The loop runs at most `MAX_TOOL_STEPS` (default 6) times and stops when the
    model returns a final answer instead of a tool call.
@@ -20,9 +22,10 @@
 `run_ask_workflow(question)` uses the same loop for free-form questions without
 storing an incident.
 
-Triggers: `!incident <service>`, `!ask <question>`, `POST /incidents/{service}`,
-`python -m agent incident`, or the background monitor. For Discord triggers the bot
-also opens an incident thread and posts an alert (see below).
+Triggers: `!incident <service>` / `/incident`, `!ask <question>` / `/ask`,
+`POST /incidents/{service}`, `python -m agent incident`, or the background
+monitor. For Discord triggers the bot also opens an incident thread (with
+persistent Acknowledge/Resolve buttons) and posts an alert (see below).
 
 ## Monitoring workflow
 
@@ -54,8 +57,12 @@ Prometheus/Loki queries use a 10s timeout and optional bearer tokens from
 ## Incident lifecycle
 
 1. Incident created (`open`) by the incident workflow.
-2. `!ack <id>` → status `acknowledged`; a note is posted to the incident thread if present.
-3. `!resolve <id>` → status `resolved`; a note is posted to the incident thread if present.
+2. `!ack <id>` / `/ack <id>` → status `acknowledged`; a note is posted to the incident thread if present.
+3. `!resolve <id>` / `/resolve <id>` → status `resolved`; a note is posted to the incident thread if present.
+
+The incident thread message also carries Acknowledge/Resolve buttons
+(`IncidentActionView`, `timeout=None`) so they never expire while the bot is
+running.
 
 ## Reporting workflow
 
@@ -68,7 +75,7 @@ Trigger: `python -m agent report --incident-id <id>`.
 
 ## Extending workflows
 
-The tools already prefer real sources (Prometheus/Loki) and fall back to stubs. To add signal
-sources, extend `get_service_metrics` / `get_recent_logs` (or add a new tool) and include the
-new signal in `run_incident_workflow`. `get_service_status` is still a stub — wire it to your
-service inventory to make status reporting real.
+The tools prefer real sources (Prometheus/Loki/Docker) and fall back to stubs
+when a source is unreachable. To add signal sources, extend
+`get_service_metrics` / `get_recent_logs` or add a new tool, register it in the
+`TOOLS` list in `agent.workflows.incident`, and mention it in the system prompt.

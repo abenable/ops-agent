@@ -21,20 +21,19 @@ The system runs as two entry points (Discord bot + FastAPI backend) sharing a si
 
 ### 2. Controlled agent tools and workflows
 
-**Status:** Mostly delivered.
+**Status:** Delivered.
 
 Implemented:
 
 - Prometheus metric discovery and PromQL queries
 - Loki log queries
 - HTTP endpoint health checks
+- Service discovery (`list_services`) so the LLM learns real container/endpoint names first
+- Read-only Docker container status and logs tools for containers Prometheus/Loki do not tag
+- Separator-agnostic service-name matching (`agent_api` finds `marconi-agent-api`)
 - Incident investigation workflow (bounded tool-calling loop)
-- Incident lifecycle: open, acknowledge, resolve
-- Docker and SSH tools as library-only utilities for future workflows
-
-Still a stub:
-
-- `!status` service status is not yet wired to a real service registry or orchestrator (`unknown` placeholder).
+- Incident lifecycle: open, acknowledge, resolve, with persistent action buttons
+- Docker and SSH mutation tools as library-only utilities for future workflows
 
 By design, actions that can mutate infrastructure (Docker restart, SSH systemctl restart) are **not** exposed to the agent loop, chat, or HTTP. The current tools are read-only; future write actions will require explicit human approval.
 
@@ -44,8 +43,10 @@ By design, actions that can mutate infrastructure (Docker restart, SSH systemctl
 
 The bot handles:
 
-- Prefix commands: `!status`, `!logs`, `!metrics`, `!health`, `!ask`, `!incident`, `!scenario`, `!ack`, `!resolve`, `!watching`
-- Conversational replies via @mention using the same agentic loop
+- Prefix commands (`!`) and slash commands (`/`) sharing one tool layer, for `status`, `containers`, `logs`, `metrics`, `health`, `ask`, `incident`, `scenario`, `ack`, `resolve`, `watching`, `menu`, `panel`, `info`
+- Reply summarisation of verbose output through the LLM, with a `raw` opt-out
+- Conversational replies via @mention or DM using the same agentic loop
+- Interactive container menu and service panel with action buttons
 - Background monitoring alerts, status transitions, and incident threads in purpose-specific channels
 - Scenario simulation restricted to a configured test-scenarios channel
 
@@ -62,8 +63,8 @@ The bot handles:
 | Deliverable | Status | Notes |
 | --- | --- | --- |
 | Working MVP integrated with Discord | Delivered | Bot + API + SQLite + LLM toolchain running together |
-| Discord bot interface | Delivered | Prefix commands, @mention replies, channel-specific outputs |
-| Agent backend and tooling | Delivered | Read-only Prometheus/Loki/HTTP tools; read/write Docker/SSH tools library-only |
+| Discord bot interface | Delivered | Prefix + slash commands, @mention/DM replies, interactive menus, reply summarisation, channel-specific outputs |
+| Agent backend and tooling | Delivered | Read-only Prometheus/Loki/Docker tools + service discovery; read/write Docker/SSH tools library-only |
 | Self-hosted LLM integration | Delivered | OpenAI-compatible endpoint; tool-calling models preferred, graceful fallback otherwise |
 | Monitoring and logging integration | Delivered | Prometheus + Loki sources with fallback stubs and optional bearer auth |
 | Technical documentation | Delivered | Lives in `docs/` and this README |
@@ -72,16 +73,16 @@ The bot handles:
 ## What Changed Since the Original Charter
 
 - **Read-only MVP first.** Mutation actions (restart services, change configurations) were deferred to a later phase with human approval rather than being built into the MVP.
-- **Stub service status.** A real service registry / orchestrator integration was deferred; `!status` intentionally returns `unknown` until that integration lands.
-- **Agentic loop over static reports.** The LLM now writes its own PromQL/LogQL during investigations instead of relying only on pre-composed summaries.
+- **Service status via Docker discovery.** `!status` now reports real container state through Docker container discovery with separator-agnostic name matching, instead of the original `unknown` stub.
+- **Agentic loop over static reports.** The LLM now writes its own PromQL/LogQL during investigations, discovers real service names first, and can inspect containers with read-only Docker tools.
+- **Slash commands.** A slash (`/`) command surface with autocomplete now runs alongside the prefix (`!`) commands, sharing one tool layer.
 - **Background monitoring inside the bot.** HTTP and Docker endpoint polling plus PromQL alert evaluation run in the Discord bot process rather than requiring a separate monitor.
 - **SQLite over a larger database.** Single-node SQLite is sufficient for the MVP and reduces deployment surface.
 
 ## Remaining Work and Future Extensions
 
-- Wire `!status` to a real service inventory (Docker, systemd, or orchestrator API).
 - Add a multi-environment source registry (prod / staging monitoring sources).
+- Re-register incident action views on startup from open incidents in SQLite, so the buttons keep working after a redeploy.
 - Implement human-in-the-loop approval before any Docker/SSH write action is executed.
 - Persist monitor/alert state so de-duplication survives restarts.
-- Add slash commands with autocomplete.
 - Introduce RBAC for command channels and sensitive tools.
