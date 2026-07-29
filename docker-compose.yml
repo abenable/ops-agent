@@ -227,35 +227,6 @@ services:
       - nginx
     restart: unless-stopped
 
-  node-exporter:
-    container_name: marconi-agent-node-exporter
-    image: prom/node-exporter:latest
-    volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
-    command:
-      - '--path.procfs=/host/proc'
-      - '--path.rootfs=/rootfs'
-      - '--path.sysfs=/host/sys'
-    ports:
-      - "9100:9100"
-    restart: unless-stopped
-
-  cadvisor:
-    container_name: marconi-agent-cadvisor
-    image: gcr.io/cadvisor/cadvisor:latest
-    privileged: true
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker:/var/lib/docker:ro
-      - /dev/disk:/dev/disk:ro
-    ports:
-      - "8081:8080"
-    restart: unless-stopped
-
   promtail:
     container_name: marconi-agent-promtail
     image: grafana/promtail:latest
