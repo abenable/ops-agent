@@ -49,6 +49,10 @@ def test_poll_once_escalates_on_healthy_to_down(monkeypatch):
         monitored_endpoints="web=http://localhost:8000",
         discord_status_channel_id=1,
         discord_alert_channel_id=2,
+        # Neutralize the other two poll phases so only endpoint logic is exercised.
+        # Explicit kwargs override os.environ, which load_env() pollutes from .env.
+        docker_monitor=False,
+        prometheus_alert_rules="",
         _env_file=None,
     )
     monkeypatch.setattr(monitor, "settings", settings)
