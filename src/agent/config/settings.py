@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     # Endpoint monitoring loop
     monitored_endpoints: str = ""
     monitor_interval_seconds: int = 60
+    # Cadence for the periodic container-status snapshot posted to #status-updates.
+    status_snapshot_interval_seconds: int = 900
 
     # Self-hosted LLM (OpenAI-compatible)
     llm_base_url: str = "http://localhost:11434/v1"
@@ -61,6 +63,10 @@ class Settings(BaseSettings):
     max_tool_steps: int = 6
     loki_max_limit: int = 500
     range_max_hours: int = 6
+
+    # Human-in-the-loop remediation: seconds a proposed action stays approvable
+    # before it is auto-expired. Lazy check at execute time; no background sweeper.
+    remediation_approval_ttl_seconds: int = 300
 
     # Docker container discovery (DOCKER_HOST is read from the env by tools/docker.py)
     docker_monitor: bool = False

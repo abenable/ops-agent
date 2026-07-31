@@ -7,19 +7,21 @@ import yaml
 from discord.ext import commands
 
 from agent.alerting import discord as discord_alert
+from agent.alerting.discord import RemediationApprovalView
 from agent.bot.monitor import get_monitored_endpoints
 from agent.bot.menu import MenuView
 from agent.bot.summarize import clean
 from agent.bot.utils import build_info_embed, format_container_list, format_prometheus, format_status, split_discord_text
 from agent.bot.views import ServicePanelView
 from agent.config.settings import settings
-from agent.storage.repository import update_incident_status
+from agent.storage.repository import get_incident, update_incident_status
 from agent.tools import docker
 from agent.tools.health import check_endpoint
 from agent.tools.logs import get_recent_logs
 from agent.tools.metrics import get_service_metrics
 from agent.tools.services import get_service_status
 from agent.workflows.incident import run_ask_workflow, run_incident_workflow
+from agent.workflows.remediation import execute_approval, reject_approval, run_remediation_workflow
 
 
 def setup_commands(bot: commands.Bot) -> None:
@@ -191,3 +193,48 @@ def setup_commands(bot: commands.Bot) -> None:
             answer = f"Ask failed: {exc}"
         for chunk in split_discord_text(answer):
             await ctx.send(chunk)
+
+    @bot.command(name="remediate")
+    async def remediate(ctx: commands.Context, incident_id: str):
+        """Run the remediation agent against an existing incident's diagnosis.
+
+        The remediator only proposes a restart; each proposal carries Approve/Reject
+        buttons. Use !approve/!reject if the buttons are gone (e.g. after a redeploy).
+        """
+        incident = get_incident(incident_id)
+        if incident is None:
+            await ctx.send(f"Incident '{incident_id}' not found.")
+            return
+        async with ctx.typing():
+            result = await run_remediation_workflow(
+                incident_id, incident["service"], incident["summary"]
+            )
+        for chunk in split_discord_text(result["summary"]):
+            await ctx.send(chunk)
+        for proposal in result["proposals"]:
+            await ctx.send(
+                f"Proposed {proposal['action']} on `{proposal['container_name']}` "
+                f"(approval `{proposal['id']}`).",
+                view=RemediationApprovalView(proposal["id"]),
+            )
+        if not result["proposals"]:
+            await ctx.send("No remediation proposed.")
+
+    @bot.command(name="approve")
+    async def approve(ctx: commands.Context, approval_id: str):
+        """Approve and execute a proposed remediation action (button fallback)."""
+        async with ctx.typing():
+            result = await execute_approval(approval_id)
+        if result["ok"]:
+            await ctx.send(f"Approved — restart executed for `{approval_id}`.")
+        else:
+            await ctx.send(f"Could not approve `{approval_id}`: {result['error']}")
+
+    @bot.command(name="reject")
+    async def reject(ctx: commands.Context, approval_id: str):
+        """Reject a proposed remediation action (button fallback)."""
+        result = reject_approval(approval_id)
+        if result["ok"]:
+            await ctx.send(f"Rejected `{approval_id}`.")
+        else:
+            await ctx.send(f"Could not reject `{approval_id}`: {result['error']}")

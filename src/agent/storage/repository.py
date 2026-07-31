@@ -1,6 +1,7 @@
-"""Minimal SQLite repository for incidents."""
+"""Minimal SQLite repository for incidents and remediation approvals."""
 
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -36,6 +37,20 @@ def init_db() -> None:
             conn.execute("ALTER TABLE incidents ADD COLUMN thread_id INTEGER")
         except sqlite3.OperationalError:
             pass
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pending_approvals (
+                id TEXT PRIMARY KEY,
+                incident_id TEXT NOT NULL,
+                container_name TEXT NOT NULL,
+                container_id TEXT,
+                action TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                created_at TEXT NOT NULL
+            )
+            """
+        )
 
 
 def store_incident(
@@ -122,4 +137,94 @@ def list_incidents(status: str | None = None, limit: int = 50) -> list[dict]:
     with _connect() as conn:
         rows = conn.execute(query, params).fetchall()
     columns = ["id", "service", "summary", "status", "thread_id", "created_at"]
+    return [dict(zip(columns, row)) for row in rows]
+
+
+def store_pending_approval(
+    incident_id: str,
+    container_name: str,
+    action: str,
+    container_id: str | None = None,
+) -> str:
+    """Persist a remediation action awaiting human approval and return its short id."""
+    init_db()
+    approval_id = str(uuid4())[:8]
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO pending_approvals
+                (id, incident_id, container_name, container_id, action, status, created_at)
+            VALUES (?, ?, ?, ?, ?, 'pending', ?)
+            """,
+            (
+                approval_id,
+                incident_id,
+                container_name,
+                container_id,
+                action,
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+    return approval_id
+
+
+def get_pending_approval(approval_id: str) -> dict | None:
+    """Fetch a pending approval by id."""
+    init_db()
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT id, incident_id, container_name, container_id, action, status, created_at
+            FROM pending_approvals
+            WHERE id = ?
+            """,
+            (approval_id,),
+        ).fetchone()
+    if row is None:
+        return None
+    return dict(
+        zip(
+            ["id", "incident_id", "container_name", "container_id", "action", "status", "created_at"],
+            row,
+        )
+    )
+
+
+def set_approval_status(approval_id: str, status: str) -> dict | None:
+    """Update an approval's status (e.g. approved / rejected / expired)."""
+    init_db()
+    with _connect() as conn:
+        cursor = conn.execute(
+            "UPDATE pending_approvals SET status = ? WHERE id = ?",
+            (status, approval_id),
+        )
+        if cursor.rowcount == 0:
+            return None
+    return get_pending_approval(approval_id)
+
+
+def list_pending_approvals(
+    incident_id: str | None = None, status: str | None = None, limit: int = 50
+) -> list[dict]:
+    """List approvals, optionally filtered by incident and/or status."""
+    init_db()
+    query = (
+        "SELECT id, incident_id, container_name, container_id, action, status, created_at "
+        "FROM pending_approvals"
+    )
+    params: list = []
+    clauses: list[str] = []
+    if incident_id:
+        clauses.append("incident_id = ?")
+        params.append(incident_id)
+    if status:
+        clauses.append("status = ?")
+        params.append(status)
+    if clauses:
+        query += " WHERE " + " AND ".join(clauses)
+    query += " ORDER BY created_at DESC LIMIT ?"
+    params.append(limit)
+    with _connect() as conn:
+        rows = conn.execute(query, params).fetchall()
+    columns = ["id", "incident_id", "container_name", "container_id", "action", "status", "created_at"]
     return [dict(zip(columns, row)) for row in rows]

@@ -5,7 +5,8 @@ import logging
 import discord
 
 from agent.config.settings import settings
-from agent.storage.repository import update_incident_status, update_incident_thread_id
+from agent.storage.repository import get_incident, update_incident_status, update_incident_thread_id
+from agent.workflows.remediation import execute_approval, reject_approval, run_remediation_workflow
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +78,69 @@ class IncidentActionView(discord.ui.View):
         await interaction.response.send_message(
             f"Incident `{self.incident_id}` resolved.", ephemeral=True
         )
+
+    @discord.ui.button(label="Remediate", style=discord.ButtonStyle.danger, emoji="🔧")
+    async def remediate(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        """Run the remediation agent against this incident's diagnosis.
+
+        The remediator only *proposes* a restart; each proposal is posted with its own
+        Approve/Reject view so a human gates execution.
+        """
+        incident = get_incident(self.incident_id)
+        if incident is None:
+            await interaction.response.send_message("Incident not found.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True)
+        result = await run_remediation_workflow(
+            self.incident_id, incident["service"], incident["summary"]
+        )
+        await interaction.followup.send(f"Remediator:\n{result['summary'][:1900]}", ephemeral=True)
+        for proposal in result["proposals"]:
+            await interaction.followup.send(
+                f"Proposed {proposal['action']} on `{proposal['container_name']}` "
+                f"(approval `{proposal['id']}`). Approve to execute.",
+                view=RemediationApprovalView(proposal["id"]),
+            )
+        if not result["proposals"]:
+            await interaction.followup.send("No remediation proposed.", ephemeral=True)
+
+
+class RemediationApprovalView(discord.ui.View):
+    """Approve / Reject buttons for a proposed remediation action.
+
+    Persistent (``timeout=None``) while the bot runs; ``!approve`` / ``!reject`` (and
+    their slash forms) remain as fallback after a redeploy, mirroring the ack/resolve
+    pattern. Approve is the only path that triggers the real Docker restart.
+    """
+
+    def __init__(self, approval_id: str):
+        super().__init__(timeout=None)
+        self.approval_id = approval_id
+
+    @discord.ui.button(label="Approve", style=discord.ButtonStyle.success, emoji="✅")
+    async def approve(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        result = await execute_approval(self.approval_id)
+        if result["ok"]:
+            await interaction.followup.send(
+                f"Approved — restart executed for `{self.approval_id}`.", ephemeral=True
+            )
+        else:
+            await interaction.followup.send(
+                f"Could not approve `{self.approval_id}`: {result['error']}", ephemeral=True
+            )
+
+    @discord.ui.button(label="Reject", style=discord.ButtonStyle.secondary, emoji="✋")
+    async def reject(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        result = reject_approval(self.approval_id)
+        if result["ok"]:
+            await interaction.response.send_message(
+                f"Rejected `{self.approval_id}`.", ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(
+                f"Could not reject `{self.approval_id}`: {result['error']}", ephemeral=True
+            )
 
 
 async def open_incident_thread(

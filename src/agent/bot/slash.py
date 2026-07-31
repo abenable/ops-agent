@@ -12,19 +12,21 @@ from discord import app_commands
 from discord.ext import commands
 
 from agent.alerting import discord as discord_alert
+from agent.alerting.discord import RemediationApprovalView
 from agent.bot.menu import MenuView
 from agent.bot.monitor import get_monitored_endpoints
 from agent.bot.summarize import clean
 from agent.bot.utils import build_info_embed, format_container_list, format_prometheus, format_status, split_discord_text
 from agent.bot.views import ServicePanelView
 from agent.config.settings import settings
-from agent.storage.repository import update_incident_status
+from agent.storage.repository import get_incident, update_incident_status
 from agent.tools import docker
 from agent.tools.health import check_endpoint
 from agent.tools.logs import get_recent_logs
 from agent.tools.metrics import get_service_metrics
 from agent.tools.services import get_service_status
 from agent.workflows.incident import run_ask_workflow, run_incident_workflow
+from agent.workflows.remediation import execute_approval, reject_approval, run_remediation_workflow
 
 
 def setup_slash_commands(bot: commands.Bot) -> None:
@@ -243,6 +245,56 @@ def setup_slash_commands(bot: commands.Bot) -> None:
             answer = f"Ask failed: {exc}"
         for chunk in split_discord_text(answer):
             await interaction.followup.send(chunk)
+
+    @bot.tree.command(name="remediate", description="Run the remediation agent on an existing incident")
+    @app_commands.describe(incident_id="Incident ID to remediate")
+    async def slash_remediate(interaction: discord.Interaction, incident_id: str):
+        await interaction.response.defer(ephemeral=True)
+        incident = get_incident(incident_id)
+        if incident is None:
+            await interaction.followup.send(f"Incident '{incident_id}' not found.", ephemeral=True)
+            return
+        result = await run_remediation_workflow(
+            incident_id, incident["service"], incident["summary"]
+        )
+        for chunk in split_discord_text(result["summary"]):
+            await interaction.followup.send(chunk, ephemeral=True)
+        for proposal in result["proposals"]:
+            await interaction.followup.send(
+                f"Proposed {proposal['action']} on `{proposal['container_name']}` "
+                f"(approval `{proposal['id']}`).",
+                view=RemediationApprovalView(proposal["id"]),
+                ephemeral=True,
+            )
+        if not result["proposals"]:
+            await interaction.followup.send("No remediation proposed.", ephemeral=True)
+
+    @bot.tree.command(name="approve", description="Approve and execute a proposed remediation action")
+    @app_commands.describe(approval_id="Approval ID")
+    async def slash_approve(interaction: discord.Interaction, approval_id: str):
+        await interaction.response.defer(ephemeral=True)
+        result = await execute_approval(approval_id)
+        if result["ok"]:
+            await interaction.followup.send(
+                f"Approved — restart executed for `{approval_id}`.", ephemeral=True
+            )
+        else:
+            await interaction.followup.send(
+                f"Could not approve `{approval_id}`: {result['error']}", ephemeral=True
+            )
+
+    @bot.tree.command(name="reject", description="Reject a proposed remediation action")
+    @app_commands.describe(approval_id="Approval ID")
+    async def slash_reject(interaction: discord.Interaction, approval_id: str):
+        result = reject_approval(approval_id)
+        if result["ok"]:
+            await interaction.response.send_message(
+                f"Rejected `{approval_id}`.", ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(
+                f"Could not reject `{approval_id}`: {result['error']}", ephemeral=True
+            )
 
     async def on_app_command_error(
         interaction: discord.Interaction, error: app_commands.AppCommandError

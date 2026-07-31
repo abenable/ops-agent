@@ -225,3 +225,45 @@ def test_loki_token_sent_when_set(monkeypatch):
     with patch.object(loki.httpx, "AsyncClient", return_value=fake_cm) as Client:
         asyncio.run(loki.query_loki('{app="x"}'))
         assert Client.call_args.kwargs["headers"] == {"Authorization": "Bearer secret"}
+
+
+def test_container_snapshot_posts_when_containers_watched(monkeypatch):
+    settings = Settings(discord_status_channel_id=1)
+    monkeypatch.setattr(monitor, "settings", settings)
+    monitor._container_state.clear()
+    monitor._container_state.update({"api": "running", "db": "exited"})
+
+    bot = MagicMock()
+    send_alert = AsyncMock()
+    monkeypatch.setattr(monitor.discord_alert, "send_alert", send_alert)
+
+    asyncio.run(monitor._post_container_snapshot(bot))
+
+    send_alert.assert_awaited_once()
+    desc = send_alert.await_args.args[1]
+    assert "api" in desc and "running" in desc
+    assert "db" in desc and "exited" in desc
+    assert send_alert.await_args.kwargs["title"] == "Container status"
+
+
+def test_container_snapshot_quiet_when_nothing_watched(monkeypatch):
+    settings = Settings(discord_status_channel_id=1)
+    monkeypatch.setattr(monitor, "settings", settings)
+    monitor._container_state.clear()
+
+    send_alert = AsyncMock()
+    monkeypatch.setattr(monitor.discord_alert, "send_alert", send_alert)
+    asyncio.run(monitor._post_container_snapshot(MagicMock()))
+    send_alert.assert_not_awaited()
+
+
+def test_container_snapshot_quiet_when_no_status_channel(monkeypatch):
+    monkeypatch.delenv("DISCORD_STATUS_CHANNEL_ID", raising=False)
+    monkeypatch.setattr(monitor, "settings", Settings(_env_file=None))
+    monitor._container_state.clear()
+    monitor._container_state.update({"api": "running"})
+
+    send_alert = AsyncMock()
+    monkeypatch.setattr(monitor.discord_alert, "send_alert", send_alert)
+    asyncio.run(monitor._post_container_snapshot(MagicMock()))
+    send_alert.assert_not_awaited()

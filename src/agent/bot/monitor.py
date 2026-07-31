@@ -105,6 +105,7 @@ async def _poll_containers(bot) -> None:
     """Discover running containers each cycle; alert when one stops running.
 
     New containers are picked up automatically — no config entry needed.
+    Also refreshes ``_container_state``, which the periodic status snapshot reads.
     """
     if not settings.docker_monitor:
         return
@@ -130,6 +131,27 @@ async def _poll_containers(bot) -> None:
                 title="Container down",
             )
         _container_state[name] = state
+
+
+async def _post_container_snapshot(bot) -> None:
+    """Post a compact status snapshot of watched containers to #status-updates.
+
+    Reuses ``_container_state`` (refreshed every monitor cycle, so at most ~60s
+    stale) rather than re-querying Docker. Quiet when no containers are watched
+    or no status channel is configured — an empty channel means "nothing watched",
+    not "broken".
+    """
+    if not settings.discord_status_channel_id or not _container_state:
+        return
+    lines = [f"- `{name}`: {state}" for name, state in sorted(_container_state.items())]
+    body = "Watched container status:\n" + "\n".join(lines)
+    await discord_alert.send_alert(
+        settings.discord_status_channel_id,
+        body[:4000],
+        bot,
+        severity="info",
+        title="Container status",
+    )
 
 
 async def _poll_once(bot) -> None:
@@ -170,10 +192,15 @@ async def _poll_once(bot) -> None:
 
 
 def start_monitor(bot):
-    """Start the periodic endpoint poll."""
+    """Start the periodic endpoint poll and the container-status snapshot loop."""
 
     @tasks.loop(seconds=max(settings.monitor_interval_seconds, 10))
     async def _poll():
         await _poll_once(bot)
 
+    @tasks.loop(seconds=max(settings.status_snapshot_interval_seconds, 60))
+    async def _snapshot():
+        await _post_container_snapshot(bot)
+
     _poll.start()
+    _snapshot.start()

@@ -67,11 +67,20 @@ async def _static_summary(service: str) -> str:
         return f"LLM unavailable ({exc}); raw context: {prompt}"
 
 
-async def run_agentic_investigation(prompt: str) -> str:
-    """Bounded tool-calling loop. Returns the LLM's final answer or a fallback message."""
-    by_name = {t.name: t for t in TOOLS}
-    llm = get_llm().bind_tools(TOOLS)
-    messages = [SystemMessage(SYSTEM_PROMPT), HumanMessage(prompt)]
+async def run_agentic_investigation(
+    prompt: str,
+    *,
+    system_prompt: str = SYSTEM_PROMPT,
+    tools: list = TOOLS,
+) -> str:
+    """Bounded tool-calling loop. Returns the LLM's final answer or a fallback message.
+
+    Parameterized on ``system_prompt`` and ``tools`` so specialist agents (e.g. the
+    remediation agent) can reuse the same loop with their own prompt and tool subset.
+    """
+    by_name = {t.name: t for t in tools}
+    llm = get_llm().bind_tools(tools)
+    messages = [SystemMessage(system_prompt), HumanMessage(prompt)]
 
     ai = None
     for step in range(settings.max_tool_steps):
