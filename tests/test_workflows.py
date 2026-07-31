@@ -110,7 +110,7 @@ def test_agentic_loop_runs_tool_and_returns_summary(tmp_database, patched_tool_s
 def test_agentic_loop_terminates_at_max_tool_steps(tmp_database, patched_tool_sources, monkeypatch):
     from agent.config.settings import Settings
 
-    monkeypatch.setattr(incident_module, "settings", Settings(max_tool_steps=2))
+    monkeypatch.setattr(incident_module, "settings", Settings(max_tool_steps=2, _env_file=None))
 
     # Avoid extra Prometheus hits from the static fallback; we only want to count tool calls.
     monkeypatch.setattr(incident_module, "get_service_metrics", AsyncMock(return_value={"service": "web"}))

@@ -15,6 +15,7 @@ def sample_settings():
     return Settings(
         monitored_endpoints="api=http://localhost:8000, db=http://localhost:5432",
         monitor_interval_seconds=60,
+        _env_file=None,
     )
 
 
@@ -31,7 +32,7 @@ def test_endpoints_ignores_empty_items(monkeypatch):
     monkeypatch.setattr(
         monitor,
         "settings",
-        Settings(monitored_endpoints="api=http://x,,=bad,no-equals"),
+        Settings(monitored_endpoints="api=http://x,,=bad,no-equals", _env_file=None),
     )
     assert monitor._endpoints() == {"api": "http://x"}
 
@@ -48,6 +49,7 @@ def test_poll_once_escalates_on_healthy_to_down(monkeypatch):
         monitored_endpoints="web=http://localhost:8000",
         discord_status_channel_id=1,
         discord_alert_channel_id=2,
+        _env_file=None,
     )
     monkeypatch.setattr(monitor, "settings", settings)
     monitor._last_state.clear()
@@ -84,7 +86,7 @@ def test_alert_rules_parsing(monkeypatch):
     monkeypatch.setattr(
         monitor,
         "settings",
-        Settings(prometheus_alert_rules="target_down=up == 0, high_load=node_load1 > 4"),
+        Settings(prometheus_alert_rules="target_down=up == 0, high_load=node_load1 > 4", _env_file=None),
     )
     assert monitor._alert_rules() == {
         "target_down": "up == 0",
@@ -102,6 +104,7 @@ def test_evaluate_rules_fires_once_on_edge_and_skips_empty(monkeypatch):
     settings = Settings(
         prometheus_alert_rules="target_down=up == 0",
         discord_alert_channel_id=1,
+        _env_file=None,
     )
     monkeypatch.setattr(monitor, "settings", settings)
     monitor._rule_state.clear()

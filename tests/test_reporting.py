@@ -4,7 +4,7 @@ from agent.storage.repository import store_incident
 from agent.workflows.reporting import run_report_workflow
 
 
-def test_report_workflow_not_found():
+def test_report_workflow_not_found(tmp_database):
     message = run_report_workflow("missing-id")
     assert "no incident found" in message.lower()
 
