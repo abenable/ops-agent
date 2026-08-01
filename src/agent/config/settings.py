@@ -75,6 +75,9 @@ class Settings(BaseSettings):
     # Human-in-the-loop remediation: seconds a proposed action stays approvable
     # before it is auto-expired. Lazy check at execute time; no background sweeper.
     remediation_approval_ttl_seconds: int = 300
+    # Global kill switch for the remediation agent. When false, the remediator will
+    # not propose actions and pending approvals cannot be executed. Reject still works.
+    remediation_enabled: bool = True
 
     # Docker container discovery (DOCKER_HOST is read from the env by tools/docker.py)
     docker_monitor: bool = False

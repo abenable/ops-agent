@@ -76,6 +76,12 @@ async def run_remediation_workflow(incident_id: str, service: str, diagnosis: st
     Returns the remediator's summary and the list of pending approvals it created.
     Does not execute any restart — that is the human's job via execute_approval.
     """
+    if not settings.remediation_enabled:
+        return {
+            "incident_id": incident_id,
+            "summary": "Remediation is disabled (kill switch). No action proposed.",
+            "proposals": [],
+        }
     propose_restart = _make_propose_restart(incident_id)
     tools = [*READ_ONLY_TOOLS, propose_restart]
     prompt = (
@@ -99,9 +105,11 @@ async def run_remediation_workflow(incident_id: str, service: str, diagnosis: st
 async def execute_approval(approval_id: str) -> dict:
     """Execute a pending approval. Only path that calls docker.restart_container.
 
-    Refuses to run if the approval is missing, already resolved, or older than the
-    configured TTL (in which case it is marked expired).
+    Refuses to run if the kill switch is off, the approval is missing, already
+    resolved, or older than the configured TTL (in which case it is marked expired).
     """
+    if not settings.remediation_enabled:
+        return {"ok": False, "error": "remediation disabled (kill switch)"}
     approval = repository.get_pending_approval(approval_id)
     if approval is None:
         return {"ok": False, "error": "approval not found"}

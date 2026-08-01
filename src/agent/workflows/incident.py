@@ -46,6 +46,17 @@ SYSTEM_PROMPT = (
     "Summarize findings in one paragraph."
 )
 
+# Incident investigations return ranked root-cause hypotheses with evidence, not a
+# single narrative — operators can verify a ranked list fast, and the evidence trail
+# builds trust in the diagnostic layer before any remediation is allowed.
+INCIDENT_SYSTEM_PROMPT = SYSTEM_PROMPT + (
+    " Produce 2-3 ranked root-cause hypotheses, most likely first. For each: "
+    "a one-line claim, then the evidence that supports it (cite the specific metric "
+    "value, log line, or container state you observed). "
+    "If the evidence is weak, say so explicitly rather than guessing a cause. "
+    "Do not propose remediation; that is a separate, human-gated step."
+)
+
 
 async def _static_summary(service: str) -> str:
     """Fallback summary when the agentic loop is unavailable or yields nothing."""
@@ -112,7 +123,7 @@ async def run_incident_workflow(service: str) -> dict:
     """Collect signals for a service and return an incident id and summary."""
     prompt = f"Investigate service {service}."
     try:
-        summary = await run_agentic_investigation(prompt)
+        summary = await run_agentic_investigation(prompt, system_prompt=INCIDENT_SYSTEM_PROMPT)
     except Exception as exc:
         logger.warning("Agentic workflow failed for %s: %s", service, exc)
         summary = await _static_summary(service)

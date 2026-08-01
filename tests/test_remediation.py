@@ -237,3 +237,41 @@ def test_run_remediation_workflow_no_proposal(tmp_database, monkeypatch):
     ):
         result = asyncio.run(run_remediation_workflow(incident_id, "web", "diagnosis text"))
     assert result["proposals"] == []
+
+
+def test_kill_switch_blocks_remediation_workflow(tmp_database, monkeypatch):
+    monkeypatch.setattr(remediation.settings, "remediation_enabled", False)
+    llm = FakeLLM([FakeMessage("should not be called")])
+    with patch("agent.workflows.incident.get_llm", return_value=llm) as get_llm_mock:
+        result = asyncio.run(run_remediation_workflow("inc-1", "web", "diagnosis"))
+    assert result["proposals"] == []
+    assert "disabled" in result["summary"].lower()
+    get_llm_mock.assert_not_called()
+
+
+def test_kill_switch_blocks_execute_approval(tmp_database, monkeypatch):
+    restart_mock = AsyncMock(return_value={"restarted": True})
+    monkeypatch.setattr(remediation.docker, "restart_container", restart_mock)
+    monkeypatch.setattr(remediation.settings, "remediation_enabled", False)
+
+    approval_id = store_pending_approval(
+        incident_id="inc-1", container_name="api", action="restart_container"
+    )
+    result = asyncio.run(execute_approval(approval_id))
+
+    assert result["ok"] is False
+    assert "disabled" in result["error"]
+    restart_mock.assert_not_awaited()
+
+
+def test_kill_switch_off_allows_execute(tmp_database, monkeypatch):
+    restart_mock = AsyncMock(return_value={"container_id": "abc", "restarted": True})
+    monkeypatch.setattr(remediation.docker, "restart_container", restart_mock)
+    monkeypatch.setattr(remediation.settings, "remediation_enabled", True)
+
+    approval_id = store_pending_approval(
+        incident_id="inc-1", container_name="api", container_id="abc", action="restart_container"
+    )
+    result = asyncio.run(execute_approval(approval_id))
+    assert result["ok"] is True
+    restart_mock.assert_awaited_once()

@@ -9,6 +9,7 @@ from agent.storage.repository import list_incidents
 import agent.workflows.incident as incident_module
 from agent.tools import query_tools
 from agent.workflows.incident import (
+    INCIDENT_SYSTEM_PROMPT,
     llm_supports_tool_calls,
     run_agentic_investigation,
     run_ask_workflow,
@@ -166,6 +167,43 @@ def test_ask_workflow_does_not_store_incident(tmp_database, patched_tool_sources
 
     assert answer == "ask answer"
     assert len(list_incidents()) == before
+
+
+def test_incident_workflow_uses_ranked_hypothesis_prompt(tmp_database):
+    """The incident workflow must use INCIDENT_SYSTEM_PROMPT (ranked hypotheses),
+    while !ask keeps the general SYSTEM_PROMPT."""
+    captured = {}
+
+    async def fake_run(prompt, *, system_prompt=incident_module.SYSTEM_PROMPT, tools=None):
+        captured["system_prompt"] = system_prompt
+        captured["prompt"] = prompt
+        return "summary"
+
+    monkeypatch_local = pytest.MonkeyPatch()
+    monkeypatch_local.setattr(incident_module, "run_agentic_investigation", fake_run)
+    try:
+        asyncio.run(run_incident_workflow("web"))
+    finally:
+        monkeypatch_local.undo()
+
+    assert captured["system_prompt"] is INCIDENT_SYSTEM_PROMPT
+    assert "ranked" in captured["system_prompt"].lower()
+    # Stored incident carries the summary.
+    assert list_incidents()[0]["summary"] == "summary"
+
+
+def test_ask_workflow_uses_general_prompt(tmp_database, patched_tool_sources, monkeypatch):
+    """!ask must NOT use the incident ranked-hypothesis prompt."""
+    captured = {}
+    original = run_agentic_investigation
+
+    async def spy(prompt, *, system_prompt=incident_module.SYSTEM_PROMPT, tools=None):
+        captured["system_prompt"] = system_prompt
+        return "ask answer"
+
+    monkeypatch.setattr(incident_module, "run_agentic_investigation", spy)
+    asyncio.run(run_ask_workflow("what metrics exist?"))
+    assert captured["system_prompt"] is incident_module.SYSTEM_PROMPT
 
 
 def test_llm_supports_tool_calls_probe(tmp_database):
