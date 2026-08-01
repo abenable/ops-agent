@@ -145,10 +145,23 @@ async def run_ask_workflow(question: str) -> str:
 
 
 async def llm_supports_tool_calls() -> bool:
-    """Probe the configured LLM to see if it can emit tool_calls via bind_tools."""
+    """Probe whether the configured LLM can emit tool_calls via bind_tools.
+
+    Sends a task that genuinely requires a tool rather than a vague 'pick a tool'
+    prompt — a capable model then calls list_services, but a non-tool model answers
+    in prose. The old vague prompt under-reported capable local models.
+    """
     try:
         llm = get_llm().bind_tools(TOOLS)
-        response = await llm.ainvoke([HumanMessage("Pick a tool to call.")])
+        response = await llm.ainvoke(
+            [
+                SystemMessage("Use the provided tools to answer the user's question."),
+                HumanMessage(
+                    "List the running infrastructure containers by calling the "
+                    "list_services tool."
+                ),
+            ]
+        )
         return bool(response.tool_calls)
     except Exception:
         return False
