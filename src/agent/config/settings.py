@@ -47,6 +47,14 @@ class Settings(BaseSettings):
         validation_alias="LLM_API_KEY",
     )
 
+    # Local LLM provider selection for A/B switching. Empty = use the legacy
+    # LLM_BASE_URL / LLM_MODEL above; "ollama" or "vllm" = use the matching presets.
+    llm_provider: str = ""
+    ollama_base_url: str = "http://localhost:11434/v1"
+    ollama_model: str = "gemma4:e4b"
+    vllm_base_url: str = "http://localhost:8001/v1"
+    vllm_model: str = "Qwen/Qwen2.5-1.5B-Instruct"
+
     # API server
     api_key: str = Field(default="", validation_alias="API_KEY")
     api_host: str = "127.0.0.1"
