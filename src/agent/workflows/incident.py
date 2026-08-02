@@ -78,16 +78,17 @@ async def _static_summary(service: str) -> str:
         return f"LLM unavailable ({exc}); raw context: {prompt}"
 
 
-async def run_agentic_investigation(
+async def run_agentic_investigation_stream(
     prompt: str,
     *,
     system_prompt: str = SYSTEM_PROMPT,
     tools: list = TOOLS,
-) -> str:
-    """Bounded tool-calling loop. Returns the LLM's final answer or a fallback message.
+):
+    """Async generator yielding events from the bounded tool-calling loop.
 
-    Parameterized on ``system_prompt`` and ``tools`` so specialist agents (e.g. the
-    remediation agent) can reuse the same loop with their own prompt and tool subset.
+    One source of truth for the Discord path (collects the final ``done`` event)
+    and the SSE path (streams events to the web UI). Event types: ``tool_call``,
+    ``tool_result``, ``done``.
     """
     by_name = {t.name: t for t in tools}
     llm = get_llm().bind_tools(tools)
@@ -105,18 +106,40 @@ async def run_agentic_investigation(
             args = call.get("args") or {}
             tool_id = call.get("id", "call")
             logger.info("Tool call: %s(%s)", name, args)
+            yield {"type": "tool_call", "step": step, "name": name, "args": args}
             try:
                 out = await by_name[name].ainvoke(args)
             except Exception as exc:
                 out = f"tool error: {exc}"
             messages.append(ToolMessage(str(out)[:4000], tool_call_id=tool_id))
+            yield {"type": "tool_result", "step": step, "name": name, "result": str(out)[:2000]}
 
     # If we exited because of the step cap with pending tool calls, ask for a final summary
     # using a tool-less LLM so it returns prose instead of issuing more tool calls.
     if ai and ai.tool_calls:
         ai = await get_llm().ainvoke(messages)
 
-    return (ai.content if ai else "") or "No summary produced."
+    content = (ai.content if ai else "") or "No summary produced."
+    yield {"type": "done", "content": content}
+
+
+async def run_agentic_investigation(
+    prompt: str,
+    *,
+    system_prompt: str = SYSTEM_PROMPT,
+    tools: list = TOOLS,
+) -> str:
+    """Bounded tool-calling loop. Returns the LLM's final answer or a fallback message.
+
+    Thin collector over :func:`run_agentic_investigation_stream` so the Discord path
+    and the SSE path share one loop implementation.
+    """
+    async for event in run_agentic_investigation_stream(
+        prompt, system_prompt=system_prompt, tools=tools
+    ):
+        if event["type"] == "done":
+            return event["content"]
+    return "No summary produced."
 
 
 async def run_incident_workflow(service: str) -> dict:
@@ -133,6 +156,42 @@ async def run_incident_workflow(service: str) -> dict:
 
     incident_id = store_incident(service, summary)
     return {"incident_id": incident_id, "summary": summary}
+
+
+async def run_incident_workflow_stream(service: str):
+    """Stream the incident investigation, then persist and yield the incident id at ``done``.
+
+    Falls back to ``_static_summary`` on exception, mirroring the non-stream path, and
+    emits an ``error`` event instead of raising so the SSE connection stays usable.
+    """
+    prompt = f"Investigate service {service}."
+    try:
+        async for event in run_agentic_investigation_stream(
+            prompt, system_prompt=INCIDENT_SYSTEM_PROMPT
+        ):
+            if event["type"] == "done":
+                summary = event["content"]
+                if not summary or summary == "No summary produced.":
+                    summary = await _static_summary(service)
+                incident_id = store_incident(service, summary)
+                yield {"type": "done", "incident_id": incident_id, "summary": summary}
+            else:
+                yield event
+    except Exception as exc:
+        logger.warning("Agentic workflow stream failed for %s: %s", service, exc)
+        summary = await _static_summary(service)
+        incident_id = store_incident(service, summary)
+        yield {"type": "error", "message": str(exc), "incident_id": incident_id, "summary": summary}
+
+
+async def run_ask_workflow_stream(question: str):
+    """Stream a free-form agentic answer; does not persist an incident."""
+    try:
+        async for event in run_agentic_investigation_stream(question):
+            yield event
+    except Exception as exc:
+        logger.warning("Ask workflow stream failed: %s", exc)
+        yield {"type": "error", "message": str(exc)}
 
 
 async def run_ask_workflow(question: str) -> str:

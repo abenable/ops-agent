@@ -59,6 +59,8 @@ class Settings(BaseSettings):
     api_key: str = Field(default="", validation_alias="API_KEY")
     api_host: str = "127.0.0.1"
     api_port: int = 8000
+    # Origin allowed by CORS for the web UI. Defaults to the Vite dev server.
+    web_origin: str = "http://localhost:5173"
 
     # Monitoring / logging integrations
     prometheus_url: str = "http://localhost:9090"
