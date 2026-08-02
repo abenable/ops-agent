@@ -4,11 +4,17 @@ import discord
 
 from agent.bot.summarize import clean
 from agent.bot.utils import format_prometheus, format_status
+from agent.config.settings import settings
+from agent.llm.client import set_llm_provider
 from agent.tools.health import check_endpoint
 from agent.tools.logs import get_recent_logs
 from agent.tools.metrics import get_service_metrics
 from agent.tools.services import get_service_status
-from agent.workflows.incident import run_incident_workflow
+from agent.workflows.incident import llm_supports_tool_calls, run_incident_workflow
+
+# Button label -> provider value, and the reverse for display.
+_PROVIDER_OF_BUTTON = {"Ollama": "ollama", "vLLM": "vllm", "Legacy": ""}
+_LABEL_OF = {"": "Legacy", "ollama": "Ollama", "vllm": "vLLM"}
 
 
 class ServicePanelView(discord.ui.View):
@@ -91,3 +97,46 @@ class ServicePanelView(discord.ui.View):
         summary = result["summary"]
         text = f"Incident `{result['incident_id']}` for `{self.target}`\n\n{summary}"
         await interaction.followup.send(text[:2000])
+
+
+class LLMProviderView(discord.ui.View):
+    """Toggle the active LLM provider (Ollama / vLLM / Legacy) at runtime.
+
+    Runtime-only: the selection resets to the ``.env`` value on a bot restart.
+    The active provider's button is disabled so the operator can see which is live.
+    """
+
+    def __init__(self):
+        super().__init__(timeout=120)
+        active = settings.llm_provider.lower()
+        for btn in self.children:
+            if _PROVIDER_OF_BUTTON.get(btn.label) == active:
+                btn.disabled = True
+
+    @staticmethod
+    def _status_text() -> str:
+        active = settings.llm_provider.lower()
+        label = _LABEL_OF.get(active, "Legacy")
+        return f"Active LLM provider: **{label}** (`{active or 'legacy'}`)"
+
+    async def _switch(self, interaction: discord.Interaction, provider: str) -> None:
+        set_llm_provider(provider)
+        supports = await llm_supports_tool_calls()
+        probe = (
+            "tool calls: yes" if supports
+            else "tool calls: no (investigations degrade to a static summary)"
+        )
+        text = f"{self._status_text()} · {probe}"
+        await interaction.response.edit_message(content=text, view=LLMProviderView())
+
+    @discord.ui.button(label="Ollama", style=discord.ButtonStyle.primary, emoji="🦙")
+    async def ollama(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        await self._switch(interaction, "ollama")
+
+    @discord.ui.button(label="vLLM", style=discord.ButtonStyle.primary, emoji="⚡")
+    async def vllm(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        await self._switch(interaction, "vllm")
+
+    @discord.ui.button(label="Legacy", style=discord.ButtonStyle.secondary, emoji="📓")
+    async def legacy(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        await self._switch(interaction, "")

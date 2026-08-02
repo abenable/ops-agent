@@ -12,7 +12,7 @@ from agent.bot.monitor import get_monitored_endpoints
 from agent.bot.menu import MenuView
 from agent.bot.summarize import clean
 from agent.bot.utils import build_info_embed, format_container_list, format_prometheus, format_status, split_discord_text
-from agent.bot.views import ServicePanelView
+from agent.bot.views import LLMProviderView, ServicePanelView
 from agent.config.settings import settings
 from agent.storage.repository import get_incident, update_incident_status
 from agent.tools import docker
@@ -45,6 +45,11 @@ def setup_commands(bot: commands.Bot) -> None:
             await ctx.send("No monitored endpoints configured for the panel.")
             return
         await ctx.send("Pick a service and action:", view=ServicePanelView(endpoints))
+
+    @bot.command(name="llm")
+    async def llm(ctx: commands.Context):
+        view = LLMProviderView()
+        await ctx.send(view._status_text(), view=view)
 
     @bot.command(name="status")
     async def status(ctx: commands.Context, service: str):

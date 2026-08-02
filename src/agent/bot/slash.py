@@ -17,7 +17,7 @@ from agent.bot.menu import MenuView
 from agent.bot.monitor import get_monitored_endpoints
 from agent.bot.summarize import clean
 from agent.bot.utils import build_info_embed, format_container_list, format_prometheus, format_status, split_discord_text
-from agent.bot.views import ServicePanelView
+from agent.bot.views import LLMProviderView, ServicePanelView
 from agent.config.settings import settings
 from agent.storage.repository import get_incident, update_incident_status
 from agent.tools import docker
@@ -140,6 +140,13 @@ def setup_slash_commands(bot: commands.Bot) -> None:
             return
         await interaction.response.send_message(
             "Pick a service and action:", view=ServicePanelView(endpoints), ephemeral=True
+        )
+
+    @bot.tree.command(name="llm", description="Switch the active LLM provider (Ollama / vLLM / Legacy)")
+    async def slash_llm(interaction: discord.Interaction):
+        view = LLMProviderView()
+        await interaction.response.send_message(
+            view._status_text(), view=view, ephemeral=True
         )
 
     @bot.tree.command(name="incident", description="Run the incident investigation workflow")
