@@ -1,0 +1,146 @@
+@import "tailwindcss";
+
+@theme {
+  /* Nike design.md — color tokens */
+  --color-canvas: #ffffff;
+  --color-cloud: #f5f5f5;
+  --color-ink: #111111;
+  --color-charcoal: #39393b;
+  --color-ash: #4b4b4d;
+  --color-mute: #707072;
+  --color-stone: #9e9ea0;
+  --color-hairline: #cacacb;
+  --color-hairline-soft: #e5e5e5;
+  --color-sale: #d30005;
+  --color-success: #007d48;
+  --color-success-bright: #1eaa52;
+  --color-info: #1151ff;
+
+  /* Typography */
+  --font-sans: "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-display: "Bebas Neue", "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Radii — pill vocabulary */
+  --radius-pill: 30px;
+  --radius-md: 24px;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+  }
+}
+
+/* Bebas Neue display headline — design.md `display-campaign` */
+.headline-display {
+  font-family: var(--font-display);
+  font-size: clamp(48px, 9vw, 96px);
+  line-height: 0.9;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+
+/* Section rhythm: spacing.section = 48px */
+.section-rhythm > * + * {
+  margin-top: 48px;
+}
+
+/* 1px hairline divider — the only depth cue in the system */
+.hairline {
+  border-color: var(--color-hairline);
+}
+.hairline-b {
+  border-bottom: 1px solid var(--color-hairline);
+}
+.hairline-t {
+  border-top: 1px solid var(--color-hairline);
+}
+
+/* Pill CTA — button-primary: ink bg, 48px height, 30px radius */
+.btn-primary {
+  background: var(--color-ink);
+  color: var(--color-canvas);
+  border-radius: var(--radius-pill);
+  padding: 12px 32px;
+  min-height: 48px;
+  font-weight: 500;
+  font-size: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s, opacity 0.15s;
+}
+.btn-primary:active {
+  transform: scale(0.97);
+  opacity: 0.85;
+}
+.btn-primary:disabled {
+  opacity: 0.4;
+}
+
+/* button-secondary: soft-cloud bg */
+.btn-secondary {
+  background: var(--color-cloud);
+  color: var(--color-ink);
+  border-radius: var(--radius-pill);
+  padding: 12px 32px;
+  min-height: 48px;
+  font-weight: 500;
+  font-size: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s, opacity 0.15s;
+}
+.btn-secondary:active {
+  transform: scale(0.97);
+  opacity: 0.85;
+}
+
+/* button-outline-on-image: white pill for dark surfaces */
+.btn-on-image {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  border-radius: var(--radius-pill);
+  padding: 10px 24px;
+  font-weight: 500;
+  font-size: 16px;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* filter-chip — active inverts fully */
+.chip {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-pill);
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+}
+.chip-active {
+  background: var(--color-ink);
+  color: var(--color-canvas);
+  border-color: var(--color-ink);
+}
+
+/* Square flat card on cloud — no radius, no shadow */
+.card-flat {
+  background: var(--color-canvas);
+  border-radius: 0;
+}
+
+/* Product photo stage */
+.surface-cloud {
+  background: var(--color-cloud);
+}
