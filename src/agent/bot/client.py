@@ -11,7 +11,9 @@ from agent.bot.commands import setup_commands
 from agent.bot.monitor import get_alert_rules, get_monitored_endpoints, start_monitor
 from agent.bot.utils import split_discord_text
 from agent.config.settings import settings
+from agent.bot.history import add_message, format_history
 from agent.bot.slash import setup_slash_commands
+from agent.llm.client import _resolve
 from agent.workflows.incident import llm_supports_tool_calls, run_ask_workflow
 
 logger = logging.getLogger(__name__)
@@ -90,6 +92,7 @@ def _environment_context() -> str:
     endpoint_lines = [f"- {name}: {url}" for name, url in endpoints.items()]
     rules = get_alert_rules()
     rule_lines = [f"- {name}: {expr}" for name, expr in rules.items()]
+    base_url, model = _resolve(settings.llm_provider)
     return (
         "Environment context:\n"
         f"Monitored endpoints:\n{'\n'.join(endpoint_lines) if endpoint_lines else '- none configured'}\n"
@@ -99,6 +102,7 @@ def _environment_context() -> str:
         f"Incident channel: {settings.discord_incident_channel_id or 'not set'}\n"
         f"Prometheus: {settings.prometheus_url}\n"
         f"Loki: {settings.loki_url}\n"
+        f"Model: {model} (provider={settings.llm_provider or 'legacy'}, base_url={base_url})\n"
         "Available tools: menu, status, containers, logs, metrics, health, incident, scenario, ack, resolve, watching, remediate, approve, reject"
     )
 
@@ -191,15 +195,28 @@ def run_bot():
                 )
                 return
 
+            channel_id = message.channel.id
+            add_message(channel_id, "user", cleaned)
+
+            history = format_history(channel_id)
+            context = _environment_context()
             prompt = (
                 "You are Oracle, a friendly infrastructure-operations assistant. "
                 "Use the environment context below, and the read-only Prometheus/Loki tools if needed. "
                 "Be brief and conversational; if you don't know, say so.\n\n"
-                f"{_environment_context()}\n\n"
-                f"Question: {cleaned}"
+                "Answer the user's question directly; do not change the topic unless asked. "
+                "If the user asks what model or LLM powers you, use the Model line in the context. "
+                "If the user asks for a list of containers or wants to pick one, call list_services and show the names. "
+                "Use the conversation history to resolve vague references such as 'logs', 'status', 'the web container', or 'that one' by reusing the exact container or service name mentioned earlier. "
+                "Only ask for clarification when no matching name exists in the history.\n\n"
+                f"{context}\n\n"
             )
+            if history:
+                prompt += f"Conversation history:\n{history}\n\n"
+            prompt += f"Question: {cleaned}"
             try:
                 answer = await run_ask_workflow(prompt)
+                add_message(channel_id, "assistant", answer)
             except Exception as exc:  # pragma: no cover
                 logger.warning("Mention response failed: %s", exc)
                 answer = "My agent is unreachable right now — try a `!` command instead."
