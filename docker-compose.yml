@@ -10,9 +10,10 @@ configs:
           static_configs:
             - targets: ['localhost:9090']
 
-        - job_name: 'nginx'
+        - job_name: 'n8n'
           static_configs:
-            - targets: ['nginx-exporter:9113']
+            - targets: ['n8n:5678']
+          metrics_path: /metrics
 
         - job_name: 'node-exporter'
           static_configs:
@@ -54,43 +55,6 @@ configs:
       analytics:
         reporting_enabled: false
 
-  nginx-config:
-    content: |
-      user nginx;
-      worker_processes auto;
-      error_log /var/log/nginx-logs/error.log warn;
-      pid /var/run/nginx.pid;
-
-      events {
-          worker_connections 1024;
-      }
-
-      http {
-          include /etc/nginx/mime.types;
-          default_type application/octet-stream;
-
-          log_format main '$$remote_addr - $$remote_user [$$time_local] "$$request" '
-                          '$$status $$body_bytes_sent "$$http_referer" '
-                          '"$$http_user_agent"';
-
-          access_log /var/log/nginx-logs/access.log main;
-
-          server {
-              listen 80;
-              server_name localhost;
-
-              location / {
-                  root /usr/share/nginx/html;
-                  index index.html index.htm;
-              }
-
-              location /nginx_status {
-                  stub_status;
-                  allow all;
-              }
-          }
-      }
-
   promtail-config:
     content: |
       server:
@@ -104,23 +68,14 @@ configs:
         - url: http://loki:3100/loki/api/v1/push
 
       scrape_configs:
-        - job_name: nginx-access-logs
+        - job_name: n8n-logs
           static_configs:
             - targets:
                 - localhost
               labels:
-                job: nginx-access-logs
-                service: nginx
-                __path__: /var/log/nginx-logs/access.log
-
-        - job_name: nginx-error-logs
-          static_configs:
-            - targets:
-                - localhost
-              labels:
-                job: nginx-error-logs
-                service: nginx
-                __path__: /var/log/nginx-logs/error.log
+                job: n8n-logs
+                service: n8n
+                __path__: /home/node/.n8n/n8n.log
 
 services:
   api:
@@ -165,7 +120,7 @@ services:
     restart: unless-stopped
     environment:
       # Monitor the local services that are reachable from the host network.
-      MONITORED_ENDPOINTS: "agent_api=http://localhost:8123/health,nginx=http://localhost:8090"
+      MONITORED_ENDPOINTS: "agent_api=http://localhost:8123/health,n8n=http://localhost:5678"
     depends_on:
       - prometheus
       - loki
@@ -214,47 +169,42 @@ services:
     command: -config.file=/etc/loki/local-config.yaml
     restart: unless-stopped
 
-  nginx:
-    container_name: marconi-agent-nginx
-    image: nginx:alpine
+  n8n:
+    container_name: marconi-agent-n8n
+    image: n8nio/n8n:latest
     ports:
-      - "8090:80"
+      - "5678:5678"
+    environment:
+      # Expose Prometheus metrics on /metrics (scraped by prometheus).
+      N8N_METRICS: "true"
+      N8N_METRICS_INCLUDE_DEFAULT_METRICS: "true"
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_SECURE_COOKIE: "false"
+      GENERIC_TIMEZONE: "UTC"
+    # Redirect n8n's stdout/stderr into its data volume so Promtail can ship
+    # the logs to Loki. Override the entrypoint so the args aren't re-interpreted
+    # by the image's `n8n "$@"` wrapper; `exec` keeps n8n as PID 1.
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["exec n8n start > /home/node/.n8n/n8n.log 2>&1"]
     volumes:
-      - nginx_logs:/var/log/nginx-logs
-    configs:
-      - source: nginx-config
-        target: /etc/nginx/nginx.conf
-    # Nginx images symlink /var/log/nginx/*.log to stdout/stderr. We need real
-    # files in the shared volume so Promtail can ship them to Loki.
-    command: ["/bin/sh", "-c", "rm -f /var/log/nginx-logs/*.log && exec nginx -g 'daemon off;'"]
-    restart: unless-stopped
-
-  nginx-exporter:
-    container_name: marconi-agent-nginx-exporter
-    image: nginx/nginx-prometheus-exporter:latest
-    command:
-      - -nginx.scrape-uri=http://nginx:80/nginx_status
-    ports:
-      - "9113:9113"
-    depends_on:
-      - nginx
+      - n8n_data:/home/node/.n8n
     restart: unless-stopped
 
   promtail:
     container_name: marconi-agent-promtail
     image: grafana/promtail:latest
     volumes:
-      - nginx_logs:/var/log/nginx-logs
+      - n8n_data:/home/node/.n8n
     configs:
       - source: promtail-config
         target: /etc/promtail/config.yml
     command: -config.file=/etc/promtail/config.yml
     depends_on:
       - loki
-      - nginx
+      - n8n
     restart: unless-stopped
 
 volumes:
   prom_data:
   loki_data:
-  nginx_logs:
+  n8n_data:
