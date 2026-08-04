@@ -174,7 +174,7 @@ def test_incident_workflow_uses_ranked_hypothesis_prompt(tmp_database):
     while !ask keeps the general SYSTEM_PROMPT."""
     captured = {}
 
-    async def fake_run(prompt, *, system_prompt=incident_module.SYSTEM_PROMPT, tools=None):
+    async def fake_run(prompt, *, system_prompt=incident_module.SYSTEM_PROMPT, tools=None, kind="ask"):
         captured["system_prompt"] = system_prompt
         captured["prompt"] = prompt
         return "summary"

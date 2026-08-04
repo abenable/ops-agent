@@ -1,9 +1,10 @@
 """Uvicorn entry point for the FastAPI app."""
 
+import time
 from pathlib import Path
 
 import uvicorn
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -31,6 +32,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def _track_requests(request: Request, call_next):
+    from agent.metrics import API_REQUESTS_TOTAL, API_REQUEST_DURATION
+
+    start = time.monotonic()
+    response = await call_next(request)
+    elapsed = time.monotonic() - start
+    path = "/" + request.url.path.lstrip("/").split("/", 1)[0] if request.url.path.count("/") > 0 else request.url.path
+    API_REQUESTS_TOTAL.labels(method=request.method, path=path, status=str(response.status_code)).inc()
+    API_REQUEST_DURATION.labels(method=request.method, path=path).observe(elapsed)
+    return response
+
+
 app.include_router(router)
 
 # Serve the built web UI (web/dist) at / when it exists, so the agent can run as

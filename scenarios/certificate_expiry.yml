@@ -1,0 +1,15 @@
+# Aspirational actions (require a stronger tool-calling LLM):
+#   - check endpoint health
+#   - query Prometheus for certificate expiry metric
+#   - discover relevant metric names
+#   - query Loki for TLS-related log entries
+name: TLS certificate near expiry
+service: ingress
+symptom: >
+  The TLS certificate for the ingress endpoint expires in 3 days. Clients will
+  start getting untrusted certificate errors.
+expected_agent_actions:
+  - retrieve service status
+  - summarize findings
+  - store incident
+  - alert Discord channel if configured

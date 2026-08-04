@@ -166,6 +166,8 @@ async def _post_container_snapshot(bot) -> None:
 
 async def _poll_once(bot) -> None:
     """Run one poll iteration across all monitored endpoints."""
+    from agent.metrics import MONITOR_CYCLES_TOTAL
+
     for name, url in _endpoints().items():
         res = await check_endpoint(url)
         # ponytail: treat 5xx as down; anything reachable under 500 is up
@@ -197,6 +199,7 @@ async def _poll_once(bot) -> None:
 
         _last_state[url] = up
 
+    MONITOR_CYCLES_TOTAL.labels(kind="endpoint").inc()
     await _evaluate_rules(bot)
     await _poll_containers(bot)
 

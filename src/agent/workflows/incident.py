@@ -1,6 +1,7 @@
 """Incident investigation workflow."""
 
 import logging
+import time
 
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 
@@ -83,6 +84,7 @@ async def run_agentic_investigation_stream(
     *,
     system_prompt: str = SYSTEM_PROMPT,
     tools: list = TOOLS,
+    kind: str = "ask",
 ):
     """Async generator yielding events from the bounded tool-calling loop.
 
@@ -90,13 +92,28 @@ async def run_agentic_investigation_stream(
     and the SSE path (streams events to the web UI). Event types: ``tool_call``,
     ``tool_result``, ``done``.
     """
+    from agent.metrics import (
+        INVESTIGATION_DURATION,
+        INVESTIGATION_TOTAL,
+        LLM_CALL_DURATION,
+        LLM_CALL_TOTAL,
+        TOOL_CALL_DURATION,
+        TOOL_CALL_TOTAL,
+        TOOL_STEPS,
+    )
     by_name = {t.name: t for t in tools}
     llm = get_llm().bind_tools(tools)
     messages = [SystemMessage(system_prompt), HumanMessage(prompt)]
 
     ai = None
+    total_steps = 0
+    t0 = time.monotonic()
     for step in range(settings.max_tool_steps):
+        total_steps = step + 1
+        llm_start = time.monotonic()
         ai = await llm.ainvoke(messages)
+        LLM_CALL_DURATION.labels(kind="agentic").observe(time.monotonic() - llm_start)
+        LLM_CALL_TOTAL.labels(kind="agentic").inc()
         messages.append(ai)
         if not ai.tool_calls:
             break
@@ -108,18 +125,29 @@ async def run_agentic_investigation_stream(
             logger.info("Tool call: %s(%s)", name, args)
             yield {"type": "tool_call", "step": step, "name": name, "args": args}
             try:
+                tool_start = time.monotonic()
                 out = await by_name[name].ainvoke(args)
+                _tool_duration = time.monotonic() - tool_start
+                TOOL_CALL_TOTAL.labels(tool=name, status="ok").inc()
+                TOOL_CALL_DURATION.labels(tool=name).observe(_tool_duration)
             except Exception as exc:
                 out = f"tool error: {exc}"
+                TOOL_CALL_TOTAL.labels(tool=name, status="error").inc()
             messages.append(ToolMessage(str(out)[:4000], tool_call_id=tool_id))
             yield {"type": "tool_result", "step": step, "name": name, "result": str(out)[:2000]}
 
     # If we exited because of the step cap with pending tool calls, ask for a final summary
     # using a tool-less LLM so it returns prose instead of issuing more tool calls.
     if ai and ai.tool_calls:
+        llm_start = time.monotonic()
         ai = await get_llm().ainvoke(messages)
+        LLM_CALL_DURATION.labels(kind="fallback").observe(time.monotonic() - llm_start)
+        LLM_CALL_TOTAL.labels(kind="fallback").inc()
 
     content = (ai.content if ai else "") or "No summary produced."
+    INVESTIGATION_DURATION.labels(kind=kind).observe(time.monotonic() - t0)
+    TOOL_STEPS.labels(kind=kind).observe(total_steps)
+    INVESTIGATION_TOTAL.labels(kind=kind, status="ok").inc()
     yield {"type": "done", "content": content}
 
 
@@ -128,6 +156,7 @@ async def run_agentic_investigation(
     *,
     system_prompt: str = SYSTEM_PROMPT,
     tools: list = TOOLS,
+    kind: str = "ask",
 ) -> str:
     """Bounded tool-calling loop. Returns the LLM's final answer or a fallback message.
 
@@ -135,7 +164,7 @@ async def run_agentic_investigation(
     and the SSE path share one loop implementation.
     """
     async for event in run_agentic_investigation_stream(
-        prompt, system_prompt=system_prompt, tools=tools
+        prompt, system_prompt=system_prompt, tools=tools, kind=kind
     ):
         if event["type"] == "done":
             return event["content"]
@@ -146,7 +175,7 @@ async def run_incident_workflow(service: str) -> dict:
     """Collect signals for a service and return an incident id and summary."""
     prompt = f"Investigate service {service}."
     try:
-        summary = await run_agentic_investigation(prompt, system_prompt=INCIDENT_SYSTEM_PROMPT)
+        summary = await run_agentic_investigation(prompt, system_prompt=INCIDENT_SYSTEM_PROMPT, kind="incident")
     except Exception as exc:
         logger.warning("Agentic workflow failed for %s: %s", service, exc)
         summary = await _static_summary(service)
@@ -167,7 +196,7 @@ async def run_incident_workflow_stream(service: str):
     prompt = f"Investigate service {service}."
     try:
         async for event in run_agentic_investigation_stream(
-            prompt, system_prompt=INCIDENT_SYSTEM_PROMPT
+            prompt, system_prompt=INCIDENT_SYSTEM_PROMPT, kind="incident"
         ):
             if event["type"] == "done":
                 summary = event["content"]

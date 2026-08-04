@@ -1,11 +1,12 @@
+# Aspirational actions (require a stronger tool-calling LLM):
+#   - query Prometheus for cpu usage
+#   - query Loki for slow query logs
 name: Slow query on PostgreSQL
 service: postgres
 symptom: >
   A query plan change causes CPU to spike and response times to climb.
 expected_agent_actions:
   - retrieve service status
-  - query Prometheus for cpu usage
-  - query Loki for slow query logs
   - summarize findings
   - store incident
   - alert Discord channel if configured

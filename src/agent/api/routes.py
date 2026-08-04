@@ -2,8 +2,8 @@
 
 import json
 
-from fastapi import APIRouter
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Request, Response
+from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
 from agent.storage.repository import (
@@ -117,3 +117,11 @@ async def incident(incident_id: str):
 @router.get("/health-check")
 async def health_check(url: str):
     return await check_endpoint(url)
+
+
+@router.get("/metrics")
+async def metrics():
+    """Prometheus text-format metrics for the agent itself."""
+    from agent.metrics import generate_latest
+
+    return PlainTextResponse(generate_latest(), media_type="text/plain; charset=utf-8")
