@@ -21,7 +21,8 @@ Built during the Implementation Phase (Weeks 5–8) of the Marconi industrial tr
   loop. Service names match separator-agnostically (`agent_api` finds `marconi-agent-api`).
 - **Background monitoring** — a poll loop runs two complementary checks each cycle: HTTP
   endpoint liveness, and PromQL alert-rule evaluation. It posts status changes and down-alerts
-  to Discord and auto-opens a threaded incident on escalation.
+  to Discord and auto-opens a threaded incident on escalation. Container status is only reported
+  for containers explicitly selected via `!watch`/`!unwatch` or the web dashboard's watch toggle.
 - **Incident tracking** — SQLite-backed incidents with acknowledge / resolve lifecycle, an
   optional Discord thread per incident, and persistent Acknowledge/Resolve buttons on the
   incident thread message.
@@ -58,6 +59,9 @@ flag/option to skip the LLM summary and show the full output.
 | `!metrics <service> [raw]` / `/metrics ...` | Current metrics for a service from Prometheus |
 | `!health <url>` / `/health` | Reachability + latency of an HTTP endpoint |
 | `!watching` / `/watching` | List endpoints configured for background monitoring |
+| `!watch <container>` / `/watch` | Add a container to the watch list (status updates + down-alerts) |
+| `!unwatch <container>` / `/unwatch` | Remove a container from the watch list |
+| `!watchlist` / `/watchlist` | List the containers currently being watched |
 | `!ask <question>` / `/ask` | Free-form agentic investigation using read-only tools |
 | `!incident <service>` / `/incident` | Run the incident investigation workflow |
 | `!scenario <name>` / `/scenario` | Run a simulated scenario from `scenarios/<name>.yml` |
@@ -79,6 +83,9 @@ You can also **@mention** or DM the bot with a question; it answers through the 
 | `GET /services/{service}/metrics` | Service metrics |
 | `GET /health-check?url=...` | Reachability + latency of an endpoint |
 | `POST /incidents/{service}` | Run the incident workflow, returns `{incident_id, summary}` |
+| `GET /watch/containers` | Names of the containers currently being watched |
+| `PUT /watch/containers/{name}` | Add a container to the watch list |
+| `DELETE /watch/containers/{name}` | Remove a container from the watch list |
 
 If `API_KEY` is set, every request must send an `X-API-Key` header. If it is unset, the API
 is unauthenticated (bind to `127.0.0.1`, the default).
@@ -92,7 +99,7 @@ inactive when its channel id is unset). See [docs/discord-channels.md](docs/disc
 | --- | --- |
 | `#agent-commands` | Where operators run commands |
 | `#alerts` | Down-alerts and incident notifications (embeds, severity-colored) |
-| `#status-updates` | Every up/down transition detected by the monitor |
+| `#status-updates` | Every up/down transition and periodic status snapshot for **watched** containers |
 | `#incidents` | One thread per incident, with ack/resolve updates |
 | `#agent-logs` | WARNING+ bot/backend logs (optional) |
 | `#test-scenarios` | Safe channel to trigger `!scenario` runs |

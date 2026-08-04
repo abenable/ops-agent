@@ -14,7 +14,13 @@ from agent.bot.summarize import clean
 from agent.bot.utils import build_info_embed, format_container_list, format_prometheus, format_status, split_discord_text
 from agent.bot.views import LLMProviderView, ServicePanelView
 from agent.config.settings import settings
-from agent.storage.repository import get_incident, update_incident_status
+from agent.storage.repository import (
+    add_watched_container,
+    get_incident,
+    list_watched_containers,
+    remove_watched_container,
+    update_incident_status,
+)
 from agent.tools import docker
 from agent.tools.health import check_endpoint
 from agent.tools.logs import get_recent_logs
@@ -188,6 +194,41 @@ def setup_commands(bot: commands.Bot) -> None:
         lines = ["**Monitored endpoints**"] + [
             f"- {name}: <{url}>" for name, url in endpoints.items()
         ]
+        await ctx.send("\n".join(lines))
+
+    @bot.command(name="watch")
+    async def watch(ctx: commands.Context, container: str):
+        """Add a container to the watch list; status updates will include it."""
+        exact = await docker.resolve_container_name(container)
+        if exact is None:
+            await ctx.send(f"No container matching '{container}'.")
+            return
+        added = add_watched_container(exact)
+        if added:
+            await ctx.send(f"👁 Now watching `{exact}` — status updates will include it.")
+        else:
+            await ctx.send(f"`{exact}` is already being watched.")
+
+    @bot.command(name="unwatch")
+    async def unwatch(ctx: commands.Context, container: str):
+        """Remove a container from the watch list."""
+        removed = remove_watched_container(container)
+        if removed:
+            await ctx.send(f"Stopped watching `{container}`.")
+        else:
+            await ctx.send(f"`{container}` is not in the watch list.")
+
+    @bot.command(name="watchlist")
+    async def watchlist(ctx: commands.Context):
+        """List the containers currently being watched."""
+        names = list_watched_containers()
+        if not names:
+            await ctx.send(
+                "No containers are being watched. Use `!watch <container>` to add one "
+                "(or toggle it from the web dashboard)."
+            )
+            return
+        lines = ["**Watched containers**"] + [f"- `{name}`" for name in names]
         await ctx.send("\n".join(lines))
 
     @bot.command(name="ask")

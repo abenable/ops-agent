@@ -4,6 +4,7 @@ import discord
 
 from agent.bot.summarize import clean
 from agent.bot.utils import format_prometheus, format_status
+from agent.storage.repository import add_watched_container, is_watched, remove_watched_container
 from agent.tools import docker
 from agent.tools.metrics import get_service_metrics
 from agent.tools.services import get_service_status
@@ -15,6 +16,27 @@ class _ActionView(discord.ui.View):
     def __init__(self, container: str):
         super().__init__(timeout=120)
         self.container = container
+        self._sync_watch_button()
+
+    def _sync_watch_button(self) -> None:
+        watching = is_watched(self.container)
+        self.watch.label = "Unwatch" if watching else "Watch"
+        self.watch.style = discord.ButtonStyle.danger if watching else discord.ButtonStyle.success
+        self.watch.emoji = "🚫" if watching else "👁"
+
+    @discord.ui.button(label="Watch", style=discord.ButtonStyle.success, emoji="👁", row=1)
+    async def watch(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        if is_watched(self.container):
+            remove_watched_container(self.container)
+            note = f"Stopped watching `{self.container}`."
+        else:
+            add_watched_container(self.container)
+            note = f"👁 Now watching `{self.container}` — status updates will include it."
+        self._sync_watch_button()
+        await interaction.response.edit_message(
+            content=f"**{self.container}** — choose an action:\n{note}",
+            view=self,
+        )
 
     @discord.ui.button(label="Status", style=discord.ButtonStyle.primary, emoji="📋")
     async def status(self, interaction: discord.Interaction, _button: discord.ui.Button):

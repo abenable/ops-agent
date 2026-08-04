@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { api, type ContainerInfo, type Incident } from "../api";
 
@@ -12,12 +12,24 @@ const STATE_COLORS: Record<string, string> = {
 };
 
 export function Dashboard() {
+  const queryClient = useQueryClient();
   const containers = useQuery({ queryKey: ["containers"], queryFn: api.containers });
+  const watched = useQuery({ queryKey: ["watched"], queryFn: api.watched });
   const incidents = useQuery({
     queryKey: ["incidents"],
     queryFn: () => api.incidents(),
     refetchInterval: 10_000,
   });
+
+  const toggleWatch = useMutation({
+    mutationFn: async ({ name, watching }: { name: string; watching: boolean }) =>
+      watching ? api.unwatch(name) : api.watch(name),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["watched"] });
+    },
+  });
+
+  const watching = new Set(watched.data?.containers ?? []);
 
   return (
     <div className="section-rhythm">
@@ -36,7 +48,9 @@ export function Dashboard() {
       <section className="max-w-[1440px] mx-auto px-6 lg:px-10">
         <div className="flex items-baseline justify-between mb-6">
           <h2 className="text-[28px] font-medium leading-none">Containers</h2>
-          <span className="text-mute text-sm">{containers.data?.length ?? 0} total</span>
+          <span className="text-mute text-sm">
+            {containers.data?.length ?? 0} total · {watching.size} watched
+          </span>
         </div>
         {containers.isLoading && <p className="text-mute">Loading…</p>}
         {containers.isError && <p className="text-sale">Failed to load containers.</p>}
@@ -46,7 +60,14 @@ export function Dashboard() {
         {containers.data && containers.data.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
             {containers.data.map((c) => (
-              <ContainerCard key={c.Id} c={c} />
+              <ContainerCard
+                key={c.Id}
+                c={c}
+                watched={watching.has(c.Names?.[0]?.slice(1) ?? c.Id.slice(0, 12))}
+                onToggle={(name, isWatched) =>
+                  toggleWatch.mutate({ name, watching: isWatched })
+                }
+              />
             ))}
           </div>
         )}
@@ -75,7 +96,15 @@ export function Dashboard() {
   );
 }
 
-function ContainerCard({ c }: { c: ContainerInfo }) {
+function ContainerCard({
+  c,
+  watched,
+  onToggle,
+}: {
+  c: ContainerInfo;
+  watched: boolean;
+  onToggle: (name: string, isWatched: boolean) => void;
+}) {
   const name = c.Names?.[0]?.slice(1) ?? c.Id.slice(0, 12);
   const state = c.State ?? "unknown";
   return (
@@ -97,6 +126,17 @@ function ContainerCard({ c }: { c: ContainerInfo }) {
           <span className={STATE_COLORS[state] ?? "text-ink"}>{state}</span>
           <span className="text-mute"> · {c.Status}</span>
         </div>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onToggle(name, watched);
+          }}
+          className={"chip mt-1 " + (watched ? "chip-active" : "")}
+        >
+          {watched ? "👁 watching" : "＋ watch"}
+        </button>
       </div>
     </Link>
   );

@@ -19,7 +19,13 @@ from agent.bot.summarize import clean
 from agent.bot.utils import build_info_embed, format_container_list, format_prometheus, format_status, split_discord_text
 from agent.bot.views import LLMProviderView, ServicePanelView
 from agent.config.settings import settings
-from agent.storage.repository import get_incident, update_incident_status
+from agent.storage.repository import (
+    add_watched_container,
+    get_incident,
+    list_watched_containers,
+    remove_watched_container,
+    update_incident_status,
+)
 from agent.tools import docker
 from agent.tools.health import check_endpoint
 from agent.tools.logs import get_recent_logs
@@ -116,6 +122,48 @@ def setup_slash_commands(bot: commands.Bot) -> None:
         lines = ["**Monitored endpoints**"] + [
             f"- {name}: <{url}>" for name, url in endpoints.items()
         ]
+        await interaction.response.send_message("\n".join(lines), ephemeral=True)
+
+    @bot.tree.command(name="watch", description="Add a container to the watch list")
+    @app_commands.describe(container="Container name (partial or separator-variant ok)")
+    async def slash_watch(interaction: discord.Interaction, container: str):
+        await interaction.response.defer(ephemeral=True)
+        exact = await docker.resolve_container_name(container)
+        if exact is None:
+            await interaction.followup.send(f"No container matching '{container}'.", ephemeral=True)
+            return
+        added = add_watched_container(exact)
+        if added:
+            await interaction.followup.send(
+                f"👁 Now watching `{exact}` — status updates will include it.", ephemeral=True
+            )
+        else:
+            await interaction.followup.send(f"`{exact}` is already being watched.", ephemeral=True)
+
+    @bot.tree.command(name="unwatch", description="Remove a container from the watch list")
+    @app_commands.describe(container="Container name to stop watching")
+    async def slash_unwatch(interaction: discord.Interaction, container: str):
+        removed = remove_watched_container(container)
+        if removed:
+            await interaction.response.send_message(
+                f"Stopped watching `{container}`.", ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(
+                f"`{container}` is not in the watch list.", ephemeral=True
+            )
+
+    @bot.tree.command(name="watchlist", description="List the containers currently being watched")
+    async def slash_watchlist(interaction: discord.Interaction):
+        names = list_watched_containers()
+        if not names:
+            await interaction.response.send_message(
+                "No containers are being watched. Use `/watch <container>` to add one "
+                "(or toggle it from the web dashboard).",
+                ephemeral=True,
+            )
+            return
+        lines = ["**Watched containers**"] + [f"- `{name}`" for name in names]
         await interaction.response.send_message("\n".join(lines), ephemeral=True)
 
     @bot.tree.command(name="menu", description="Pick a container from a dropdown")

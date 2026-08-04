@@ -6,7 +6,13 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from agent.storage.repository import get_incident, list_incidents
+from agent.storage.repository import (
+    add_watched_container,
+    get_incident,
+    list_incidents,
+    list_watched_containers,
+    remove_watched_container,
+)
 from agent.tools import docker
 from agent.tools.health import check_endpoint
 from agent.tools.logs import get_recent_logs
@@ -30,6 +36,26 @@ async def health():
 async def containers():
     """All Docker containers (running + stopped), grouped client-side by state."""
     return await docker.list_containers(all_containers=True)
+
+
+@router.get("/watch/containers")
+async def watched_containers():
+    """Names of the containers the operator has selected to watch."""
+    return {"containers": list_watched_containers()}
+
+
+@router.put("/watch/containers/{name}")
+async def watch_container(name: str):
+    """Add a container to the watch list; status updates will include it."""
+    add_watched_container(name)
+    return {"containers": list_watched_containers()}
+
+
+@router.delete("/watch/containers/{name}")
+async def unwatch_container(name: str):
+    """Remove a container from the watch list."""
+    remove_watched_container(name)
+    return {"containers": list_watched_containers()}
 
 
 @router.get("/services/{service}/status")

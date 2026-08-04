@@ -33,14 +33,25 @@ export type Incident = {
   created_at: string;
 };
 
+export type WatchList = { containers: string[] };
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`);
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   return res.json() as Promise<T>;
 }
 
+async function send<T>(method: string, path: string): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, { method });
+  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+  return res.json() as Promise<T>;
+}
+
 export const api = {
   containers: () => get<ContainerInfo[]>("/containers"),
+  watched: () => get<WatchList>("/watch/containers"),
+  watch: (name: string) => send<WatchList>("PUT", `/watch/containers/${encodeURIComponent(name)}`),
+  unwatch: (name: string) => send<WatchList>("DELETE", `/watch/containers/${encodeURIComponent(name)}`),
   status: (s: string) => get<ServiceStatus>(`/services/${encodeURIComponent(s)}/status`),
   logs: (s: string, lines = 50) =>
     get<ServiceLogs>(`/services/${encodeURIComponent(s)}/logs?lines=${lines}`),

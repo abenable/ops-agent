@@ -31,7 +31,7 @@ cp .env.example .env
 | `DISCORD_GUILD_ID` | no | — | Server id (reserved for future scoping) |
 | `DISCORD_ALERT_CHANNEL_ID` | no | — | Channel for down-alerts / incident notifications |
 | `DISCORD_INCIDENT_CHANNEL_ID` | no | — | Channel where per-incident threads are opened |
-| `DISCORD_STATUS_CHANNEL_ID` | no | — | Channel for up/down status transitions |
+| `DISCORD_STATUS_CHANNEL_ID` | no | — | Channel for status transitions + periodic snapshots of watched containers |
 | `DISCORD_LOG_CHANNEL_ID` | no | — | Channel for WARNING+ bot/backend logs |
 | `DISCORD_TEST_SCENARIOS_CHANNEL_ID` | no | — | Restricts `!scenario` to this channel |
 | `MONITORED_ENDPOINTS` | no | *(empty)* | Comma-separated `name=url` pairs the monitor polls; empty disables the monitor |

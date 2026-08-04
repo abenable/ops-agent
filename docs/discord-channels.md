@@ -8,7 +8,7 @@ Set the ids in `.env` (see [setup.md](setup.md) for how to copy a channel id).
 | --- | --- | --- | --- |
 | `#agent-commands` | — | Operators run `!` commands; the bot replies inline | humans ↔ bot |
 | `#alerts` | `DISCORD_ALERT_CHANNEL_ID` | Severity-colored embeds: down-alerts and incident notifications | bot |
-| `#status-updates` | `DISCORD_STATUS_CHANNEL_ID` | Every up/down transition the monitor observes | bot |
+| `#status-updates` | `DISCORD_STATUS_CHANNEL_ID` | Every up/down transition + periodic snapshot for **watched** containers | bot |
 | `#incidents` | `DISCORD_INCIDENT_CHANNEL_ID` | One thread per incident, with ack/resolve updates | bot |
 | `#agent-logs` | `DISCORD_LOG_CHANNEL_ID` | WARNING+ bot/backend log records | bot |
 | `#test-scenarios` | `DISCORD_TEST_SCENARIOS_CHANNEL_ID` | `!scenario` runs (command is restricted to this channel when set) | humans ↔ bot |

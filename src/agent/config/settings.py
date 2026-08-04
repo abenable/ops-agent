@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     monitored_endpoints: str = ""
     monitor_interval_seconds: int = 60
     # Cadence for the periodic container-status snapshot posted to #status-updates.
-    status_snapshot_interval_seconds: int = 900
+    status_snapshot_interval_seconds: int = 3600
 
     # Self-hosted LLM (OpenAI-compatible)
     llm_base_url: str = "http://localhost:11434/v1"

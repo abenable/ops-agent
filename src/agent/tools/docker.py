@@ -68,6 +68,12 @@ async def find_container(service: str) -> dict | None:
     return None
 
 
+async def resolve_container_name(service: str) -> str | None:
+    """Resolve a partial/separator-variant name to the exact Docker container name."""
+    container = await find_container(service)
+    return container_name(container) if container else None
+
+
 async def container_logs(container_id: str, tail: int = 20) -> str:
     """Fetch the last `tail` lines of a container's combined stdout/stderr."""
     async with _docker_client() as client:

@@ -6,6 +6,7 @@ from discord.ext import tasks
 
 from agent.alerting import discord as discord_alert
 from agent.config.settings import settings
+from agent.storage.repository import list_watched_containers
 from agent.tools import docker
 from agent.tools.health import check_endpoint
 from agent.tools.sources.prometheus import query_prometheus
@@ -102,13 +103,15 @@ async def _evaluate_rules(bot) -> None:
 
 
 async def _poll_containers(bot) -> None:
-    """Discover running containers each cycle; alert when one stops running.
+    """Track watched containers each cycle; alert when one stops running.
 
-    New containers are picked up automatically — no config entry needed.
+    Only containers explicitly selected via the web UI or `!watch` are
+    tracked. New containers are ignored until the operator opts in.
     Also refreshes ``_container_state``, which the periodic status snapshot reads.
     """
     if not settings.docker_monitor:
         return
+    watched = set(list_watched_containers())
     try:
         containers = await docker.list_containers(all_containers=True)
     except Exception:
@@ -119,6 +122,8 @@ async def _poll_containers(bot) -> None:
     for c in containers:
         name = docker.container_name(c)
         if name_filter and name_filter not in name.lower():
+            continue
+        if name not in watched:
             continue
         state = c.get("State", "unknown")
         prev = _container_state.get(name)
@@ -131,6 +136,11 @@ async def _poll_containers(bot) -> None:
                 title="Container down",
             )
         _container_state[name] = state
+
+    # Forget containers the operator has stopped watching.
+    for name in list(_container_state):
+        if name not in watched:
+            del _container_state[name]
 
 
 async def _post_container_snapshot(bot) -> None:

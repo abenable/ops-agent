@@ -274,3 +274,70 @@ def test_container_snapshot_quiet_when_no_status_channel(monkeypatch):
     monkeypatch.setattr(monitor.discord_alert, "send_alert", send_alert)
     asyncio.run(monitor._post_container_snapshot(MagicMock()))
     send_alert.assert_not_awaited()
+
+
+def test_poll_containers_tracks_only_watched_containers(monkeypatch):
+    settings = Settings(
+        docker_monitor=True,
+        discord_alert_channel_id=2,
+        _env_file=None,
+    )
+    monkeypatch.setattr(monitor, "settings", settings)
+    monkeypatch.setattr(
+        monitor,
+        "list_watched_containers",
+        lambda: ["web", "db"],
+    )
+    monitor._container_state.clear()
+
+    containers = [
+        {"Names": ["/web"], "State": "running", "Status": "Up 1 hour"},
+        {"Names": ["/db"], "State": "running", "Status": "Up 1 hour"},
+        {"Names": ["/unwatched-sidecar"], "State": "exited", "Status": "Exited (1) 2 hours ago"},
+    ]
+    monkeypatch.setattr(monitor.docker, "list_containers", AsyncMock(return_value=containers))
+    send_alert = AsyncMock()
+    monkeypatch.setattr(monitor.discord_alert, "send_alert", send_alert)
+
+    asyncio.run(monitor._poll_containers(MagicMock()))
+    # Unwatched containers are ignored entirely.
+    assert "unwatched-sidecar" not in monitor._container_state
+    assert monitor._container_state == {"web": "running", "db": "running"}
+    send_alert.assert_not_awaited()
+
+    # A watched container stops -> alert fires once.
+    monkeypatch.setattr(
+        monitor.docker,
+        "list_containers",
+        AsyncMock(
+            return_value=[
+                {"Names": ["/web"], "State": "exited", "Status": "Exited (1) 1 min ago"},
+                {"Names": ["/db"], "State": "running", "Status": "Up 1 hour"},
+                {"Names": ["/unwatched-sidecar"], "State": "exited", "Status": "Exited (1) 2 hours ago"},
+            ]
+        ),
+    )
+    asyncio.run(monitor._poll_containers(MagicMock()))
+    send_alert.assert_awaited_once()
+    assert "web" in send_alert.await_args.args[1]
+
+
+def test_poll_containers_prunes_unwatched_state(monkeypatch):
+    settings = Settings(
+        docker_monitor=True,
+        discord_alert_channel_id=2,
+        _env_file=None,
+    )
+    monkeypatch.setattr(monitor, "settings", settings)
+    monkeypatch.setattr(monitor, "list_watched_containers", lambda: ["web"])
+    monitor._container_state.clear()
+    monitor._container_state.update({"web": "running", "old": "running"})
+
+    containers = [{"Names": ["/web"], "State": "running", "Status": "Up 1 hour"}]
+    monkeypatch.setattr(monitor.docker, "list_containers", AsyncMock(return_value=containers))
+    send_alert = AsyncMock()
+    monkeypatch.setattr(monitor.discord_alert, "send_alert", send_alert)
+
+    asyncio.run(monitor._poll_containers(MagicMock()))
+    assert "old" not in monitor._container_state
+    assert monitor._container_state == {"web": "running"}

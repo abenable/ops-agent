@@ -14,6 +14,9 @@ show the full output.
 | `!metrics <service> [raw]` / `/metrics ...` | Current metrics for a service from Prometheus |
 | `!health <url>` / `/health` | Reachability and latency of an HTTP endpoint |
 | `!watching` / `/watching` | List endpoints configured for background monitoring |
+| `!watch <container>` / `/watch` | Add a container to the watch list (status updates + down-alerts) |
+| `!unwatch <container>` / `/unwatch` | Remove a container from the watch list |
+| `!watchlist` / `/watchlist` | List the containers currently being watched |
 | `!ask <question>` / `/ask` | Free-form agentic investigation using read-only tools |
 | `!incident <service>` / `/incident` | Run the incident investigation workflow; posts summary + incident id, opens an incident thread, and alerts the alert channel |
 | `!scenario <name>` / `/scenario` | Run a simulated scenario from `scenarios/<name>.yml` (restricted to the test-scenarios channel if configured) |
@@ -49,6 +52,9 @@ deployment. Long replies are split across multiple messages. Prefix commands (`!
 | `GET /services/{service}/metrics` | Service metrics |
 | `GET /health-check?url=...` | Reachability + latency of an HTTP endpoint |
 | `POST /incidents/{service}` | Run the incident workflow → `{incident_id, summary}` |
+| `GET /watch/containers` | Names of the containers currently being watched |
+| `PUT /watch/containers/{name}` | Add a container to the watch list |
+| `DELETE /watch/containers/{name}` | Remove a container from the watch list |
 
 ### Authentication
 
@@ -90,6 +96,20 @@ not-firing → firing transition.
 
 Disabled when `PROMETHEUS_ALERT_RULES` is empty. See
 [workflows.md](workflows.md) for the full flow.
+
+### Container watch list
+
+By default the monitor ignores containers. To get status snapshots in `#status-updates` and
+down-alerts in `#alerts` for a container, add it to the **watch list** — from Discord with
+`!watch <container>` / `/watch <container>` (or the Watch button in `!menu`), or from the web
+dashboard's container cards (`＋ watch` toggle). Names match separator-agnostically
+(`agent_api` finds `marconi-agent-api`).
+
+- `!watchlist` / `/watchlist` lists the current selection.
+- `!unwatch <container>` / `/unwatch <container>` (or the toggle again) stops reporting it.
+- The periodic snapshot (`STATUS_SNAPSHOT_INTERVAL_SECONDS`) and container down-alerts only
+  cover watched containers; everything else stays silent.
+- The watch list is persisted in SQLite, so it survives bot restarts.
 
 ## Alerting from your own code
 
