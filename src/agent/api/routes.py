@@ -24,12 +24,7 @@ from agent.workflows.incident import (
     run_incident_workflow_stream,
 )
 
-router = APIRouter()
-
-
-@router.get("/health")
-async def health():
-    return {"status": "ok"}
+router = APIRouter(prefix="/api")
 
 
 @router.get("/containers")
@@ -122,11 +117,3 @@ async def incident(incident_id: str):
 @router.get("/health-check")
 async def health_check(url: str):
     return await check_endpoint(url)
-
-
-@router.get("/metrics")
-async def metrics():
-    """Prometheus text-format metrics for the agent itself."""
-    from agent.metrics import generate_latest
-
-    return PlainTextResponse(generate_latest(), media_type="text/plain; charset=utf-8")

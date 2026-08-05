@@ -1,19 +1,14 @@
 """Log retrieval tools."""
 
 from agent.bot.utils import format_loki
+from agent.tools import docker
 from agent.tools.normalize import regex_parts
 from agent.tools.sources import loki
 
 
 async def get_recent_logs(service: str, lines: int = 10) -> str:
-    """Return recent logs for a service, fetching from Loki if reachable.
-
-    Tries the ``service``, ``container``, and ``name`` labels in turn with a
-    separator-agnostic regex, so a user spelling of ``agent_api`` still matches
-    the real stream label ``marconi-agent-api``.
-
-    Uses a range query over the last 24 hours so idle services whose last log
-    entry is hours old still show results.
+    """Return recent logs for a service. Tries Loki first, falls back to
+    Docker container logs when Loki has no matching stream.
     """
     frag = regex_parts(service)
     selectors = [
@@ -26,7 +21,22 @@ async def get_recent_logs(service: str, lines: int = 10) -> str:
         try:
             result = await loki.query_loki_range(sel, minutes=1440, limit=lines)
         except Exception:
-            return f"// ponytail: stub log output for {service} ({lines} lines)"
+            continue
         if result.get("data", {}).get("result"):
             return format_loki(result, limit=lines)
-    return format_loki(result, limit=lines)
+
+    # Fall back to Docker container logs when Loki has no data for this service.
+    try:
+        container = await docker.find_container(service)
+        if container is not None:
+            from agent.tools.docker import container_logs
+
+            cid = container.get("Id") or docker.container_name(container)
+            raw = await container_logs(cid, tail=lines)
+            cleaned = "".join(c for c in raw if c.isprintable() or c in "\n\t")
+            if cleaned.strip():
+                return cleaned[:4000]
+    except Exception:
+        pass
+
+    return "No logs."

@@ -6,6 +6,7 @@ from pathlib import Path
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from agent.api.routes import router
@@ -48,6 +49,19 @@ async def _track_requests(request: Request, call_next):
 
 
 app.include_router(router)
+
+# Root-level endpoints (not under /api/) for Docker healthcheck and scraping.
+@app.get("/health")
+async def _health():
+    return {"status": "ok"}
+
+
+@app.get("/metrics")
+async def _metrics():
+    from agent.metrics import generate_latest
+
+    return PlainTextResponse(generate_latest(), media_type="text/plain; charset=utf-8")
+
 
 # Serve the built web UI (web/dist) at / when it exists, so the agent can run as
 # one process in production. In dev, the Vite server on :5173 proxies /api here.

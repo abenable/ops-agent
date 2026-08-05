@@ -10,11 +10,20 @@ def _escape_label_value(value: str) -> str:
 
 
 async def get_service_metrics(service: str) -> dict:
-    """Return metrics for a service, fetching from Prometheus if reachable."""
+    """Return metrics for a service from Prometheus, with a fallback message."""
     try:
         frag = _escape_label_value(regex_parts(service))
-        return await prometheus.query_prometheus(
+        result = await prometheus.query_prometheus(
             f'avg(process_cpu_seconds_total{{service=~".*{frag}.*"}})'
         )
+        if not result.get("data", {}).get("result"):
+            return {
+                "service": service,
+                "message": f"No Prometheus metrics found for '{service}' — it may not expose a /metrics endpoint.",
+            }
+        return result
     except Exception:
-        return {"service": service, "cpu_percent": 0.0, "memory_percent": 0.0}
+        return {
+            "service": service,
+            "message": "Prometheus unreachable.",
+        }
