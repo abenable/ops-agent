@@ -125,19 +125,6 @@ services:
       - prometheus
       - loki
 
-  web:
-    container_name: marconi-agent-web
-    build: ./web
-    # Same network as the api (host networking). nginx proxies /api/ to the api
-    # over loopback — internal only, so no API key or CORS is needed. The api
-    # stays keyless by default (API_KEY empty); the browser talks same-origin
-    # to :8088 and never reaches the api port directly.
-    network_mode: host
-    restart: unless-stopped
-    depends_on:
-      api:
-        condition: service_healthy
-
   prometheus:
     container_name: marconi-agent-prometheus
     image: prom/prometheus:latest
