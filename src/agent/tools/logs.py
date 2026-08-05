@@ -11,6 +11,9 @@ async def get_recent_logs(service: str, lines: int = 10) -> str:
     Tries the ``service``, ``container``, and ``name`` labels in turn with a
     separator-agnostic regex, so a user spelling of ``agent_api`` still matches
     the real stream label ``marconi-agent-api``.
+
+    Uses a range query over the last 24 hours so idle services whose last log
+    entry is hours old still show results.
     """
     frag = regex_parts(service)
     selectors = [
@@ -21,7 +24,7 @@ async def get_recent_logs(service: str, lines: int = 10) -> str:
     result: dict = {}
     for sel in selectors:
         try:
-            result = await loki.query_loki(sel, limit=lines)
+            result = await loki.query_loki_range(sel, minutes=1440, limit=lines)
         except Exception:
             return f"// ponytail: stub log output for {service} ({lines} lines)"
         if result.get("data", {}).get("result"):
