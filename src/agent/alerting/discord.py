@@ -13,6 +13,21 @@ logger = logging.getLogger(__name__)
 _COLORS = {"info": 0x3498DB, "warning": 0xE67E22, "critical": 0xE74C3C}
 
 
+def _chunk(text: str, size: int = 1900) -> list[str]:
+    """Split *text* into strings no longer than *size*, at newline boundaries."""
+    parts: list[str] = []
+    while text:
+        if len(text) <= size:
+            parts.append(text)
+            break
+        cut = text.rfind("\n", 0, size)
+        if cut <= 0:
+            cut = size
+        parts.append(text[:cut])
+        text = text[cut:].lstrip("\n")
+    return parts
+
+
 async def send_alert(
     channel_id: int,
     message: str,
@@ -27,7 +42,7 @@ async def send_alert(
         raise RuntimeError(f"Channel {channel_id} not found")
     embed = discord.Embed(
         title=title,
-        description=message,
+        description=message[:4096],
         color=_COLORS.get(severity, _COLORS["info"]),
     )
     await channel.send(embed=embed)
@@ -159,7 +174,14 @@ async def open_incident_thread(
         name=f"{service} — {incident_id}",
         type=discord.ChannelType.public_thread,
     )
-    await thread.send(summary)
+    # Discord caps message content at 2000 chars — split oversized summaries
+    # at newline boundaries so the thread is readable.
+    for i, chunk in enumerate(_chunk(summary)):
+        if i == 0:
+            await thread.send(chunk)
+        else:
+            # Use embeds for continuation chunks to avoid noise in the thread.
+            await thread.send(embed=discord.Embed(description=chunk[:4096]))
     await thread.send("Actions:", view=IncidentActionView(incident_id))
     update_incident_thread_id(incident_id, thread.id)
     return thread.id
