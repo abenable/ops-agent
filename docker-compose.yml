@@ -128,15 +128,14 @@ services:
   web:
     container_name: marconi-agent-web
     build: ./web
-    # Same network as the api (host networking). nginx proxies /api/ to the api
-    # over loopback — internal only, so no API key or CORS is needed. The api
-    # stays keyless by default (API_KEY empty); the browser talks same-origin
-    # to :8088 and never reaches the api port directly.
-    network_mode: host
-    restart: unless-stopped
-    depends_on:
-      api:
-        condition: service_healthy
+    # Build-only step: publishes the static bundle into the Caddy web root
+    # (./web-dist on the host). Caddy runs as a host systemd service and
+    # serves these files plus reverse-proxies /api/* to the api on
+    # 127.0.0.1:8123 — see web/Caddyfile.
+    volumes:
+      - ./web-dist:/srv
+    command: ["cp", "-r", "/app/dist/.", "/srv/"]
+    restart: "no"
 
   prometheus:
     container_name: marconi-agent-prometheus
