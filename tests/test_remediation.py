@@ -137,6 +137,54 @@ def test_execute_approval_refuses_already_resolved(tmp_database, monkeypatch):
     restart_mock.assert_not_awaited()
 
 
+def test_concurrent_execute_approval_runs_restart_only_once(tmp_database, monkeypatch):
+    """Two concurrent approvals for the same row must not double-execute the
+    restart. The safety property is: restart runs at most once and exactly one
+    caller wins; the loser refuses without touching Docker."""
+    _patched_find_container(monkeypatch)
+    restart_mock = AsyncMock(return_value={"container_id": "abc123", "restarted": True})
+    monkeypatch.setattr(remediation.docker, "restart_container", restart_mock)
+
+    incident_id = store_incident("web", "diagnosis")
+    propose_restart = _make_propose_restart(incident_id)
+    out = asyncio.run(propose_restart.ainvoke({"container": "agent_api"}))
+    approval_id = out.split("approval_id=")[1].strip()
+
+    async def both():
+        import asyncio as _a
+        return await _a.gather(execute_approval(approval_id), execute_approval(approval_id))
+
+    a, b = asyncio.run(both())
+
+    winners = [r for r in (a, b) if r["ok"]]
+    losers = [r for r in (a, b) if not r["ok"]]
+    assert len(winners) == 1
+    assert len(losers) == 1
+    assert losers[0]["error"].startswith("already ")
+    restart_mock.assert_awaited_once()
+    assert get_pending_approval(approval_id)["status"] == "approved"
+
+
+def test_claim_pending_approval_is_atomic(tmp_database):
+    """claim_pending_approval transitions pending -> running exactly once; a
+    second claim on the same row loses without side effects."""
+    from agent.storage.repository import claim_pending_approval
+
+    incident_id = store_incident("web", "diagnosis")
+    approval_id = store_pending_approval(
+        incident_id=incident_id, container_name="api", action="restart_container"
+    )
+
+    assert claim_pending_approval(approval_id) is True
+    assert get_pending_approval(approval_id)["status"] == "running"
+    # Second claim loses: the row is no longer pending.
+    assert claim_pending_approval(approval_id) is False
+    assert get_pending_approval(approval_id)["status"] == "running"
+
+    # A claim on a never-pending id also loses.
+    assert claim_pending_approval("no-such-id") is False
+
+
 def test_execute_approval_refuses_missing(tmp_database):
     result = asyncio.run(execute_approval("no-such-id"))
     assert result == {"ok": False, "error": "approval not found"}

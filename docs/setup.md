@@ -76,6 +76,26 @@ OpenAI-style tool calling. If the configured model does not, the workflow degrad
 static status+metrics+logs summary. You can verify support by checking whether
 `llm_supports_tool_calls()` returns `true` at runtime.
 
+## Conversation memory
+
+The bot keeps a short per-channel conversation history in the same SQLite database
+(`conversation_history` table, created lazily on first use). The `!ask` / `/ask` commands
+and the @mention/DM conversational path all route through `ask_with_memory`, which:
+
+1. fetches the prior turns for the channel as structured `{"role", "content"}` records,
+2. stores the user's raw question,
+3. runs the agentic loop with those prior turns prepended as real `HumanMessage` /
+   `AIMessage` turns (the current question is the final `HumanMessage`, never duplicated
+   into the history block), and
+4. stores the assistant's answer.
+
+History is **per channel**, not per user, so operators in a shared commands channel share
+one conversational context. Each channel retains the 20 most recent turns; the 10 most
+recent are folded into the prompt. Tool-call results are not stored — history carries
+conversational context only. These limits are module constants in `agent.bot.history`
+(`_STORED_LIMIT` and `_HISTORY_LIMIT`); they are not environment-configurable because they
+exist only to keep the prompt bounded.
+
 ## Run
 
 ```bash

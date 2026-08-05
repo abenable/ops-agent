@@ -107,6 +107,9 @@ async def execute_approval(approval_id: str) -> dict:
 
     Refuses to run if the kill switch is off, the approval is missing, already
     resolved, or older than the configured TTL (in which case it is marked expired).
+    The pending -> running claim is an atomic conditional UPDATE, so a concurrent
+    approval (button + ``!approve``, or a double-click) cannot double-execute: the
+    first caller wins the row, the second sees it taken and refuses before restart.
     """
     if not settings.remediation_enabled:
         return {"ok": False, "error": "remediation disabled (kill switch)"}
@@ -119,6 +122,12 @@ async def execute_approval(approval_id: str) -> dict:
     if _is_expired(approval):
         repository.set_approval_status(approval_id, "expired")
         return {"ok": False, "error": "approval expired"}
+
+    if not repository.claim_pending_approval(approval_id):
+        # Lost the race to another caller; the row is now 'running' (or taken).
+        current = repository.get_pending_approval(approval_id)
+        state = current["status"] if current else "taken"
+        return {"ok": False, "error": f"already {state}"}
 
     container_id = approval.get("container_id") or approval["container_name"]
     try:

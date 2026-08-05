@@ -4,8 +4,32 @@ from agent.bot.utils import (
     format_loki,
     format_prometheus,
     format_status,
+    scenario_path,
     split_discord_text,
 )
+
+
+def test_scenario_path_rejects_traversal():
+    """scenario_path must refuse names that escape the scenarios/ directory,
+    so !scenario ../../etc/passwd cannot read arbitrary files."""
+    assert scenario_path("../../etc/passwd") is None
+    assert scenario_path("foo/bar") is None
+    assert scenario_path("foo\\bar") is None
+    assert scenario_path("") is None
+
+
+def test_scenario_path_accepts_real_scenario(tmp_path, monkeypatch):
+    """A real scenario name resolves to its .yml file under scenarios/."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "scenarios").mkdir()
+    (tmp_path / "scenarios" / "disk_full.yml").write_text("name: x\n")
+    resolved = scenario_path("disk_full")
+    assert resolved is not None
+    assert resolved.name == "disk_full.yml"
+
+
+def test_scenario_path_returns_none_for_missing():
+    assert scenario_path("no-such-scenario") is None
 
 
 def test_split_discord_text_chunks_at_limit_and_prefers_newlines():

@@ -4,8 +4,10 @@ import sqlite3
 import textwrap
 
 from agent.storage import repository as _repo
+from agent.workflows.incident import run_ask_workflow
 
 _HISTORY_LIMIT = 10  # keep prompt size small
+_STORED_LIMIT = 20  # rows retained per channel; _HISTORY_LIMIT are sent in prompts
 
 
 def _connect():
@@ -48,7 +50,8 @@ def add_message(channel_id: int, role: str, content: str) -> None:
             """,
             (channel_id, role, trimmed),
         )
-        # Cap at 20 stored rows per channel, which is more than we include in prompts.
+        # Cap at _STORED_LIMIT rows per channel; only the most recent _HISTORY_LIMIT
+        # are folded into prompts, the rest are kept for context if the limit is raised.
         conn.execute(
             """
             DELETE FROM conversation_history
@@ -56,10 +59,10 @@ def add_message(channel_id: int, role: str, content: str) -> None:
               AND id NOT IN (
                   SELECT id FROM conversation_history
                   WHERE channel_id = ?
-                  ORDER BY created_at DESC LIMIT 20
+                  ORDER BY created_at DESC LIMIT ?
               )
             """,
-            (channel_id, channel_id),
+            (channel_id, channel_id, _STORED_LIMIT),
         )
 
 
@@ -89,3 +92,25 @@ def format_history(channel_id: int, limit: int = _HISTORY_LIMIT) -> str:
         who = "User" if turn["role"] == "user" else "Oracle"
         lines.append(f"{who}: {turn['content']}")
     return "\n".join(lines)
+
+
+async def ask_with_memory(
+    channel_id: int, question: str, *, prompt: str | None = None
+) -> str:
+    """Run one conversational turn through ``run_ask_workflow`` with per-channel memory.
+
+    Fetches prior turns, stores the user's raw ``question``, runs the agentic
+    workflow with that history appended as real message turns, then stores the
+    assistant's answer. ``prompt`` overrides what is sent to the workflow
+    (defaults to ``question``); the raw ``question`` is what gets retained for
+    future context, so constructed prompts (env context, persona preamble) do not
+    pollute the history.
+
+    Fetching history before storing the current turn avoids duplicating the
+    question into both the history block and the final ``HumanMessage``.
+    """
+    prior = get_history(channel_id)
+    add_message(channel_id, "user", question)
+    answer = await run_ask_workflow(prompt or question, history=prior)
+    add_message(channel_id, "assistant", answer)
+    return answer

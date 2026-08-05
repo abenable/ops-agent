@@ -1,10 +1,15 @@
 """Prometheus / VictoriaMetrics query helper."""
 
+import re
 from datetime import datetime, timedelta, timezone
 
 import httpx2 as httpx
 
 from agent.config.settings import settings
+
+# Prometheus label names: [a-zA-Z_][a-zA-Z0-9_]*. We allow the common charset and
+# reject anything that could manipulate the URL path (/, ?, #, .., whitespace).
+_LABEL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def _prometheus_headers() -> dict[str, str]:
@@ -40,6 +45,8 @@ async def list_metric_names(match: str = "") -> list[str]:
 
 async def get_label_values(label: str) -> list[str]:
     """List values for a given Prometheus label."""
+    if not _LABEL_RE.match(label):
+        return []
     url = f"{settings.prometheus_url}/api/v1/label/{label}/values"
     headers = _prometheus_headers()
     async with httpx.AsyncClient(timeout=10.0, headers=headers) as client:

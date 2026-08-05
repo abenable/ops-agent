@@ -165,14 +165,17 @@ async def run_agentic_investigation(
     system_prompt: str = SYSTEM_PROMPT,
     tools: list = TOOLS,
     kind: str = "ask",
+    history: list[dict] | None = None,
 ) -> str:
     """Bounded tool-calling loop. Returns the LLM's final answer or a fallback message.
 
     Thin collector over :func:`run_agentic_investigation_stream` so the Discord path
-    and the SSE path share one loop implementation.
+    and the SSE path share one loop implementation. ``history`` carries prior
+    turns (``{"role": "user"|"assistant", "content": ...}``) which the stream
+    loop renders as real ``HumanMessage``/``AIMessage`` turns before the prompt.
     """
     async for event in run_agentic_investigation_stream(
-        prompt, system_prompt=system_prompt, tools=tools, kind=kind
+        prompt, system_prompt=system_prompt, tools=tools, kind=kind, history=history
     ):
         if event["type"] == "done":
             return event["content"]
@@ -231,10 +234,14 @@ async def run_ask_workflow_stream(question: str, history: list[dict] | None = No
         yield {"type": "error", "message": str(exc)}
 
 
-async def run_ask_workflow(question: str) -> str:
-    """Free-form agentic answer; does not persist an incident."""
+async def run_ask_workflow(question: str, history: list[dict] | None = None) -> str:
+    """Free-form agentic answer; does not persist an incident.
+
+    ``history`` carries prior conversational turns so the agent remembers the
+    ongoing conversation; the current question is appended as the final turn.
+    """
     try:
-        return await run_agentic_investigation(question)
+        return await run_agentic_investigation(question, history=history)
     except Exception as exc:
         logger.warning("Ask workflow failed: %s", exc)
         return f"Ask workflow failed ({exc}); the LLM may be offline or unsupported."

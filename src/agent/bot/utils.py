@@ -1,9 +1,27 @@
 """Discord-specific helpers."""
 
+from pathlib import Path
+
 import discord
 
 from agent.config.settings import settings
 from agent.tools import docker
+
+
+def scenario_path(name: str) -> Path | None:
+    """Resolve a scenario name to its file under ``scenarios/``, rejecting path
+    traversal. Returns the path if it is a safe name with a ``.yml`` file, else
+    None. Guards ``!scenario`` / ``/scenario`` against ``../../etc/passwd``-style
+    reads of arbitrary files outside the scenarios directory."""
+    if not name or "/" in name or "\\" in name:
+        return None
+    base = Path("scenarios").resolve()
+    path = base / f"{name}.yml"
+    try:
+        path.relative_to(base)
+    except ValueError:
+        return None
+    return path if path.exists() else None
 
 
 def build_info_embed(bot_user: discord.ClientUser | None) -> discord.Embed:

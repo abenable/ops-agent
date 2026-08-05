@@ -1,17 +1,16 @@
 """Discord chat commands for the agent."""
 
-from pathlib import Path
-
 import discord
 import yaml
 from discord.ext import commands
 
 from agent.alerting import discord as discord_alert
 from agent.alerting.discord import RemediationApprovalView
+from agent.bot.history import ask_with_memory
 from agent.bot.monitor import get_monitored_endpoints
 from agent.bot.menu import MenuView
 from agent.bot.summarize import clean
-from agent.bot.utils import build_info_embed, format_container_list, format_prometheus, format_status, split_discord_text
+from agent.bot.utils import build_info_embed, format_container_list, format_prometheus, format_status, scenario_path, split_discord_text
 from agent.bot.views import LLMProviderView, ServicePanelView
 from agent.config.settings import settings
 from agent.storage.repository import (
@@ -26,7 +25,7 @@ from agent.tools.health import check_endpoint
 from agent.tools.logs import get_recent_logs
 from agent.tools.metrics import get_service_metrics
 from agent.tools.services import get_service_status
-from agent.workflows.incident import run_ask_workflow, run_incident_workflow
+from agent.workflows.incident import run_incident_workflow
 from agent.workflows.remediation import execute_approval, reject_approval, run_remediation_workflow
 
 
@@ -164,8 +163,8 @@ def setup_commands(bot: commands.Bot) -> None:
             await ctx.send("This command only works in the test-scenarios channel.")
             return
 
-        path = Path("scenarios") / f"{name}.yml"
-        if not path.exists():
+        path = scenario_path(name)
+        if path is None:
             await ctx.send(f"No scenario named '{name}'.")
             return
 
@@ -234,7 +233,7 @@ def setup_commands(bot: commands.Bot) -> None:
     @bot.command(name="ask")
     async def ask(ctx: commands.Context, *, question: str):
         try:
-            answer = await run_ask_workflow(question)
+            answer = await ask_with_memory(ctx.channel.id, question)
         except Exception as exc:  # LLM may be offline
             answer = f"Ask failed: {exc}"
         for chunk in split_discord_text(answer):

@@ -40,6 +40,11 @@
 - `agent.bot.menu` — interactive container picker and action buttons.
 - `agent.bot.views` — service panel view and persistent incident action buttons.
 - `agent.bot.summarize` — LLM reply summarisation of verbose output, with a `raw` opt-out.
+- `agent.bot.history` — per-channel conversational memory. The `conversation_history` SQLite
+  table stores the last 20 turns per channel; the 10 most recent are passed as structured
+  `HumanMessage`/`AIMessage` turns into the agentic loop so the agent resolves vague references
+  (`logs`, `the web container`, `that one`) from prior context. `ask_with_memory` wraps the
+  fetch-record-run-store cycle for the @mention, `!ask`, and `/ask` paths.
 - `agent.bot.monitor` — background poll loop; each cycle checks HTTP endpoint liveness
   (`MONITORED_ENDPOINTS`), evaluates PromQL alert rules (`PROMETHEUS_ALERT_RULES`), and
   inspects watched Docker containers when `DOCKER_MONITOR` is enabled — driving alerts,
@@ -108,8 +113,29 @@
 | `container_name` | TEXT | target container |
 | `container_id` | TEXT | Docker container id (optional) |
 | `action` | TEXT | proposed action (e.g. `restart`) |
-| `status` | TEXT | `pending` / `approved` / `rejected` / `expired` |
+| `status` | TEXT | `pending` / `running` / `approved` / `rejected` / `expired` / `failed` |
 | `created_at` | TEXT | ISO timestamp |
+
+A pending approval transitions to `running` via an atomic conditional UPDATE
+(`claim_pending_approval`) when a human approves, so a concurrent approval
+(button + `!approve`, or a double-click) cannot double-execute the restart —
+only the first caller wins the row. On restart success it becomes `approved`;
+on restart error, `failed`.
+
+`conversation_history` table (created lazily by `agent.bot.history`):
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | INTEGER PK | autoincrement |
+| `channel_id` | INTEGER | Discord channel id (history is per-channel) |
+| `role` | TEXT | `user` or `assistant` |
+| `content` | TEXT | trimmed to 4,000 chars; tool outputs are not stored |
+| `created_at` | TEXT | ISO timestamp, indexed with `channel_id` |
+
+The table is scoped **per channel**, not per user, so operators in a shared commands channel
+see one shared conversational context. Each channel keeps the 20 most recent turns; the 10
+most recent are passed as structured message turns into the agentic loop. Tool-call results
+are not stored — history carries conversational context only.
 
 The database path is resolved relative to the repository root, so every entry point (bot, API,
 CLI, tests) shares one database.

@@ -1,5 +1,7 @@
 """Tests for the per-channel conversation history helper."""
 
+import asyncio
+
 import agent.bot.history as history
 
 
@@ -53,3 +55,53 @@ def test_long_message_is_shortened(tmp_database):
     history.add_message(4, "user", big)
     turns = history.get_history(4)
     assert len(turns[0]["content"]) < 4100
+
+
+def test_ask_with_memory_passes_prior_turns_and_stores_the_new_ones(tmp_database, monkeypatch):
+    """ask_with_memory feeds prior turns as structured history, not the current
+    question, and stores the raw question + answer (not the constructed prompt)."""
+    captured = {}
+
+    async def fake_run(question, history=None):
+        captured["question"] = question
+        captured["history"] = history
+        return "the answer"
+
+    monkeypatch.setattr(history, "run_ask_workflow", fake_run)
+
+    history.add_message(1, "user", "prior question")
+    history.add_message(1, "assistant", "prior answer")
+
+    out = asyncio.run(
+        history.ask_with_memory(1, "why is web slow?", prompt="ctx Question: why is web slow?")
+    )
+
+    assert out == "the answer"
+    # Only the two prior turns reach the workflow; the current question is NOT
+    # duplicated into history (it is sent separately as the prompt).
+    assert captured["history"] == [
+        {"role": "user", "content": "prior question"},
+        {"role": "assistant", "content": "prior answer"},
+    ]
+    assert captured["question"] == "ctx Question: why is web slow?"
+
+    # The raw question and the answer are stored; the constructed prompt is not.
+    turns = history.get_history(1)
+    assert turns[-2] == {"role": "user", "content": "why is web slow?"}
+    assert turns[-1] == {"role": "assistant", "content": "the answer"}
+
+
+def test_ask_with_memory_defaults_prompt_to_question(tmp_database, monkeypatch):
+    captured = {}
+
+    async def fake_run(question, history=None):
+        captured["question"] = question
+        captured["history"] = history
+        return "ok"
+
+    monkeypatch.setattr(history, "run_ask_workflow", fake_run)
+
+    out = asyncio.run(history.ask_with_memory(9, "what is up?"))
+    assert out == "ok"
+    assert captured["question"] == "what is up?"
+    assert captured["history"] == []

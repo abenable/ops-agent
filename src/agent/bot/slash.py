@@ -4,8 +4,6 @@ These are registered through discord.py's CommandTree so the bot exposes both
 prefix commands (`!`) and slash commands (`/`) for the same operations.
 """
 
-from pathlib import Path
-
 import yaml
 import discord
 from discord import app_commands
@@ -13,10 +11,11 @@ from discord.ext import commands
 
 from agent.alerting import discord as discord_alert
 from agent.alerting.discord import RemediationApprovalView
+from agent.bot.history import ask_with_memory
 from agent.bot.menu import MenuView
 from agent.bot.monitor import get_monitored_endpoints
 from agent.bot.summarize import clean
-from agent.bot.utils import build_info_embed, format_container_list, format_prometheus, format_status, split_discord_text
+from agent.bot.utils import build_info_embed, format_container_list, format_prometheus, format_status, scenario_path, split_discord_text
 from agent.bot.views import LLMProviderView, ServicePanelView
 from agent.config.settings import settings
 from agent.storage.repository import (
@@ -31,7 +30,7 @@ from agent.tools.health import check_endpoint
 from agent.tools.logs import get_recent_logs
 from agent.tools.metrics import get_service_metrics
 from agent.tools.services import get_service_status
-from agent.workflows.incident import run_ask_workflow, run_incident_workflow
+from agent.workflows.incident import run_incident_workflow
 from agent.workflows.remediation import execute_approval, reject_approval, run_remediation_workflow
 
 
@@ -241,8 +240,8 @@ def setup_slash_commands(bot: commands.Bot) -> None:
             )
             return
 
-        path = Path("scenarios") / f"{name}.yml"
-        if not path.exists():
+        path = scenario_path(name)
+        if path is None:
             await interaction.response.send_message(
                 f"No scenario named '{name}'.", ephemeral=True
             )
@@ -295,7 +294,7 @@ def setup_slash_commands(bot: commands.Bot) -> None:
     async def slash_ask(interaction: discord.Interaction, question: str):
         await interaction.response.defer(ephemeral=True)
         try:
-            answer = await run_ask_workflow(question)
+            answer = await ask_with_memory(interaction.channel_id, question)
         except Exception as exc:
             answer = f"Ask failed: {exc}"
         for chunk in split_discord_text(answer):

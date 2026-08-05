@@ -13,8 +13,9 @@ Built during the Implementation Phase (Weeks 5–8) of the Marconi industrial tr
 - **Discord interface** — prefix (`!`) and slash (`/`) commands for status, logs, metrics,
   health, incident investigation, free-form questions, scenario simulation, and incident
   acknowledge/resolve; interactive container menu and service panel with action buttons;
-  conversational replies when you @mention or DM the bot. Verbose output is summarised by the
-  LLM for clean replies, with a `raw` opt-out.
+  conversational replies when you @mention or DM the bot, with per-channel
+  conversation memory (`!ask` / `/ask` and @mention share one per-channel context).
+  Verbose output is summarised by the LLM for clean replies, with a `raw` opt-out.
 - **Agentic investigation** — the LLM discovers real service names, writes its own PromQL/LogQL
   through read-only Prometheus and Loki tools (metric/label discovery, instant + range queries),
   and inspects containers with read-only Docker status/logs tools, in a bounded tool-calling
@@ -124,7 +125,7 @@ inactive when its channel id is unset). See [docs/discord-channels.md](docs/disc
 .
 ├── main.py                  # Backwards-compatible launcher
 ├── src/agent/
-│   ├── bot/                 # Discord client, prefix + slash commands, menus, summarize, monitor
+│   ├── bot/                 # Discord client, prefix + slash commands, menus, summarize, monitor, per-channel history
 │   ├── api/                 # FastAPI server and routes
 │   ├── llm/                 # Self-hosted LLM client
 │   ├── tools/               # Controlled tools (status/logs/metrics/health/docker/ssh)

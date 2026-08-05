@@ -435,10 +435,12 @@ shared tool and workflow layer:
     syncs the slash-command tree, and probes the LLM for tool-calling support.
     The \pkg{on\_message} handler dispatches \pkg{!} messages to the command
     processor and routes direct messages and @mentions through the agentic
-    investigation loop (\pkg{run\_ask\_workflow}), injecting an environment
-    context string (monitored endpoints, alert rules, channel identifiers,
-    source URLs, and the available tool list) so answers are grounded in the
-    actual deployment.
+    investigation loop (\pkg{run\_ask\_workflow} via \pkg{ask\_with\_memory}),
+    injecting an environment context string (monitored endpoints, alert rules,
+    channel identifiers, source URLs, and the available tool list) so answers
+    are grounded in the actual deployment, and feeding the channel's prior
+    conversational turns as structured history so the agent can resolve vague
+    references from earlier context.
   \item \textbf{Reply handling.} Long replies are split by
     \pkg{agent.bot.utils.split\_discord\_text} to respect Discord's
     2000-character limit, splitting at the nearest newline boundary. Slow slash
@@ -643,7 +645,11 @@ and vocabulary of the environment before querying:
   \item \pkg{list\_metric\_names(match)} discovers available Prometheus metric
     names, returning at most 250.
   \item \pkg{get\_label\_values(label)} discovers values for a Prometheus
-    label such as \pkg{service}, \pkg{job}, or \pkg{instance}.
+    label such as \pkg{service}, \pkg{job}, or \pkg{instance}. The label is
+    LLM-controlled and interpolated into the source URL path, so it is
+    validated against \texttt{\^{}[A-Za-z\_][A-Za-z0-9\_]*\$} before the request;
+    anything that could manipulate the path or query string is refused rather
+    than forwarded to Prometheus.
 \end{itemize}
 
 \emph{Docker inspection} tools (read-only) cover containers Prometheus and
@@ -747,10 +753,17 @@ core loop.
 \begin{lstlisting}[caption={Bounded tool-calling loop (module \pkg{agent.workflows.incident}).},label={lst:loop}]
 async def run_agentic_investigation(
     prompt: str, *, system_prompt=SYSTEM_PROMPT, tools=TOOLS,
+    kind="ask", history: list[dict] | None = None,
 ) -> str:
     by_name = {t.name: t for t in tools}
     llm = get_llm().bind_tools(tools)
-    messages = [SystemMessage(system_prompt), HumanMessage(prompt)]
+    messages = [SystemMessage(system_prompt)]
+    for turn in (history or [])[-10:]:
+        if turn["role"] == "user":
+            messages.append(HumanMessage(turn["content"]))
+        elif turn["role"] == "assistant":
+            messages.append(AIMessage(turn["content"]))
+    messages.append(HumanMessage(prompt))
     ai = None
     for step in range(settings.max_tool_steps):
         ai = await llm.ainvoke(messages)
@@ -780,7 +793,11 @@ The probe deliberately uses a concrete task rather than a vague ``pick a tool''
 prompt, which under-reported capable local models that answer such prompts in
 prose while still calling tools on real investigations. The \pkg{@mention}
 handler and \pkg{/ask} both route through \pkg{run\_ask\_workflow}, which is the
-same loop without the persistence step.
+same loop without the persistence step. A small wrapper, \pkg{ask\_with\_memory}
+in \pkg{agent.bot.history}, feeds the channel's prior turns as \pkg{history} so
+the agent can resolve vague references (``the web container'', ``that one'')
+from earlier in the conversation; the current question is appended as the final
+\pkg{HumanMessage} and is never duplicated into the history block.
 
 \subsection{Remediation agent and human-in-the-loop approval}
 \label{sec:remediation}
@@ -803,12 +820,16 @@ distinct parts:
     executes a restart is \pkg{execute\_approval}, invoked on human approval. It
     refuses a missing or already-resolved approval, marks an approval
     \pkg{expired} when it is older than \pkg{REMEDIATION\_APPROVAL\_TTL\_SECONDS}
-    (default 300), and marks it \pkg{failed} if the restart raises.
-    \pkg{reject\_approval} marks a pending approval \pkg{rejected}. A global kill
-    switch, \pkg{REMEDIATION\_ENABLED}, makes \pkg{run\_remediation\_workflow}
-    return early without consulting the LLM and makes \pkg{execute\_approval}
-    refuse to run, so the entire remediation path can be disabled with one
-    setting.
+    (default 300), and marks it \pkg{failed} if the restart raises. The pending
+    $\to$ \pkg{running} transition is an atomic conditional UPDATE
+    (\pkg{claim\_pending\_approval}) so that a concurrent approval---a button
+    click racing \pkg{!approve}, or a double-click---cannot double-execute the
+    restart: only the first caller wins the row, the second sees it taken and
+    refuses before touching Docker. \pkg{reject\_approval} marks a pending
+    approval \pkg{rejected}. A global kill switch, \pkg{REMEDIATION\_ENABLED},
+    makes \pkg{run\_remediation\_workflow} return early without consulting the
+    LLM and makes \pkg{execute\_approval} refuse to run, so the entire
+    remediation path can be disabled with one setting.
   \item \textbf{Human surface.} The persistent \pkg{IncidentActionView} carries
     a Remediate button that runs \pkg{run\_remediation\_workflow} against the
     incident's stored diagnosis and posts one \pkg{RemediationApprovalView}
@@ -835,7 +856,7 @@ The \pkg{pending\_approvals} table schema is:
 \pkg{container\_name} & TEXT & Resolved container name \\
 \pkg{container\_id} & TEXT & Docker container id at proposal time \\
 \pkg{action} & TEXT & e.g.\ \pkg{restart\_container} \\
-\pkg{status} & TEXT & \pkg{pending}, \pkg{approved}, \pkg{rejected}, \pkg{expired}, or \pkg{failed} \\
+\pkg{status} & TEXT & \pkg{pending}, \pkg{running}, \pkg{approved}, \pkg{rejected}, \pkg{expired}, or \pkg{failed} \\
 \pkg{created\_at} & TEXT & ISO timestamp, used for TTL \\
 \bottomrule
 \end{tabularx}
@@ -918,7 +939,9 @@ command.
 Incidents are persisted in a SQLite~\cite{sqlite} database managed by
 \pkg{agent.storage.repository}, which holds three tables: \pkg{incidents}
 (this section), \pkg{watched\_containers}, and \pkg{pending\_approvals} (Section~\ref{sec:remediation}).
-The \pkg{incidents} schema is:
+A fourth table, \pkg{conversation\_history}, is created lazily by
+\pkg{agent.bot.history} in the same database file to hold per-channel
+conversational memory (Section~\ref{sec:memory}). The \pkg{incidents} schema is:
 
 \begin{table}[h]
 \centering
@@ -956,6 +979,46 @@ for background monitoring:
 \bottomrule
 \end{tabularx}
 \end{table}
+
+\subsection{Conversation memory}
+\label{sec:memory}
+
+The \pkg{conversation\_history} table, created lazily by
+\pkg{agent.bot.history} in the shared database, lets the agent remember the
+current topic within a channel. Its schema is:
+
+\begin{table}[h]
+\centering
+\caption{SQLite \pkg{conversation\_history} table schema (module \pkg{agent.bot.history}).}
+\label{tab:schema-history}
+\small
+\begin{tabularx}{\textwidth}{llX}
+\toprule
+\textbf{Column} & \textbf{Type} & \textbf{Notes} \\
+\midrule
+\pkg{id} & INTEGER PK & Autoincrement \\
+\pkg{channel\_id} & INTEGER & Discord channel id (history is per-channel) \\
+\pkg{role} & TEXT & \pkg{user} or \pkg{assistant} \\
+\pkg{content} & TEXT & Trimmed to 4{,}000 characters; tool outputs are not stored \\
+\pkg{created\_at} & TEXT & ISO timestamp, indexed with \pkg{channel\_id} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+History is scoped \emph{per channel}, not per user, so operators in a shared
+commands channel share one conversational context. Each channel retains the
+twenty most recent turns; the ten most recent are passed as structured
+\pkg{HumanMessage}/\pkg{AIMessage} turns into the agentic loop via the
+\pkg{history} parameter of \pkg{run\_agentic\_investigation} (Listing~\ref{lst:loop}),
+so the model sees prior turns as real message turns rather than a flattened
+string. Tool-call results are not stored---history carries conversational
+context only, not log shipping. The wrapper \pkg{ask\_with\_memory} fetches
+prior turns, stores the user's raw question, runs the workflow with that
+history, and stores the answer; the current question is appended as the final
+\pkg{HumanMessage} and is never duplicated into the history block. The same
+wrapper serves the \pkg{@mention}/DM path, \pkg{!ask}, and \pkg{/ask}, so all
+three conversational entry points share one memory representation and one
+per-channel context.
 
 The repository resolves the database path relative to the repository root, so
 every entry point (bot, API, CLI, tests) shares one database. The store has a
@@ -1406,7 +1469,12 @@ is unset, so a deployment can adopt channels incrementally.
 
 Scenarios are YAML files in the \pkg{scenarios} directory. The
 \pkg{/scenario <name>} command loads \pkg{scenarios/<name>.yml} and runs the
-incident workflow for the named service. Seven scenarios are included, covering
+incident workflow for the named service. The name is resolved through
+\pkg{agent.bot.utils.scenario\_path}, which rejects path separators and
+\pkg{..} segments and confirms the resolved path stays under the
+\pkg{scenarios/} directory, so a name like \pkg{../../etc/passwd} cannot read
+an arbitrary file outside it; the file is parsed with \pkg{yaml.safe\_load}.
+Seven scenarios are included, covering
 container crashes, high CPU, endpoint timeouts, disk exhaustion, memory leaks,
 TLS certificate expiry, and slow database queries. The sample below shows the
 format; aspirational actions (requiring a stronger multi-step LLM) are kept

@@ -213,6 +213,25 @@ def set_approval_status(approval_id: str, status: str) -> dict | None:
     return get_pending_approval(approval_id)
 
 
+def claim_pending_approval(approval_id: str) -> bool:
+    """Atomically claim a pending approval for execution (pending -> running).
+
+    Returns True iff this caller won the claim. A conditional UPDATE is the
+    check-and-set: under concurrent approvals only one connection transitions
+    the row, so the loser sees ``rowcount == 0`` and refuses before touching
+    Docker. Guards against double-execution when a button click and ``!approve``
+    (or a double-click) race.
+    """
+    init_db()
+    with _connect() as conn:
+        cursor = conn.execute(
+            "UPDATE pending_approvals SET status = 'running' "
+            "WHERE id = ? AND status = 'pending'",
+            (approval_id,),
+        )
+        return cursor.rowcount == 1
+
+
 def list_pending_approvals(
     incident_id: str | None = None, status: str | None = None, limit: int = 50
 ) -> list[dict]:

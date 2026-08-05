@@ -11,10 +11,10 @@ from agent.bot.commands import setup_commands
 from agent.bot.monitor import get_alert_rules, get_monitored_endpoints, start_monitor
 from agent.bot.utils import split_discord_text
 from agent.config.settings import settings
-from agent.bot.history import add_message, format_history
+from agent.bot.history import ask_with_memory
 from agent.bot.slash import setup_slash_commands
 from agent.llm.client import _resolve
-from agent.workflows.incident import llm_supports_tool_calls, run_ask_workflow
+from agent.workflows.incident import llm_supports_tool_calls
 
 logger = logging.getLogger(__name__)
 
@@ -196,9 +196,6 @@ def run_bot():
                 return
 
             channel_id = message.channel.id
-            add_message(channel_id, "user", cleaned)
-
-            history = format_history(channel_id)
             context = _environment_context()
             prompt = (
                 "You are Oracle, a friendly infrastructure-operations assistant. "
@@ -210,13 +207,10 @@ def run_bot():
                 "Use the conversation history to resolve vague references such as 'logs', 'status', 'the web container', or 'that one' by reusing the exact container or service name mentioned earlier. "
                 "Only ask for clarification when no matching name exists in the history.\n\n"
                 f"{context}\n\n"
+                f"Question: {cleaned}"
             )
-            if history:
-                prompt += f"Conversation history:\n{history}\n\n"
-            prompt += f"Question: {cleaned}"
             try:
-                answer = await run_ask_workflow(prompt)
-                add_message(channel_id, "assistant", answer)
+                answer = await ask_with_memory(channel_id, cleaned, prompt=prompt)
             except Exception as exc:  # pragma: no cover
                 logger.warning("Mention response failed: %s", exc)
                 answer = "My agent is unreachable right now — try a `!` command instead."

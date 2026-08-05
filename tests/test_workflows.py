@@ -197,7 +197,7 @@ def test_ask_workflow_uses_general_prompt(tmp_database, patched_tool_sources, mo
     captured = {}
     original = run_agentic_investigation
 
-    async def spy(prompt, *, system_prompt=incident_module.SYSTEM_PROMPT, tools=None):
+    async def spy(prompt, *, system_prompt=incident_module.SYSTEM_PROMPT, tools=None, history=None, kind="ask"):
         captured["system_prompt"] = system_prompt
         return "ask answer"
 
