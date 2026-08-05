@@ -41,18 +41,26 @@
 - `agent.bot.views` — service panel view and persistent incident action buttons.
 - `agent.bot.summarize` — LLM reply summarisation of verbose output, with a `raw` opt-out.
 - `agent.bot.monitor` — background poll loop; each cycle checks HTTP endpoint liveness
-  (`MONITORED_ENDPOINTS`) and evaluates PromQL alert rules (`PROMETHEUS_ALERT_RULES`), driving
-  alerts, status updates, and escalation to threaded incidents.
+  (`MONITORED_ENDPOINTS`), evaluates PromQL alert rules (`PROMETHEUS_ALERT_RULES`), and
+  inspects watched Docker containers when `DOCKER_MONITOR` is enabled — driving alerts,
+  status updates, and escalation to threaded incidents.
 - `agent.api` — FastAPI app and routes, with an optional `X-API-Key` dependency.
-- `agent.workflows` — incident investigation (agentic tool-calling loop) and report generation.
+  Exposes `GET /metrics` (Prometheus self-metrics) and SSE streaming for the agentic loop.
+- `agent.workflows` — incident investigation (agentic tool-calling loop), remediation
+  (proposes restarts behind human approval), and report generation.
 - `agent.tools` — controlled tools: status, logs, metrics, HTTP health, Docker, SSH.
 - `agent.tools.normalize` — separator-agnostic service-name matching.
 - `agent.tools.sources` — Prometheus (metrics) and Loki (logs) query helpers.
 - `agent.tools.query_tools` — read-only LangChain tools the LLM calls during an investigation:
   service discovery (`list_services`), Prometheus/Loki metric/label discovery and queries, and
   read-only Docker container status/logs.
+- `agent.eval` — scenario evaluation harness; loads YAML scenarios, checks agent tool calls
+  against expected actions, and reports pass/fail scores.
+- `agent.metrics` — Prometheus counters and histograms for the agent itself (tool calls,
+  investigations, LLM calls, monitor cycles, alerts, API requests).
 - `agent.llm` — OpenAI-compatible client wrapper (`ChatOpenAI`) for a self-hosted model.
-- `agent.storage` — SQLite repository and the `Incident` dataclass.
+- `agent.storage` — SQLite repository for incidents, watched containers, and remediation
+  pending-approvals.
 - `agent.alerting` — Discord alert embeds and incident-thread creation.
 - `agent.config` — Pydantic settings loaded from environment and `.env`.
 
@@ -73,7 +81,7 @@
 
 ## Storage schema
 
-Single `incidents` table:
+`incidents` table:
 
 | Column | Type | Notes |
 | --- | --- | --- |
@@ -82,6 +90,25 @@ Single `incidents` table:
 | `summary` | TEXT | LLM (or fallback) summary |
 | `status` | TEXT | `open` / `acknowledged` / `resolved` |
 | `thread_id` | INTEGER | Discord thread id, if one was opened |
+| `created_at` | TEXT | ISO timestamp |
+
+`watched_containers` table:
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `name` | TEXT PK | exact container name |
+| `created_at` | TEXT | ISO timestamp |
+
+`pending_approvals` table:
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | TEXT PK | 8-char short uuid |
+| `incident_id` | TEXT FK | parent incident |
+| `container_name` | TEXT | target container |
+| `container_id` | TEXT | Docker container id (optional) |
+| `action` | TEXT | proposed action (e.g. `restart`) |
+| `status` | TEXT | `pending` / `approved` / `rejected` / `expired` |
 | `created_at` | TEXT | ISO timestamp |
 
 The database path is resolved relative to the repository root, so every entry point (bot, API,

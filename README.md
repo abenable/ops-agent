@@ -33,6 +33,14 @@ Built during the Implementation Phase (Weeks 5–8) of the Marconi industrial tr
 - **Self-hosted LLM** — points at any OpenAI-compatible endpoint (Ollama, vLLM,
   llama.cpp server, a hosted gateway). Tool-calling support required for agentic investigation
   (static fallback otherwise).
+- **Web dashboard** — React SPA with container cards, watch toggles, incident browser, and
+  an Ask interface that streams the agentic investigation in real time.
+- **Agent self-metrics** — Prometheus counters and histograms exposed at `GET /metrics`
+  for tool calls, investigations, LLM calls, monitor cycles, and API requests.
+- **Scenario evaluation** — a YAML-based eval harness (`python -m agent eval`) runs the
+  agent through simulated failures and checks its tool calls against expected actions.
+- **k6 load tests** — `loadtests/agent.js` stress-tests the API health, status, containers,
+  incidents, and metrics endpoints with configurable VU ramp-up.
 
 ## Quick start
 
@@ -78,11 +86,17 @@ You can also **@mention** or DM the bot with a question; it answers through the 
 | Method & path | Description |
 | --- | --- |
 | `GET /health` | Liveness probe |
+| `GET /metrics` | Prometheus text-format metrics for the agent itself |
+| `GET /containers` | All Docker containers (running + stopped) |
 | `GET /services/{service}/status` | Service status |
 | `GET /services/{service}/logs?lines=N` | Recent logs |
 | `GET /services/{service}/metrics` | Service metrics |
 | `GET /health-check?url=...` | Reachability + latency of an endpoint |
 | `POST /incidents/{service}` | Run the incident workflow, returns `{incident_id, summary}` |
+| `POST /incidents/{service}/stream` | SSE stream of the incident investigation |
+| `POST /ask/stream` | SSE stream of a free-form agentic question |
+| `GET /incidents` | List stored incidents (optional `?status=`) |
+| `GET /incidents/{id}` | Fetch an incident by id |
 | `GET /watch/containers` | Names of the containers currently being watched |
 | `PUT /watch/containers/{name}` | Add a container to the watch list |
 | `DELETE /watch/containers/{name}` | Remove a container from the watch list |
@@ -117,12 +131,16 @@ inactive when its channel id is unset). See [docs/discord-channels.md](docs/disc
 │   │   ├── sources/         # Prometheus and Loki query helpers
 │   │   ├── normalize.py     # Separator-agnostic service-name matching
 │   │   └── query_tools.py   # Read-only LangChain tools the LLM calls during investigations
-│   ├── workflows/           # Incident investigation (agentic loop) and reporting
-│   ├── storage/             # SQLite incident repository
+│   ├── workflows/           # Incident investigation (agentic loop), remediation, and reporting
+│   ├── storage/             # SQLite repository for incidents, watch list, and approvals
 │   ├── alerting/            # Discord alert + incident-thread helpers
+│   ├── eval/                # Scenario evaluation harness
+│   ├── metrics.py            # Prometheus self-metrics for the agent
 │   └── config/              # Environment-based settings
 ├── tests/                   # Test suite
 ├── scenarios/               # Simulated infrastructure issues (yml)
+├── loadtests/               # k6 load-test scripts
+├── web/                     # React SPA dashboard (bun build → nginx)
 ├── docs/                    # setup, usage, architecture, workflows, tools, channels
 └── data/                    # SQLite database
 ```
@@ -132,6 +150,12 @@ inactive when its channel id is unset). See [docs/discord-channels.md](docs/disc
 ```bash
 uv run pytest             # unit + smoke tests (no external services needed)
 uv run pytest -m integration   # live checks (needs a real LLM / Discord token)
+
+# Scenario evaluation (requires a running LLM)
+python -m agent eval                # run all scenarios against the live LLM
+
+# k6 load test (requires k6 installed separately)
+k6 run loadtests/agent.js
 ```
 
 ## Documentation
@@ -162,7 +186,8 @@ This is an MVP built for a controlled environment. Known limitations:
   after a redeploy. The `!ack`/`!resolve` (and `/ack`/`/resolve`) commands remain as fallbacks.
 - **No RBAC** — any member who can see `#agent-commands` can run any command; SSH/Docker
   mutation tools are library-only and not exposed to chat or the LLM.
-- **Single-node SQLite** — fine for one bot instance; not built for concurrent writers.
+- **Single-node SQLite** — stores incidents, watched containers, and pending remediation
+  approvals; fine for one bot instance but not built for concurrent writers.
 
 ## Future improvements
 
@@ -173,3 +198,5 @@ This is an MVP built for a controlled environment. Known limitations:
 - Persist monitor/alert state so de-duplication survives restarts.
 - Role-based command permissions and an allowlist for SSH/Docker actions.
 - Human-in-the-loop approval before any Docker/SSH write action is executed.
+- Prometheus recording rules and Grafana dashboards for the agent's own operational metrics.
+- Expand the eval harness with additional scenarios and integrate k6 load tests into CI.

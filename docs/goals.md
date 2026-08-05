@@ -34,6 +34,9 @@ Implemented:
 - Incident investigation workflow (bounded tool-calling loop)
 - Incident lifecycle: open, acknowledge, resolve, with persistent action buttons
 - Docker and SSH mutation tools as library-only utilities for future workflows
+- Human-in-the-loop remediation: the remediation agent proposes restart actions, which
+  sit in a pending-approval queue until a human approves or rejects them via Discord
+  buttons or `!approve`/`!reject` commands.
 
 By design, actions that can mutate infrastructure (Docker restart, SSH systemctl restart) are **not** exposed to the agent loop, chat, or HTTP. The current tools are read-only; future write actions will require explicit human approval.
 
@@ -43,7 +46,7 @@ By design, actions that can mutate infrastructure (Docker restart, SSH systemctl
 
 The bot handles:
 
-- Prefix commands (`!`) and slash commands (`/`) sharing one tool layer, for `status`, `containers`, `logs`, `metrics`, `health`, `ask`, `incident`, `scenario`, `ack`, `resolve`, `watching`, `menu`, `panel`, `info`
+- Prefix commands (`!`) and slash commands (`/`) sharing one tool layer, for `status`, `containers`, `logs`, `metrics`, `health`, `ask`, `incident`, `scenario`, `ack`, `resolve`, `watching`, `watch`, `unwatch`, `watchlist`, `menu`, `panel`, `info`
 - Reply summarisation of verbose output through the LLM, with a `raw` opt-out
 - Conversational replies via @mention or DM using the same agentic loop
 - Interactive container menu and service panel with action buttons
@@ -66,8 +69,12 @@ The bot handles:
 | Discord bot interface | Delivered | Prefix + slash commands, @mention/DM replies, interactive menus, reply summarisation, channel-specific outputs |
 | Agent backend and tooling | Delivered | Read-only Prometheus/Loki/Docker tools + service discovery; read/write Docker/SSH tools library-only |
 | Self-hosted LLM integration | Delivered | OpenAI-compatible endpoint; tool-calling models preferred, graceful fallback otherwise |
-| Monitoring and logging integration | Delivered | Prometheus + Loki sources with fallback stubs and optional bearer auth |
+| Monitoring and logging integration | Delivered | Prometheus + Loki sources with fallback stubs; Prometheus self-metrics endpoint for the agent itself |
 | Technical documentation | Delivered | Lives in `docs/` and this README |
+| Scenario evaluation harness | Delivered | `agent/eval` + `tests/test_eval.py` + `python -m agent eval` CLI |
+| k6 load-test scripts | Delivered | `loadtests/agent.js` covers health, status, containers, incidents, and metrics |
+| Web dashboard | Delivered | React SPA at `web/`, served via nginx on port 8088 |
+| n8n monitoring integration | Delivered | n8n in compose stack, scraped by Prometheus, logs shipped via promtail to Loki |
 | Final demonstration | Pending | Scheduled end-of-internship demo using real or scenario-driven cases |
 
 ## What Changed Since the Original Charter
@@ -78,6 +85,8 @@ The bot handles:
 - **Slash commands.** A slash (`/`) command surface with autocomplete now runs alongside the prefix (`!`) commands, sharing one tool layer.
 - **Background monitoring inside the bot.** HTTP and Docker endpoint polling plus PromQL alert evaluation run in the Discord bot process rather than requiring a separate monitor.
 - **SQLite over a larger database.** Single-node SQLite is sufficient for the MVP and reduces deployment surface.
+- **Eval harness and agent self-metrics.** Programmatic scenario evaluation and Prometheus self-instrumentation were added for ongoing quality assessment.
+- **Container watch list.** Only explicitly-selected containers are monitored, preventing alert noise from the full Docker inventory.
 
 ## Remaining Work and Future Extensions
 
@@ -86,3 +95,5 @@ The bot handles:
 - Implement human-in-the-loop approval before any Docker/SSH write action is executed.
 - Persist monitor/alert state so de-duplication survives restarts.
 - Introduce RBAC for command channels and sensitive tools.
+- Expand the eval harness scenario coverage and integrate k6 load tests into CI.
+- Build Prometheus recording rules and Grafana dashboards for agent self-metrics.

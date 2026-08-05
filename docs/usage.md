@@ -52,6 +52,12 @@ deployment. Long replies are split across multiple messages. Prefix commands (`!
 | `GET /services/{service}/metrics` | Service metrics |
 | `GET /health-check?url=...` | Reachability + latency of an HTTP endpoint |
 | `POST /incidents/{service}` | Run the incident workflow → `{incident_id, summary}` |
+| `POST /incidents/{service}/stream` | SSE stream of the incident investigation |
+| `POST /ask/stream` | SSE stream of a free-form agentic question |
+| `GET /incidents` | List stored incidents (optional `?status=`) |
+| `GET /incidents/{id}` | Fetch an incident by id |
+| `GET /containers` | List all Docker containers |
+| `GET /metrics` | Prometheus text-format metrics for the agent itself |
 | `GET /watch/containers` | Names of the containers currently being watched |
 | `PUT /watch/containers/{name}` | Add a container to the watch list |
 | `DELETE /watch/containers/{name}` | Remove a container from the watch list |
@@ -70,7 +76,7 @@ Interactive docs are available at `/docs` (Swagger UI) when the API is running.
 
 ## Background monitoring
 
-The bot runs two complementary checks on every `MONITOR_INTERVAL_SECONDS` cycle.
+The bot runs **three** complementary checks on every `MONITOR_INTERVAL_SECONDS` cycle:
 
 ### HTTP endpoint liveness
 
@@ -119,3 +125,21 @@ await send_alert(channel_id, "message", bot, severity="warning", title="Heads up
 ```
 
 `severity` is one of `info` / `warning` / `critical` and controls the embed color.
+
+## Self-metrics
+
+The agent exposes its own operational metrics at `GET /metrics` in Prometheus
+text format. Key metric families include:
+
+| Metric | Type | Description |
+| --- | --- | --- |
+| `agent_tool_calls_total` | Counter | Tool invocations by name and status |
+| `agent_llm_calls_total` | Counter | LLM calls (agentic / fallback) |
+| `agent_investigations_total` | Counter | Completed investigations (incident / ask) |
+| `agent_investigation_duration_seconds` | Histogram | End-to-end investigation latency |
+| `agent_monitor_cycles_total` | Counter | Background monitor poll cycles |
+| `agent_alerts_total` | Counter | Alerts emitted by severity and kind |
+| `agent_api_requests_total` | Counter | HTTP requests served by method, path, and status |
+
+The `prometheus_client` Python package is required; metrics degrade to a no-op
+when it is not installed.

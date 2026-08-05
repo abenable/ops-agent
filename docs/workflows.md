@@ -54,6 +54,55 @@ For each `PROMETHEUS_ALERT_RULES` entry:
 Prometheus/Loki queries use a 10s timeout and optional bearer tokens from
 `PROMETHEUS_TOKEN` / `LOKI_TOKEN`.
 
+### Container watch-list monitoring
+
+When `DOCKER_MONITOR=true`, the poll loop also inspects every container in the
+**watch list** each cycle:
+
+1. `docker.list_containers(all_containers=True)` returns the full container list.
+2. Only containers whose name appears in the watch list are considered.
+3. A container that transitions from `running` to a non-running state triggers a
+   critical alert to `#alerts`.
+4. The periodic status snapshot (`STATUS_SNAPSHOT_INTERVAL_SECONDS`) writes the
+   state of all watched containers to `#status-updates`.
+
+Containers not in the watch list are silently ignored. The watch list is persisted
+in SQLite and can be edited via `!watch`/`!unwatch`/`!watchlist`, the web
+dashboard toggle, or the Watch button in `!menu`.
+
+## Remediation workflow
+
+When the agentic investigation produces a diagnosis, a human can invoke the
+remediation workflow with `!remediate <incident_id>`:
+
+1. `run_remediation_workflow(incident_id, service, diagnosis)` runs its own
+   tool-calling loop that can propose restarts.
+2. Each proposal is persisted as a `pending_approvals` row and displayed in
+   Discord with Approve/Reject buttons (`RemediationApprovalView`).
+3. `!approve <approval_id>` / `!reject <approval_id>` (or the buttons) resolve
+   the proposal.
+4. Stale proposals auto-expire after `REMEDIATION_APPROVAL_TTL_SECONDS` (default
+   300 s).  Set `REMEDIATION_ENABLED=false` as a global kill switch.
+
+## Streaming
+
+The agentic investigation loop has SSE streaming variants for the web dashboard:
+
+| Endpoint | Description |
+| --- | --- |
+| `POST /ask/stream` | SSE stream with `{question}`; yields `tool_call`, `tool_result`, `done` |
+| `POST /incidents/{service}/stream` | Same stream; the `done` event also carries the `incident_id` |
+
+The Ask page in the web dashboard renders these events in real time, showing
+each tool call and its result as the investigation progresses.
+
+## Evaluation
+
+`python -m agent eval` runs all scenarios in `scenarios/*.yml` through the live
+LLM and reports pass/fail scores.  For automated verification without a live LLM,
+`pytest tests/test_eval.py` runs each scenario with mocked LLM responses against
+the action-to-tool mapping defined in the `agent.eval` module.
+
 ## Incident lifecycle
 
 1. Incident created (`open`) by the incident workflow.

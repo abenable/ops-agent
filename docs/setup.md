@@ -36,12 +36,19 @@ cp .env.example .env
 | `DISCORD_TEST_SCENARIOS_CHANNEL_ID` | no | — | Restricts `!scenario` to this channel |
 | `MONITORED_ENDPOINTS` | no | *(empty)* | Comma-separated `name=url` pairs the monitor polls; empty disables the monitor |
 | `MONITOR_INTERVAL_SECONDS` | no | `60` | Poll interval (floored at 10s) |
+| `STATUS_SNAPSHOT_INTERVAL_SECONDS` | no | `3600` | Cadence for periodic watched-container status snapshot in `#status-updates` |
 | `LLM_BASE_URL` | yes (LLM) | `http://localhost:11434/v1` | OpenAI-compatible base URL |
 | `LLM_MODEL` | yes (LLM) | `mistral` | Model name |
 | `LLM_API_KEY` | no | — | API key for the LLM endpoint (many local servers ignore it) |
+| `LLM_PROVIDER` | no | *(empty)* | Local provider selector: `""` (default), `"ollama"`, or `"vllm"` |
+| `OLLAMA_BASE_URL` | no | `http://localhost:11434/v1` | Ollama server base URL |
+| `OLLAMA_MODEL` | no | `gemma4:e4b` | Ollama model name |
+| `VLLM_BASE_URL` | no | `http://localhost:8001/v1` | vLLM server base URL |
+| `VLLM_MODEL` | no | `Qwen/Qwen2.5-1.5B-Instruct` | vLLM model name |
 | `API_KEY` | no | *(empty)* | If set, the HTTP API requires an `X-API-Key` header |
 | `API_HOST` | no | `127.0.0.1` | API bind address (use `0.0.0.0` only behind a trusted network) |
 | `API_PORT` | no | `8000` | API port |
+| `WEB_ORIGIN` | no | `http://localhost:5173` | CORS-allowed origin for the web UI |
 | `PROMETHEUS_URL` | no | `http://localhost:9090` | Prometheus base URL for metrics |
 | `PROMETHEUS_TOKEN` | no | *(empty)* | Optional bearer token for Prometheus |
 | `PROMETHEUS_ALERT_RULES` | no | *(empty)* | Comma-separated `name=<PromQL>` pairs; rule fires when query returns ≥1 series |
@@ -50,6 +57,10 @@ cp .env.example .env
 | `MAX_TOOL_STEPS` | no | `6` | Bound on the number of LLM tool calls per investigation |
 | `LOKI_MAX_LIMIT` | no | `500` | Maximum Loki log lines a single tool call may request |
 | `RANGE_MAX_HOURS` | no | `6` | Maximum Prometheus range-query window in hours |
+| `DOCKER_MONITOR` | no | `false` | Poll containers each cycle and alert when a watched one stops |
+| `DOCKER_NAME_FILTER` | no | *(empty)* | Only watch containers whose name contains this substring |
+| `REMEDIATION_ENABLED` | no | `true` | Global kill switch for the remediation agent |
+| `REMEDIATION_APPROVAL_TTL_SECONDS` | no | `300` | Seconds a proposed action stays approvable before auto-expiry |
 | `DATABASE_URL` | no | `sqlite:///data/agent.db` | SQLite database location |
 
 Example `MONITORED_ENDPOINTS`: `api=http://localhost:8000/health, site=https://example.com`
@@ -79,11 +90,26 @@ python -m agent incident --service web
 
 # Print a stored incident report
 python -m agent report --incident-id <id>
+
+# Run automated scenario evaluation against the live LLM
+python -m agent eval                      # all scenarios
+python -m agent eval --scenario scenarios/container_down.yml
 ```
 
 ## Docker
 
-Build and run both services (API + bot):
+The compose stack (`docker-compose.yml`) runs seven services together:
+
+| Service | Description |
+| --- | --- |
+| `api` | FastAPI + SQLite on `:8123` (host network) |
+| `bot` | Discord bot with background monitor (host network) |
+| `web` | React SPA dashboard served via nginx on `:8088` |
+| `prometheus` | Metrics store on `:9090` |
+| `loki` + `promtail` | Log aggregation on `:3100` (promtail ships n8n + container logs) |
+| `n8n` | Workflow automation with built-in `/metrics` on `:5678` |
+
+Build and run all services:
 
 ```bash
 docker compose up --build
@@ -96,6 +122,6 @@ docker compose up --build api
 docker compose up --build bot
 ```
 
-The `api` service exposes port `8000` and has a healthcheck. Both services mount `./data`
-so the SQLite database persists across restarts. To let the Docker tools reach the host
-daemon, uncomment the docker-socket volume in `docker-compose.yml`.
+The `api` and `bot` services mount `./data` so the SQLite database (incidents,
+watch list, approvals) persists across restarts. The Docker socket is mounted
+read-only for container discovery.
