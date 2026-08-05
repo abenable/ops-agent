@@ -1,25 +1,20 @@
 # Caddy config for the Marconi ops web. Drop into /etc/caddy/Caddyfile on the
 # host (Caddy runs as a systemd service). The SPA bundle is published to the
 # web-dist directory by `docker compose up web`.
-#
-# NOTE: adjust `root` to the absolute path of your <repo>/web-dist checkout,
-# or symlink it instead: ln -s <repo>/web-dist /srv/marconi/web
 :8088 {
 	root * /srv/marconi/web
 	encode zstd gzip
-	file_server
 
-	# Internal reverse proxy to the API on the host network (loopback).
-	# Same-origin, so no API key / CORS is needed. Strips /api to match the
-	# FastAPI routes, which live at /, not /api.
+	# API reverse-proxy — must be a named handle so the SPA fallback
+	# (try_files) does not intercept /api/* paths.
 	handle /api/* {
 		uri strip_prefix /api
 		reverse_proxy 127.0.0.1:8123
-
-		# SSE: /ask/stream and /incidents/{service}/stream must stream unbuffered.
-		flush_interval -1
 	}
 
-	# SPA fallback so TanStack Router owns client-side routing.
-	try_files {path} /index.html
+	# Everything else is the SPA: serve static files, fall back to index.html.
+	handle {
+		file_server
+		try_files {path} /index.html
+	}
 }
