@@ -33,6 +33,8 @@ export type Incident = {
   created_at: string;
 };
 
+export type IncidentResult = { incident_id: string; summary: string };
+
 export type WatchList = { containers: string[] };
 
 async function get<T>(path: string): Promise<T> {
@@ -59,7 +61,18 @@ export const api = {
   incidents: (status?: string) =>
     get<Incident[]>(`/incidents${status ? `?status=${status}` : ""}`),
   incident: (id: string) => get<Incident | null>(`/incidents/${id}`),
+  createIncident: (s: string) => send<IncidentResult>("POST", `/incidents/${encodeURIComponent(s)}`),
 };
+
+export function containerName(c: ContainerInfo): string {
+  return c.Names?.[0]?.slice(1) ?? c.Id.slice(0, 12);
+}
+
+export type IncidentStatus = "open" | "ack" | "resolved";
+
+export function isHealthyState(state: string | undefined): boolean {
+  return state === "running";
+}
 
 // SSE event stream from the agentic investigation loop.
 export type AgentEvent =

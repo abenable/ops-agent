@@ -1,19 +1,12 @@
-import { createRootRoute, createRoute, createRouter, Outlet } from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
+import { AppShell } from "./components/AppShell";
 import { Dashboard } from "./routes/Dashboard";
 import { ServiceDetail } from "./routes/ServiceDetail";
 import { Incidents } from "./routes/Incidents";
-import { Ask } from "./routes/Ask";
-import { Nav } from "./components/Nav";
+import { Chat } from "./routes/Chat";
 
 const root = createRootRoute({
-  component: () => (
-    <div className="min-h-screen">
-      <Nav />
-      <main className="max-w-6xl mx-auto px-4 py-6">
-        <Outlet />
-      </main>
-    </div>
-  ),
+  component: () => <AppShell />,
 });
 
 const index = createRoute({ getParentRoute: () => root, path: "/", component: Dashboard });
@@ -23,10 +16,10 @@ const service = createRoute({
   component: ServiceDetail,
 });
 const incidents = createRoute({ getParentRoute: () => root, path: "/incidents", component: Incidents });
-const ask = createRoute({ getParentRoute: () => root, path: "/ask", component: Ask });
+const chat = createRoute({ getParentRoute: () => root, path: "/chat", component: Chat });
 
 export const router = createRouter({
-  routeTree: root.addChildren([index, service, incidents, ask]),
+  routeTree: root.addChildren([index, service, incidents, chat]),
   defaultPreload: "intent",
 });
 
