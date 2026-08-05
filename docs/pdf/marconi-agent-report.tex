@@ -128,8 +128,13 @@ Discord Approve/Reject buttons (or \pkg{/approve}/\pkg{/reject} commands), and
 executed only on approval, with a time-to-live expiry and a global kill switch.
 The LLM layer is provider-portable through a single \pkg{LLM\_PROVIDER}
 selector that switches between local backends (Ollama, vLLM) without code
-changes, and a periodic container-status snapshot is posted to the status
-channel on a fixed cadence.
+changes. Container monitoring is scoped to an explicit \textbf{watch list},
+selected from Discord commands or a web dashboard, so the operator controls
+which containers generate alerts and status snapshots rather than receiving
+reports on every container on the machine. The agent also instruments itself
+with Prometheus counters and histograms exposed at \pkg{GET /metrics}, and
+includes a scenario-based evaluation harness (\pkg{python -m agent eval}) that
+measures agent behaviour against expected actions.
 
 The report covers the background and motivation, the problem the agent
 addresses, the chosen solution and its architecture, the implementation
@@ -441,10 +446,10 @@ shared tool and workflow layer:
     they never miss Discord's interaction window.
   \item \textbf{Interactive views.} \pkg{agent.bot.menu} presents a Discord
     select dropdown of container names (capped at 25 options by the platform)
-    and, once a container is chosen, offers ephemeral Status, Logs, and Metrics
-    buttons. \pkg{agent.bot.views.ServicePanelView} offers a service picker
-    with Status, Health, Logs, Metrics, and Incident buttons for the monitored
-    endpoints. The persistent incident-action view
+    and, once a container is chosen, offers ephemeral Watch/Unwatch, Status,
+    Logs, and Metrics buttons. \pkg{agent.bot.views.ServicePanelView} offers a
+    service picker with Status, Health, Logs, Metrics, and Incident buttons
+    for the monitored endpoints. The persistent incident-action view
     (\pkg{agent.alerting.discord.IncidentActionView}) carries Acknowledge,
     Resolve, and Remediate buttons; the Remediate button runs the gated
     remediation agent, whose proposals are posted with their own Approve/Reject
@@ -470,6 +475,9 @@ chat.
 \pkg{/metrics <service> [raw]} & Current metrics from Prometheus; \pkg{raw} skips the LLM summary \\
 \pkg{/health <url>} & Reachability and latency of an HTTP endpoint \\
 \pkg{/watching} & List endpoints configured for background monitoring \\
+\pkg{/watch <container>} & Add a container to the watch list \\
+\pkg{/unwatch <container>} & Remove a container from the watch list \\
+\pkg{/watchlist} & List the containers currently being watched \\
 \pkg{/ask <question>} & Free-form agentic investigation using read-only tools \\
 \pkg{/incident <service>} & Run the incident workflow, open a thread, alert \\
 \pkg{/scenario <name>} & Run a simulated scenario from a YAML file \\
@@ -529,7 +537,11 @@ The FastAPI server~\cite{fastapi} lives in \pkg{agent.api.server} and
     network-reachable.
   \item \textbf{Routes.} The routes are thin wrappers over the same tools the
     Discord commands use: status, logs, metrics, HTTP health, and the incident
-    workflow. Swagger UI is served at \pkg{/docs}.
+    workflow. SSE streaming endpoints (\pkg{/ask/stream},
+    \pkg{/incidents/\{service\}/stream}) emit real-time event streams for the
+    web dashboard. A \pkg{GET /metrics} endpoint exposes Prometheus text-format
+    telemetry for the agent itself (tool calls, investigations, LLM calls,
+    monitor cycles, and API requests). Swagger UI is served at \pkg{/docs}.
 \end{itemize}
 
 Table~\ref{tab:api} lists the endpoints.
@@ -544,11 +556,20 @@ Table~\ref{tab:api} lists the endpoints.
 \textbf{Method and path} & \textbf{Description} \\
 \midrule
 \pkg{GET /health} & Liveness probe returning \pkg{\{"status":"ok"\}} \\
+\pkg{GET /metrics} & Prometheus text-format self-metrics for the agent \\
+\pkg{GET /containers} & All Docker containers (running + stopped) \\
 \pkg{GET /services/\{service\}/status} & Service status via Docker discovery \\
 \pkg{GET /services/\{service\}/logs?lines=N} & Recent logs (default 10) \\
 \pkg{GET /services/\{service\}/metrics} & Service metrics from Prometheus \\
 \pkg{GET /health-check?url=...} & Reachability and latency of an endpoint \\
 \pkg{POST /incidents/\{service\}} & Run the incident workflow, returns id and summary \\
+\pkg{POST /incidents/\{service\}/stream} & SSE stream of the incident investigation \\
+\pkg{POST /ask/stream} & SSE stream of a free-form agentic question \\
+\pkg{GET /incidents} & List stored incidents (optional \pkg{?status=}) \\
+\pkg{GET /incidents/\{id\}} & Fetch an incident by id \\
+\pkg{GET /watch/containers} & Names of the containers currently being watched \\
+\pkg{PUT /watch/containers/\{name\}} & Add a container to the watch list \\
+\pkg{DELETE /watch/containers/\{name\}} & Remove a container from the watch list \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -671,7 +692,9 @@ the settings. The Prometheus helper implements instant and range queries,
 metric-name discovery, and label-value discovery; the range query computes a
 step size of \pkg{max(15, minutes * 60 // 100)} seconds. The Loki helper
 implements instant and range queries using the \pkg{/loki/api/v1/query} and
-\pkg{/query\_range} endpoints.
+\pkg{/query\_range} endpoints. The Docker Compose stack includes a promtail
+instance that ships n8n application logs into Loki under a \pkg{service=n8n}
+label, so the agent's \pkg{query\_loki} tools can select them.
 \end{sloppypar}
 
 \subsection{Agentic investigation workflow}
@@ -850,37 +873,51 @@ basic reachability.
 
 \subsubsection{Docker container monitoring}
 
-When \pkg{DOCKER\_MONITOR} is enabled, the monitor lists containers each cycle:
+When \pkg{DOCKER\_MONITOR} is enabled, the monitor inspects containers each
+cycle, but only those the operator has explicitly selected through the
+\textbf{watch list}:
 
 \begin{itemize}[leftmargin=1.4em,itemsep=0.2em]
-  \item \textbf{Behaviour.} It alerts when a previously running container stops.
-    New containers are picked up automatically with no configuration entry. A
-    name filter (\pkg{DOCKER\_NAME\_FILTER}) narrows the watch set.
-  \item \textbf{De-duplication state.} The de-duplication state is intentionally
-    in memory, which is acceptable for a single-instance MVP. The trade-off is
-    documented in the project goals: state resets on restart, which prevents
-    duplicate alerts after a cold start but loses continuity across redeploys.
+  \item \textbf{Watch-list gate.} The watch list is a persisted SQLite table
+    (\pkg{watched\_containers}) managed through \pkg{/watch},
+    \pkg{/unwatch}, \pkg{/watchlist} commands, the Watch toggle on each
+    container card in the web dashboard, or the Watch/Unwatch button in the
+    \pkg{/menu} picker. A name filter (\pkg{DOCKER\_NAME\_FILTER}) provides
+    an additional coarse filter.
+  \item \textbf{Behaviour.} The poll loop reads the watch list each cycle and
+    only tracks containers whose exact name appears in it. When a watched
+    container transitions from running to a non-running state, a critical
+    alert is posted to the alert channel. Unwatched containers (and newly
+    discovered containers) are silently ignored until the operator opts them
+    in. When a container is removed from the watch list, its state is pruned
+    from the in-memory tracker immediately.
+  \item \textbf{De-duplication state.} The de-duplication state is
+    intentionally in memory, which is acceptable for a single-instance MVP.
+    State resets on restart, preventing duplicate alerts after a cold start
+    but losing continuity across redeploys.
+  \item \textbf{Persistence.} The watch list itself is in SQLite, so the
+    operator's selection survives bot restarts; only the run-time comparison
+    state is ephemeral.
 \end{itemize}
 
 \subsubsection{Periodic container-status snapshot}
 
 A second \pkg{discord.ext.tasks.loop} posts a compact status snapshot of the
-watched containers to the status channel on a fixed cadence
-(\pkg{STATUS\_SNAPSHOT\_INTERVAL\_SECONDS}, default 900 seconds). The snapshot
+watched containers to the status channel every
+\pkg{STATUS\_SNAPSHOT\_INTERVAL\_SECONDS} (default 3600 seconds). The snapshot
 reuses the \pkg{\_container\_state} map that the container poll refreshes each
 cycle, so it adds no extra Docker query and is at most one poll interval stale.
-It is quiet when no containers are watched or no status channel is
-configured, so an empty channel means ``nothing watched'' rather than
-``broken''. This gives operators a standing heartbeat of container health in
-the same channel that records up/down transitions, without requiring them to
-run a command.
+It is quiet when no containers are watched or no status channel is configured.
+This gives operators a standing heartbeat of container health in the same
+channel that records up/down transitions, without requiring them to run a
+command.
 
 \subsection{Incident tracking and storage}
 \label{sec:storage}
 
 Incidents are persisted in a SQLite~\cite{sqlite} database managed by
-\pkg{agent.storage.repository}, which holds two tables: \pkg{incidents}
-(this section) and \pkg{pending\_approvals} (Section~\ref{sec:remediation}).
+\pkg{agent.storage.repository}, which holds three tables: \pkg{incidents}
+(this section), \pkg{watched\_containers}, and \pkg{pending\_approvals} (Section~\ref{sec:remediation}).
 The \pkg{incidents} schema is:
 
 \begin{table}[h]
@@ -897,6 +934,24 @@ The \pkg{incidents} schema is:
 \pkg{summary} & TEXT & LLM or fallback summary \\
 \pkg{status} & TEXT & \pkg{open}, \pkg{acknowledged}, or \pkg{resolved} \\
 \pkg{thread\_id} & INTEGER & Discord thread id, if one was opened \\
+\pkg{created\_at} & TEXT & ISO timestamp \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The \pkg{watched\_containers} table tracks the operator's container selection
+for background monitoring:
+
+\begin{table}[h]
+\centering
+\caption{SQLite \pkg{watched\_containers} table schema (module \pkg{agent.storage.repository}).}
+\label{tab:schema-watched}
+\small
+\begin{tabularx}{\textwidth}{llX}
+\toprule
+\textbf{Column} & \textbf{Type} & \textbf{Notes} \\
+\midrule
+\pkg{name} & TEXT PK & Exact container name (e.g.\ \pkg{marconi-agent-api}) \\
 \pkg{created\_at} & TEXT & ISO timestamp \\
 \bottomrule
 \end{tabularx}
@@ -962,14 +1017,18 @@ single command. The stack contains:
     cached
     dependency layer, both using host networking to reach the local Prometheus
     and Loki ports and the local LLM endpoint.
-  \item \textbf{prometheus}: scrapes the nginx exporter and itself.
+  \item \textbf{web}: a React SPA dashboard served via nginx on port 8088,
+    with real-time SSE streaming for the agentic investigation and container
+    watch toggles.
+  \item \textbf{prometheus}: scrapes the agent's \pkg{/metrics} endpoint,
+    the n8n \pkg{/metrics} endpoint, and itself.
   \item \textbf{loki}: filesystem-backed log store.
-  \item \textbf{promtail}: ships nginx access and error logs into Loki with a
-    \pkg{service=nginx} label, so the agent's LogQL queries can select them.
-  \item \textbf{nginx}: a sample monitored service exposing a
-    \pkg{/nginx\_status} stub-status endpoint, with real log files in a shared
-    volume so Promtail can read them.
-  \item \textbf{nginx-exporter}: the nginx metrics exporter feeding Prometheus.
+  \item \textbf{promtail}: ships n8n application logs into Loki with a
+    \pkg{service=n8n} label, so the agent's LogQL queries can select them.
+  \item \textbf{n8n}: a workflow-automation service exposing built-in
+    Prometheus metrics on \pkg{/metrics} and application logs to a shared
+    volume that Promtail tails. It replaces the earlier nginx demo service
+    and requires no external exporter.
 \end{itemize}
 
 Both agent services mount the host Docker socket read-only so that the
@@ -1006,7 +1065,7 @@ The LLM is provider-portable without code changes:
 \subsection{Testing}
 \label{sec:testing}
 
-The test suite, under \pkg{tests}, contains 81 test functions across 18
+The test suite, under \pkg{tests}, contains 100 test functions across 20
 modules and is run with \pkg{pytest}. A shared fixture in
 \pkg{tests/conftest} points the repository at a temporary SQLite file, so
 storage tests are isolated. The suite covers five areas:
@@ -1035,6 +1094,12 @@ storage tests are isolated. The suite covers five areas:
   \item \textbf{Interface} (\pkg{tests.test\_bot}, \pkg{tests.test\_api},
     \pkg{tests.test\_alerting}, \pkg{tests.test\_reporting}): command routing,
     API responses, embed colouring, and report formatting.
+  \item \textbf{Evaluation} (\pkg{tests.test\_eval}): nine parametrised tests
+    loading every scenario YAML and verifying that observed tool calls satisfy
+    the expected actions declared in the file.
+  \item \textbf{Watch list} (\pkg{tests.test\_storage}, \pkg{tests.test\_monitor},
+    \pkg{tests.test\_api}): CRUD operations for the watch list, container poll
+    filtering to only watched containers, and the watch API routes.
 \end{itemize}
 
 The suite uses no external services, so it runs in CI without provisioning
@@ -1097,12 +1162,11 @@ functional against a live deployment. The measured outcomes are as follows.
 \subsection{Quantitative scope}
 
 The implementation comprises approximately 2,871 lines of Python across 42
-source files (excluding generated artefacts), 81 test functions across 18 test
+source files (excluding generated artefacts), 100 test functions across 20 test
 modules, and 56 commits over the implementation window. The Docker Compose
-stack orchestrates seven services (the agent's api and bot, Prometheus, Loki,
-promtail, nginx, and the nginx exporter), with the vLLM model server in a
-separate stack. The dependency surface is deliberately small: eight runtime
-packages.
+stack orchestrates seven services (the agent's api, bot, and web dashboard;
+Prometheus; Loki; promtail; n8n), with the vLLM model server in a separate
+stack. The dependency surface is purposely small: nine runtime packages.
 
 \subsection{Operational impact}
 
@@ -1124,7 +1188,7 @@ The test suite passes with no external services provisioned. That confirms the
 graceful-degradation design holds: the agent responds correctly when
 Prometheus, Loki, or the LLM is absent. The integration path is exercised
 manually against the Docker Compose stack, where the monitor detects the
-nginx service going down and opens a threaded incident with an LLM summary.
+n8n service going down and opens a threaded incident with an LLM summary.
 
 % ============================================================
 \section{Challenges}
@@ -1225,9 +1289,11 @@ order.
   \item \textbf{Alertmanager webhook receiver.} Host a webhook receiver in the
     bot process as an alternative to in-bot polling, letting an external
     Alertmanager push alerts rather than having the bot poll Prometheus.
-  \item \textbf{Structured evaluation of the agentic loop.} Build a scenario
-    suite that scores the agent's ranked hypotheses against expected findings,
-    so model and prompt changes can be measured rather than judged by hand.
+  \item \textbf{Expand the evaluation harness.} The scenario evaluation
+    framework (\pkg{agent.eval}) and its 100-test pytest suite are delivered;
+    extend them with additional scenarios, integrate k6 load tests into CI,
+    and build Prometheus recording rules and Grafana dashboards for the
+    agent's own operational metrics exposed at \pkg{GET /metrics}.
 \end{enumerate}
 
 % ============================================================
@@ -1340,18 +1406,23 @@ is unset, so a deployment can adopt channels incrementally.
 
 Scenarios are YAML files in the \pkg{scenarios} directory. The
 \pkg{/scenario <name>} command loads \pkg{scenarios/<name>.yml} and runs the
-incident workflow for the named service. The sample scenario,
-\pkg{scenarios/sample\_slow\_query.yml}, models a slow query on PostgreSQL:
+incident workflow for the named service. Seven scenarios are included, covering
+container crashes, high CPU, endpoint timeouts, disk exhaustion, memory leaks,
+TLS certificate expiry, and slow database queries. The sample below shows the
+format; aspirational actions (requiring a stronger multi-step LLM) are kept
+as YAML comments so the file doubles as documentation of expected behaviour for
+future model upgrades:
 
-\begin{lstlisting}[caption={Scenario file format (YAML).}]
+\begin{lstlisting}[caption={Scenario file format (YAML), with aspirational actions as comments.}]
+# Aspirational actions (require a stronger tool-calling LLM):
+#   - query Prometheus for cpu usage
+#   - query Loki for slow query logs
 name: Slow query on PostgreSQL
 service: postgres
 symptom: >
   A query plan change causes CPU to spike and response times to climb.
 expected_agent_actions:
   - retrieve service status
-  - query Prometheus for cpu usage
-  - query Loki for slow query logs
   - summarize findings
   - store incident
   - alert Discord channel if configured
@@ -1405,6 +1476,8 @@ import path, the canonical way to locate code in this project.
 \pkg{agent.storage.repository} & SQLite incident and pending-approval repository \\
 \pkg{agent.alerting.discord} & Discord alert embeds, incident threads, and action views \\
 \pkg{agent.llm.client} & OpenAI-compatible ChatOpenAI factory with provider switching \\
+\pkg{agent.eval} & Scenario evaluation harness, action-to-tool mapping, CLI eval \\
+\pkg{agent.metrics} & Prometheus self-metrics for tool calls, investigations, LLM, monitor, API \\
 \bottomrule
 \end{longtable}
 
