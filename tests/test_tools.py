@@ -33,7 +33,7 @@ def test_metrics_stub(monkeypatch):
 
 def test_logs_stub(monkeypatch):
     # Force the fallback path regardless of whether Loki is reachable.
-    monkeypatch.setattr(loki, "query_loki", AsyncMock(side_effect=RuntimeError("unreachable")))
+    monkeypatch.setattr(loki, "query_loki_range", AsyncMock(side_effect=RuntimeError("unreachable")))
     result = asyncio.run(get_recent_logs("web", lines=5))
     assert "web" in result
     assert "5 lines" in result
