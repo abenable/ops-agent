@@ -3,7 +3,7 @@
 import logging
 import time
 
-from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from agent.config.settings import settings
 from agent.llm.client import get_llm
@@ -85,6 +85,7 @@ async def run_agentic_investigation_stream(
     system_prompt: str = SYSTEM_PROMPT,
     tools: list = TOOLS,
     kind: str = "ask",
+    history: list[dict] | None = None,
 ):
     """Async generator yielding events from the bounded tool-calling loop.
 
@@ -103,7 +104,14 @@ async def run_agentic_investigation_stream(
     )
     by_name = {t.name: t for t in tools}
     llm = get_llm().bind_tools(tools)
-    messages = [SystemMessage(system_prompt), HumanMessage(prompt)]
+    messages = [SystemMessage(system_prompt)]
+    for turn in (history or [])[-10:]:
+        role, content = turn.get("role"), turn.get("content")
+        if role == "user" and content:
+            messages.append(HumanMessage(content))
+        elif role == "assistant" and content:
+            messages.append(AIMessage(content))
+    messages.append(HumanMessage(prompt))
 
     ai = None
     total_steps = 0
@@ -213,10 +221,10 @@ async def run_incident_workflow_stream(service: str):
         yield {"type": "error", "message": str(exc), "incident_id": incident_id, "summary": summary}
 
 
-async def run_ask_workflow_stream(question: str):
+async def run_ask_workflow_stream(question: str, history: list[dict] | None = None):
     """Stream a free-form agentic answer; does not persist an incident."""
     try:
-        async for event in run_agentic_investigation_stream(question):
+        async for event in run_agentic_investigation_stream(question, history=history):
             yield event
     except Exception as exc:
         logger.warning("Ask workflow stream failed: %s", exc)

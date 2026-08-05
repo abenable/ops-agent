@@ -80,14 +80,19 @@ async def create_incident(service: str):
 
 class QuestionBody(BaseModel):
     question: str
+    history: list[dict] | None = None
 
 
 @router.post("/ask/stream")
 async def ask_stream(body: QuestionBody):
-    """SSE stream of the free-form agentic investigation loop."""
+    """SSE stream of the free-form agentic investigation loop.
+
+    ``history`` carries prior turns (``{"role": "user"|"assistant", "content": ...}``)
+    so the agent remembers the ongoing conversation.
+    """
 
     async def gen():
-        async for event in run_ask_workflow_stream(body.question):
+        async for event in run_ask_workflow_stream(body.question, body.history):
             yield f"data: {json.dumps(event)}\n\n"
 
     return StreamingResponse(gen(), media_type="text/event-stream")
