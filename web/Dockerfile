@@ -1,7 +1,6 @@
-# Build the Vite SPA with bun. nginx is gone — Caddy (host systemd service)
-# serves the bundle and reverse-proxies /api/* to the API on 127.0.0.1:8123.
-# This image is a build-only step: compose copies /app/dist to the Caddy web
-# root host directory, then the container exits.
+# Build the Vite SPA with bun, serve the static bundle with nginx.
+# nginx proxies /api/ to the api container over the shared host network
+# (loopback), so the browser stays same-origin and no API key / CORS is needed.
 FROM oven/bun:1 AS build
 WORKDIR /app
 
@@ -10,3 +9,8 @@ RUN bun install
 
 COPY . .
 RUN bun run build
+
+FROM nginx:alpine
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 8088
