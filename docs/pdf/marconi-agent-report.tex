@@ -1,0 +1,1413 @@
+% !TEX program = pdflatex
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{listings}
+\usepackage[most]{tcolorbox}
+\usepackage[toc]{appendix}
+\usepackage{microtype}
+\usepackage{underscore}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,shapes.geometric,calc,fit}
+
+% Give LaTeX extra stretch to avoid overfull lines from long typewriter tokens.
+\setlength{\emergencystretch}{3em}
+
+% ---------- Hyperref ----------
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=black,
+  citecolor=black,
+  pdftitle={Marconi Infrastructure Operations Agent},
+  pdfauthor={Industrial Training 2026, Marconi Lab},
+}
+
+% ---------- Colors ----------
+\definecolor{codebg}{HTML}{F5F5F5}
+\definecolor{codeframe}{HTML}{D0D0D0}
+
+% ---------- Listings ----------
+\lstdefinestyle{pystyle}{
+  language=Python,
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\bfseries,
+  stringstyle=\itshape,
+  commentstyle=\itshape,
+  showstringspaces=false,
+  backgroundcolor=\color{codebg},
+  frame=single,
+  rulecolor=\color{codeframe},
+  framerule=0.4pt,
+  framesep=4pt,
+  xleftmargin=8pt,
+  xrightmargin=4pt,
+  breaklines=true,
+  breakatwhitespace=false,
+  columns=fullflexible,
+  keepspaces=true,
+  numbers=left,
+  numberstyle=\tiny,
+  numbersep=8pt,
+  literate={-}{{-}}1,
+}
+\lstset{style=pystyle}
+
+% ---------- Section titles ----------
+\titleformat{\section}{\Large\bfseries}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{0.5em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries}{\thesubsubsection}{0.5em}{}
+
+% ---------- Page style ----------
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small Marconi Infrastructure Operations Agent}
+\fancyhead[R]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\headrule}{\hrule width\headwidth height\headrulewidth}
+
+% ---------- Custom commands ----------
+\newcommand{\pkg}[1]{\texttt{#1}}
+\newcommand{\cmd}[1]{\texttt{#1}}
+
+% ---------- Title block ----------
+\title{%
+  \vspace{-1.5em}
+  \rule{\textwidth}{1.2pt}\\[0.6em]
+  {\Large\bfseries Marconi Infrastructure Operations Agent}\\[0.3em]
+  {\large An AI-Powered, Discord-Native Operations Agent for\\
+   Self-Hosted Infrastructure}\\[0.4em]
+  \rule{\textwidth}{1.2pt}
+}
+\author{%
+  Industrial Training 2026 \,\textbar\, Marconi Lab\\[0.2em]
+  Implementation Phase, Weeks 5 to 8
+}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+
+\tableofcontents
+\newpage
+
+\begin{abstract}
+\noindent
+This report documents the design, implementation, and evaluation of the
+\textbf{Marconi Infrastructure Operations Agent}, a minimum viable product (MVP)
+that embeds an AI-powered operations assistant inside a Discord chat interface.
+The agent lets infrastructure operators inspect the state of services, retrieve
+logs and metrics, run a bounded agentic investigation workflow driven by a
+self-hosted large language model (LLM), and receive background alerts when
+monitored endpoints degrade. It exposes the same capabilities through a
+FastAPI backend so that programmatic clients can reuse the workflow. The system
+integrates with Prometheus for metrics and Loki for logs, persists incidents in
+a SQLite store, and is delivered as a reproducible Docker Compose stack that
+also provisions a complete observability pipeline.
+
+The agent is a two-agent system. A read-only \emph{investigator} narrows root
+cause, and a separate \emph{remediator} proposes a bounded set of write actions
+(Docker container restart) behind an explicit human-in-the-loop approval gate:
+a proposed action is persisted as pending, surfaced to an operator through
+Discord Approve/Reject buttons (or \pkg{/approve}/\pkg{/reject} commands), and
+executed only on approval, with a time-to-live expiry and a global kill switch.
+The LLM layer is provider-portable through a single \pkg{LLM\_PROVIDER}
+selector that switches between local backends (Ollama, vLLM) without code
+changes, and a periodic container-status snapshot is posted to the status
+channel on a fixed cadence.
+
+The report covers the background and motivation, the problem the agent
+addresses, the chosen solution and its architecture, the implementation
+methodology across each component, the results and operational impact observed
+during the internship, the challenges encountered, and the planned future work.
+All implementation references use the fully-qualified Python import path of the
+relevant module so that the document remains intelligible independently of the
+source repository.
+\end{abstract}
+
+\vspace{0.5em}
+\noindent\rule{\textwidth}{0.6pt}
+\newpage
+
+% ============================================================
+\section{Background}
+% ============================================================
+
+Infrastructure operations teams manage many services across different
+environments. The day-to-day work of an operator consists largely of
+situational awareness: answering \emph{is this service healthy?}, \emph{what
+do its recent logs show?}, and \emph{what do its metrics say right now?} These
+questions are answered today by consulting several tools: a container
+runtime, a metrics store such as Prometheus, a logs store such as Loki, and an
+alerting pipeline. Each tool has its own query language, its own dashboard,
+and its own authentication boundary. The cognitive cost of context switching
+between these surfaces is high, and the latency between a symptom appearing
+and an operator gathering the relevant signals can dominate the time to
+mitigation.
+
+The Marconi Lab internship programme introduces trainees to this operational
+reality through an implementation phase in which a small but complete system is
+built and demonstrated. The charter for this project was to deliver a working
+MVP of an AI-powered infrastructure operations agent that lives in Discord, the
+chat platform already used by the team, and that helps operators inspect
+selected systems, investigate issues through a self-hosted language model, and
+produce clear operational summaries. A deliberate constraint of the charter
+was that the agent should act through controlled, read-only tools, keeping
+mutation actions out of the autonomous loop until a human-in-the-loop approval
+mechanism exists.
+
+Two technology trends made this project timely:
+
+\begin{itemize}[leftmargin=1.4em,itemsep=0.2em]
+  \item \textbf{Self-hostable inference.} The maturity of OpenAI-compatible
+    inference servers (Ollama~\cite{ollama}, vLLM~\cite{vllm}, llama.cpp, and
+    hosted gateways) means a capable language model can be run on commodity
+    hardware under the operator's own control, removing the data-handling
+    concerns associated with third-party hosted APIs.
+  \item \textbf{Standardised tool calling.} The consolidation of the
+    \pkg{langchain-openai}~\cite{langchain} ecosystem around the OpenAI
+    tool-calling protocol~\cite{openai-tools} means a language model can be
+    given a small set of typed tools and trusted to select and invoke them
+    correctly within a bounded loop, which is the foundational mechanism for an
+    agentic investigation.
+\end{itemize}
+
+% ============================================================
+\section{Problem Statement}
+% ============================================================
+
+The core problem is the gap between the moment an operator (or an automated
+monitor) suspects a degraded service and the moment a useful summary of the
+situation is in hand. Concretely, the MVP targets the following pain points:
+
+\begin{enumerate}[leftmargin=1.4em,itemsep=0.2em]
+  \item \textbf{Fragmented signal gathering.} To answer a single question about a
+    service, an operator must visit a container runtime, a metrics store, and a
+    logs store, each with a distinct query language. The cost compounds when
+    several services are involved.
+  \item \textbf{Manual query composition.} Even experienced operators must
+    recall metric names, label values, and LogQL selectors before they can write
+    a query. Discovering the available vocabulary is itself a step.
+  \item \textbf{Reactive, attention-driven monitoring.} Without a continuously
+    running background check, degradations are noticed only when a human happens
+    to look. Polling scripts exist but are typically disconnected from a
+    notification surface the team already watches.
+  \item \textbf{Unstructured incident memory.} Investigations produce
+    summaries that live in chat scrolls or personal notes, with no durable
+    record of what was found, when it was opened, and whether it was resolved.
+  \item \textbf{Hosted-model constraints.} Many organisations cannot send
+    operational telemetry to a third-party hosted LLM for compliance reasons.
+    A solution that depends on a hosted model is therefore not universally
+    deployable.
+\end{enumerate}
+
+The MVP narrows the problem space deliberately to \emph{read-only investigation
+and structured alerting}, with mutation confined to a separate, explicitly
+human-gated remediation agent rather than an autonomous step. This scoping is a
+design decision, not a limitation to be fixed: the autonomous investigation loop
+remains safe to run in a real environment because it cannot mutate state, and
+the remediation agent can only \emph{propose} an action whose execution is gated
+by a human approval (with a time-to-live expiry and a global kill switch). This
+keeps the dangerous capability narrowly scoped while the tooling and review
+practices mature.
+
+% ============================================================
+\section{Solution Overview}
+% ============================================================
+
+The solution is a single Python package, \pkg{agent}, that exposes two entry
+points sharing one codebase: a Discord bot and a FastAPI HTTP server. Both
+route through the same tools, the same LLM client, and the same SQLite incident
+store, so that a capability added once is reachable from chat and from HTTP
+alike.
+
+\subsection{Design principles}
+
+The implementation follows a small set of explicit principles:
+
+\begin{itemize}[leftmargin=1.4em,itemsep=0.2em]
+  \item \textbf{Read-only investigation, gated remediation.} The investigator
+    agent is given only tools that inspect infrastructure. Mutation is confined
+    to a separate remediation agent whose write tool (\pkg{propose\_restart})
+    records a pending approval rather than executing; execution happens only
+    through \pkg{execute\_approval} on human approval. The raw Docker/SSH
+    mutation functions are library-only building blocks.
+  \item \textbf{Graceful degradation.} Every external dependency (Prometheus,
+    Loki, the LLM) is optional at runtime. When a source is unreachable, the
+    tool returns a stub or a fallback summary rather than raising, so the bot
+    keeps responding during partial outages.
+  \item \textbf{Bounded autonomy.} The agentic loop is capped at a configurable
+    number of tool calls (\pkg{MAX\_TOOL\_STEPS}, default 6). If the model has not
+    converged, a final tool-less invocation is used to force a prose summary.
+  \item \textbf{One codebase, two surfaces.} Discord commands and HTTP routes
+    are thin adapters over a shared workflow and tool layer, preventing drift
+    between the chat and programmatic interfaces.
+  \item \textbf{Self-hosted, portable, and provider-switchable.} The LLM is
+    reached through an OpenAI-compatible base URL, so any conformant server
+    (Ollama, vLLM, llama.cpp, or a gateway) can serve the model. A single
+    \pkg{LLM\_PROVIDER} selector switches between configured local backends
+    without code changes. The deployment is containerised and reproducible.
+\end{itemize}
+
+\subsection{System at a glance}
+
+The system comprises six logical layers, each realised as a Python subpackage
+under \pkg{agent}:
+
+\begin{enumerate}[leftmargin=1.4em,itemsep=0.2em]
+  \item \textbf{Interface layer} (\pkg{agent.bot}, \pkg{agent.api}): Discord
+    client, prefix and slash commands, the @mention conversational handler,
+    the background monitor, interactive menus, a reply-summarisation layer,
+    and the FastAPI routes.
+  \item \textbf{Workflow layer} (\pkg{agent.workflows}): the incident
+    investigation loop, the remediation agent and its human-in-the-loop gate,
+    and the reporting workflow that orchestrate the LLM and the tools.
+  \item \textbf{Tool layer} (\pkg{agent.tools}): controlled tools for status,
+    logs, metrics, HTTP health, Docker, SSH, and the LangChain query tools the
+    LLM calls, including the gated \pkg{propose\_restart} tool the remediation
+    agent uses.
+  \item \textbf{Source layer} (\pkg{agent.tools.sources}): thin HTTP clients for
+    Prometheus and Loki.
+  \item \textbf{Storage layer} (\pkg{agent.storage}): the SQLite repository for
+    incidents \emph{and} pending remediation approvals, and the \pkg{Incident}
+    data model.
+  \item \textbf{Support layer} (\pkg{agent.config}, \pkg{agent.llm},
+    \pkg{agent.alerting}): configuration, the LLM client factory, and Discord
+    alert embed helpers.
+\end{enumerate}
+
+Figure~\ref{fig:arch} shows how a request flows from either surface through the
+shared workflow and tool layers down to the monitoring sources and the SQLite
+store.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[
+  >=Stealth,
+  every node/.style={font=\small},
+  input/.style={draw, rounded corners, fill=black!8, minimum width=2.6cm, minimum height=0.9cm, align=center, inner sep=3pt},
+  layer/.style={draw, rounded corners, fill=black!5, minimum width=3.0cm, text width=3.0cm, minimum height=0.9cm, align=center, inner sep=3pt},
+  core/.style={draw, rounded corners, fill=black!15, minimum width=4.0cm, minimum height=1.0cm, align=center, inner sep=3pt, font=\small\bfseries},
+  leaf/.style={draw, rounded corners, minimum width=2.6cm, minimum height=0.9cm, align=center, inner sep=3pt, font=\footnotesize},
+  src/.style={draw, rounded corners, fill=black!8, minimum width=5.0cm, minimum height=0.9cm, align=center, inner sep=3pt, font=\footnotesize\bfseries},
+  arr/.style={->, thick},
+  fb/.style={->, thick, dashed},
+]
+
+% --- Top row: inputs
+\node[input] (discord) {Discord users\\\scriptsize commands \& mentions};
+\node[input, right=1.2cm of discord] (http) {HTTP clients\\\scriptsize FastAPI};
+\node[input, left=1.2cm of discord] (monitor) {Background\\\scriptsize monitor};
+
+% --- Interface row
+\node[layer, below=1.1cm of discord] (bot) {Bot commands\\\scriptsize \pkg{agent.bot.commands}, \pkg{agent.bot.slash}, \pkg{agent.bot.menu}, \pkg{agent.bot.views}};
+\node[layer, below=1.1cm of http] (api) {API routes\\\scriptsize \pkg{agent.api.routes}};
+\node[layer, below=1.1cm of monitor] (monloop) {Poll loop\\\scriptsize \pkg{agent.bot.monitor}};
+
+% --- Core: workflows (centred under discord+http)
+\node[core, below=1.3cm of bot, xshift=2.1cm] (wf) {Agent workflows\\\scriptsize \pkg{agent.workflows.incident} \& \pkg{.remediation}};
+
+% --- Leaves row (spread wide to avoid crowding)
+\node[leaf, below=1.4cm of wf, xshift=-4.6cm] (tools) {Tools\\\scriptsize status / logs / metrics};
+\node[leaf, below=1.4cm of wf, xshift=-1.6cm] (llm) {LLM\\\scriptsize OpenAI-compat.};
+\node[leaf, below=1.4cm of wf, xshift=1.6cm] (sqlite) {SQLite\\\scriptsize incident store};
+\node[leaf, below=1.4cm of wf, xshift=4.6cm] (alert) {Alerting\\\scriptsize Discord channels};
+
+% --- Sources, centred under tools
+\node[src, below=1.1cm of tools] (sources) {Prometheus \quad/\quad Loki sources\\\scriptsize \pkg{agent.tools.sources}};
+
+% --- edges: inputs to interface
+\draw[arr] (discord) -- (bot);
+\draw[arr] (http) -- (api);
+\draw[arr] (monitor) -- (monloop);
+
+% --- edges: interface to workflows (orthogonal to avoid crossing)
+\draw[arr] (bot.south) -- (wf.north);
+\draw[arr] (api.south) -- (wf.north);
+\draw[arr] (monloop.south) |- (wf.west);
+
+% --- edges: workflows to leaves (fan out from bottom)
+\draw[arr] (wf.south) -- (tools.north);
+\draw[arr] (wf.south) -- (llm.north);
+\draw[arr] (wf.south) -- (sqlite.north);
+\draw[arr] (wf.south) -- (alert.north);
+
+% --- tools to sources
+\draw[arr] (tools) -- (sources);
+
+% --- feedback: monitor escalates to alerting (routed left of the monitor
+%     input node, up above the top row with clearance, then across and down the
+%     right margin into the Alerting node, so it crosses no other node)
+\coordinate (escTop) at ($(monloop.east)+(0.4,3.6)$);
+\draw[fb] (monloop.east) -- ($(monloop.east)+(0.4,0)$) -- (escTop) -| (alert.north);
+\node[font=\scriptsize\itshape, above] at ($(escTop)!0.5!(alert.north|-escTop)$) {escalate};
+
+\end{tikzpicture}
+\caption{High-level architecture and request flow. Discord commands, HTTP
+requests, and the background monitor all converge on the shared agent workflow
+layer, which holds two agents: a read-only investigator and a gated remediator.
+The workflow drives read-only tools and the LLM, persists incidents and pending
+remediation approvals to SQLite, and posts alerts to Discord. The dashed
+feedback edge shows the monitor escalating a down endpoint or firing alert rule
+to the alerting layer, routed along the top margin to avoid crossing other
+boxes. The remediation agent writes only a pending approval; execution of a
+restart is gated by a human approval (not shown) before it reaches the Docker
+daemon.}
+\label{fig:arch}
+\end{figure}
+
+% ============================================================
+\section{Implementation Methodology}
+% ============================================================
+
+This section documents each component of the system, the design choices behind
+it, and the concrete behaviour it exhibits. The implementation is written in
+Python 3.13 and managed with \pkg{uv}; the runtime dependencies are
+\pkg{langchain-openai}, \pkg{discord.py}, \pkg{fastapi}, \pkg{uvicorn},
+\pkg{pydantic-settings}, \pkg{python-dotenv}, \pkg{httpx2}, and \pkg{pyyaml}.
+
+\subsection{Configuration and settings}
+\label{sec:config}
+
+All runtime configuration is centralised in \pkg{agent.config.settings}, a
+Pydantic~\cite{pydantic} \pkg{BaseSettings} subclass loaded from environment variables and an
+optional \pkg{.env} file:
+
+\begin{itemize}[leftmargin=1.4em,itemsep=0.2em]
+  \item \textbf{Loading order.} A dedicated loader,
+    \pkg{agent.config.dotenv\_loader}, calls \pkg{find\_dotenv} and
+    \pkg{load\_dotenv} with \pkg{override=False} before the settings object is
+    constructed, so environment variables always take precedence over the file.
+    This ordering matters for container deployments where secrets are injected
+    as environment variables.
+  \item \textbf{Field groups.} The model carries five groups of fields: Discord
+    channel identifiers, endpoint monitoring parameters, the LLM endpoint, the
+    API server, and the monitoring source URLs with their optional bearer
+    tokens.
+  \item \textbf{Empty-string normalisation.} A
+    \pkg{@model\_validator(mode="before")} normalises empty-string environment
+    values back to empty strings for \pkg{str} fields, because Pydantic's
+    \pkg{env\_parse\_none\_str} would otherwise turn them into \pkg{None}, which
+    would break downstream string concatenation.
+\end{itemize}
+
+\subsection{Discord interface}
+\label{sec:discord}
+
+The Discord client is implemented in \pkg{agent.bot.client} and built on the
+\pkg{discord.py}~\cite{discordpy} library with the \pkg{commands.Bot} extension.
+The bot enables the Message Content privileged intent (which prefix commands
+depend on) and exits with a clear diagnostic if the intent is not granted or
+the token is invalid. Its behaviour splits across four areas, all over a
+shared tool and workflow layer:
+
+\begin{itemize}[leftmargin=1.4em,itemsep=0.2em]
+  \item \textbf{Command surfaces.} Two parallel surfaces share one tool and
+    workflow layer: prefix commands (\pkg{!}) in \pkg{agent.bot.commands} and
+    slash commands (\pkg{/}) in \pkg{agent.bot.slash} through the
+    \pkg{CommandTree}. Slash commands give operators autocomplete and a
+    structured parameter UI; on startup the bot syncs them to the configured
+    guild (fast, for testing) or globally.
+  \item \textbf{Event handlers.} The \pkg{on\_ready} handler is guarded against
+    re-entrancy after a gateway reconnect by a module-level \pkg{\_setup\_done}
+    flag, so the monitor and the log handler start only once. On first ready it
+    starts the background monitor, optionally attaches a Discord log handler,
+    syncs the slash-command tree, and probes the LLM for tool-calling support.
+    The \pkg{on\_message} handler dispatches \pkg{!} messages to the command
+    processor and routes direct messages and @mentions through the agentic
+    investigation loop (\pkg{run\_ask\_workflow}), injecting an environment
+    context string (monitored endpoints, alert rules, channel identifiers,
+    source URLs, and the available tool list) so answers are grounded in the
+    actual deployment.
+  \item \textbf{Reply handling.} Long replies are split by
+    \pkg{agent.bot.utils.split\_discord\_text} to respect Discord's
+    2000-character limit, splitting at the nearest newline boundary. Slow slash
+    commands defer the interaction before any network I/O, then follow up, so
+    they never miss Discord's interaction window.
+  \item \textbf{Interactive views.} \pkg{agent.bot.menu} presents a Discord
+    select dropdown of container names (capped at 25 options by the platform)
+    and, once a container is chosen, offers ephemeral Status, Logs, and Metrics
+    buttons. \pkg{agent.bot.views.ServicePanelView} offers a service picker
+    with Status, Health, Logs, Metrics, and Incident buttons for the monitored
+    endpoints. The persistent incident-action view
+    (\pkg{agent.alerting.discord.IncidentActionView}) carries Acknowledge,
+    Resolve, and Remediate buttons; the Remediate button runs the gated
+    remediation agent, whose proposals are posted with their own Approve/Reject
+    view (\pkg{RemediationApprovalView}).
+\end{itemize}
+
+Table~\ref{tab:cmds} summarises the slash commands. Each has a prefix
+equivalent (e.g.\ \pkg{/status} and \cmd{!status}) for operators who type in
+chat.
+
+\begin{table}[h]
+\centering
+\caption{Discord slash commands (modules \pkg{agent.bot.slash} and \pkg{agent.bot.commands}).}
+\label{tab:cmds}
+\small
+\begin{tabularx}{\textwidth}{lX}
+\toprule
+\textbf{Command} & \textbf{Description} \\
+\midrule
+\pkg{/status <service>} & Current status of a service via Docker container discovery \\
+\pkg{/containers [raw]} & List Docker containers grouped by state; \pkg{raw} skips the LLM summary \\
+\pkg{/logs <service> [n] [raw]} & Last \pkg{n} log lines from Loki (default 10); \pkg{raw} shows full logs \\
+\pkg{/metrics <service> [raw]} & Current metrics from Prometheus; \pkg{raw} skips the LLM summary \\
+\pkg{/health <url>} & Reachability and latency of an HTTP endpoint \\
+\pkg{/watching} & List endpoints configured for background monitoring \\
+\pkg{/ask <question>} & Free-form agentic investigation using read-only tools \\
+\pkg{/incident <service>} & Run the incident workflow, open a thread, alert \\
+\pkg{/scenario <name>} & Run a simulated scenario from a YAML file \\
+\pkg{/ack <id>} & Acknowledge a stored incident \\
+\pkg{/resolve <id>} & Resolve a stored incident \\
+\pkg{/remediate <id>} & Run the gated remediation agent against an incident's diagnosis \\
+\pkg{/approve <id>} & Approve and execute a proposed remediation action (button fallback) \\
+\pkg{/reject <id>} & Reject a proposed remediation action (button fallback) \\
+\pkg{/menu} & Interactive container picker with action buttons \\
+\pkg{/panel} & Monitored-service picker with Status/Health/Logs/Metrics/Incident buttons \\
+\pkg{/info} & Bot info and support links \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{Reply summarisation}
+\label{sec:summarize}
+
+\begin{sloppypar}
+Verbose tool output (container lists, logs, metrics) is routed through
+\pkg{agent.bot.summarize.clean}, a thin pass that sends the raw output to the
+LLM with instructions to produce a short, scannable, Discord-markdown summary.
+The function guards against failure at every step:
+
+\begin{itemize}[leftmargin=1.4em,itemsep=0.2em]
+  \item Empty raw input returns a placeholder; an unreachable or empty LLM
+    response falls back to the raw output in a code block; the result is capped
+    to a Discord-safe length.
+  \item The service argument is sanitised (newlines collapsed, length capped)
+    before it enters the prompt, closing a prompt-injection surface.
+  \item Each verbose command accepts a \pkg{raw} opt-out (a prefix flag or a
+    slash option) so an operator who needs the complete, unsummarised output can
+    bypass the LLM pass. Short, already-clean commands (\pkg{status},
+    \pkg{health}, \pkg{watching}) skip the summariser entirely and return raw
+    output for low latency.
+  \item A custom logging handler, \pkg{agent.bot.client.DiscordLogHandler},
+    forwards \pkg{WARNING} and above log records to a configured Discord channel.
+    To avoid a feedback loop, it skips any record whose logger name starts with
+    \pkg{discord}. It uses an asynchronous queue and a pump task so that
+    \pkg{emit()} never blocks the calling thread, and it writes send failures
+    to \pkg{stderr} rather than re-entering the logging system.
+\end{itemize}
+\end{sloppypar}
+
+\subsection{HTTP API}
+\label{sec:api}
+
+The FastAPI server~\cite{fastapi} lives in \pkg{agent.api.server} and
+\pkg{agent.api.routes}:
+
+\begin{itemize}[leftmargin=1.4em,itemsep=0.2em]
+  \item \textbf{Shared-secret auth.} The application is created with an optional
+    shared-secret dependency: \pkg{\_require\_api\_key} compares the
+    \pkg{X-API-Key} header against \pkg{settings.api\_key} and raises HTTP 403
+    on mismatch. When \pkg{API\_KEY} is unset the dependency is a no-op, and the
+    recommendation is to keep \pkg{API\_HOST=127.0.0.1} so the open API is not
+    network-reachable.
+  \item \textbf{Routes.} The routes are thin wrappers over the same tools the
+    Discord commands use: status, logs, metrics, HTTP health, and the incident
+    workflow. Swagger UI is served at \pkg{/docs}.
+\end{itemize}
+
+Table~\ref{tab:api} lists the endpoints.
+
+\begin{table}[h]
+\centering
+\caption{HTTP API endpoints (module \pkg{agent.api.routes}).}
+\label{tab:api}
+\small
+\begin{tabularx}{\textwidth}{lX}
+\toprule
+\textbf{Method and path} & \textbf{Description} \\
+\midrule
+\pkg{GET /health} & Liveness probe returning \pkg{\{"status":"ok"\}} \\
+\pkg{GET /services/\{service\}/status} & Service status via Docker discovery \\
+\pkg{GET /services/\{service\}/logs?lines=N} & Recent logs (default 10) \\
+\pkg{GET /services/\{service\}/metrics} & Service metrics from Prometheus \\
+\pkg{GET /health-check?url=...} & Reachability and latency of an endpoint \\
+\pkg{POST /incidents/\{service\}} & Run the incident workflow, returns id and summary \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Agent tools}
+\label{sec:tools}
+
+The tool layer, \pkg{agent.tools}, is the controlled vocabulary the agent uses
+to inspect infrastructure. Tools are grouped by signal type and exposure. The
+design rule is that \emph{only read-only tools are exposed to the
+investigator agent and to chat}; the Docker and SSH mutation functions are
+library-only building blocks, reached indirectly and safely through the gated
+\pkg{propose\_restart} tool of the remediation agent (Section~\ref{sec:remediation}).
+
+\subsubsection{Service status}
+
+\pkg{agent.tools.services.get\_service\_status} matches a service name to a
+running Docker container via \pkg{agent.tools.docker.find\_container}, which
+performs a case-insensitive substring match against container names. It
+returns a structured dict with the container name, state, status detail, and
+image, backed by live Docker container discovery.
+
+\subsubsection{Metrics and logs}
+
+\pkg{agent.tools.metrics.get\_service\_metrics} constructs a PromQL instant
+query for the service and delegates to the Prometheus source helper. A small
+\pkg{\_escape\_label\_value} function escapes backslashes and quotes in the
+service name before interpolation into the query string, preventing a naive
+injection. On any exception it falls back to a zeroed stub dict. Similarly,
+\pkg{agent.tools.logs.get\_recent\_logs} runs a LogQL instant query against Loki
+and falls back to a stub log line when Loki is unreachable.
+
+\subsubsection{HTTP health}
+
+\pkg{agent.tools.health.check\_endpoint} performs an HTTP GET with a 5-second
+timeout, follows redirects, and returns a dict with \pkg{reachable},
+\pkg{status\_code}, and \pkg{response\_time\_ms} measured with a monotonic clock.
+On failure it returns \pkg{reachable=False} with the error string rather than
+raising, which makes it safe to use directly in the monitoring loop.
+
+\subsubsection{Docker and SSH tools}
+
+\pkg{agent.tools.docker} talks to the Docker Engine API~\cite{docker} over the
+configured \pkg{DOCKER\_HOST} (a Unix socket by default, or a TCP endpoint). It exposes
+\pkg{list\_containers}, \pkg{find\_container}, \pkg{container\_logs}, and
+\pkg{restart\_container}. A \pkg{\_docker\_available} guard returns
+\pkg{False} when the socket is absent, so the list functions degrade to an
+empty list rather than erroring. \pkg{find\_container} matches by name in a
+separator-agnostic way through \pkg{agent.tools.normalize}: a user spelling of
+\pkg{agent\_api} matches the real container \pkg{marconi-agent-api} because the
+helper collapses \pkg{\_}, \pkg{-}, spaces, and dots before comparing.
+\pkg{agent.tools.ssh} wraps the system \pkg{ssh} binary with
+\pkg{BatchMode=yes} and \pkg{StrictHostKeyChecking=accept-new} and exposes
+\pkg{run\_ssh\_command}, \pkg{check\_server\_load}, and \pkg{restart\_service}.
+The latter validates the systemd unit name against the regular expression
+\texttt{\^{}[A-Za-z0-9.\_@-]+\$} to prevent command injection and requires an
+explicit user argument, refusing an implicit root.
+
+\subsubsection{LangChain query tools}
+\label{sec:querytools}
+
+The tools the LLM actually calls during an investigation are defined in
+\pkg{agent.tools.query\_tools} as LangChain \pkg{@tool} functions. They split
+into three groups. \emph{Discovery} tools let the model learn the real names
+and vocabulary of the environment before querying:
+
+\begin{itemize}[leftmargin=1.4em,itemsep=0.2em]
+  \item \pkg{list\_services()} returns the live Docker container names and the
+    configured monitored-endpoint map. The system prompt tells the model to
+    call this first and use the names it returns, not the user's spelling.
+  \item \pkg{list\_metric\_names(match)} discovers available Prometheus metric
+    names, returning at most 250.
+  \item \pkg{get\_label\_values(label)} discovers values for a Prometheus
+    label such as \pkg{service}, \pkg{job}, or \pkg{instance}.
+\end{itemize}
+
+\emph{Docker inspection} tools (read-only) cover containers Prometheus and
+Loki do not tag:
+
+\begin{itemize}[leftmargin=1.4em,itemsep=0.2em]
+  \item \pkg{docker\_status(container)} returns a container's state, status,
+    and image, resolving the name through the separator-agnostic matcher.
+  \item \pkg{docker\_logs(container, tail=50)} fetches a container's combined
+    stdout/stderr logs via the Docker Engine API, strips stream-framing control
+    bytes, caps \pkg{tail} at 200, and truncates to 4000 characters.
+\end{itemize}
+
+\emph{Query} tools wrap the Prometheus and Loki source helpers with safety
+clamps:
+
+\begin{itemize}[leftmargin=1.4em,itemsep=0.2em]
+  \item \pkg{query\_prometheus(promql)} runs an instant query, truncating the
+    result to 4000 characters.
+  \item \pkg{query\_prometheus\_range(promql, minutes)} runs a range query with
+    the window clamped to \pkg{RANGE\_MAX\_HOURS}.
+  \item \pkg{query\_loki(logql, limit)} runs a LogQL instant query with the
+    limit clamped to \pkg{LOKI\_MAX\_LIMIT}.
+  \item \pkg{query\_loki\_range(logql, minutes, limit)} runs a LogQL range
+    query, clamping both window and limit.
+\end{itemize}
+
+The raw mutation functions (\pkg{restart\_container}, \pkg{restart\_service},
+\pkg{run\_ssh\_command}) are not bound directly to the investigator loop; the
+remediation agent reaches \pkg{restart\_container} only through the gated
+\pkg{propose\_restart} tool, which records a pending approval instead of
+executing. The truncation and clamping are deliberate: they keep tool
+responses within the LLM context window and prevent runaway queries from
+dominating the loop. The docstrings on each tool are written as instructions
+to the model (\emph{``Call this FIRST to discover what metrics exist''}),
+which measurably improves the model's discovery behaviour.
+
+\subsection{Monitoring sources}
+\label{sec:sources}
+
+\begin{sloppypar}
+The source helpers live in \pkg{agent.tools.sources.prometheus}~\cite{prometheus}
+and \pkg{agent.tools.sources.loki}~\cite{loki}. Each is a thin \pkg{httpx.AsyncClient} wrapper
+with a 10-second timeout and optional bearer-token authentication drawn from
+the settings. The Prometheus helper implements instant and range queries,
+metric-name discovery, and label-value discovery; the range query computes a
+step size of \pkg{max(15, minutes * 60 // 100)} seconds. The Loki helper
+implements instant and range queries using the \pkg{/loki/api/v1/query} and
+\pkg{/query\_range} endpoints.
+\end{sloppypar}
+
+\subsection{Agentic investigation workflow}
+\label{sec:workflow}
+
+The investigation workflow is the intellectual core of the agent. It is
+implemented in \pkg{agent.workflows.incident} and consists of three entry
+points sharing one bounded tool-calling loop: \pkg{run\_incident\_workflow}
+(persists an incident), \pkg{run\_ask\_workflow} (free-form, no persistence),
+and the underlying \pkg{run\_agentic\_investigation}. The loop is
+parameterised on its system prompt and tool set, so specialist agents reuse the
+same loop with their own prompt and a narrower tool subset. The remediation
+agent in particular reuses it to drive its gated propose-and-approve path.
+
+The loop is a standard ReAct-style cycle~\cite{react} with explicit bounds:
+
+\begin{enumerate}[leftmargin=1.4em,itemsep=0.2em]
+  \item A system message sets the persona (\emph{``You are Oracle, an
+    infrastructure-operations investigator''}) and instructs the model to call
+    \pkg{list\_services} first to learn the real container and endpoint names,
+    then discover metric names and label values, to use the actual names it
+    discovers (not the user's spelling), to use the read-only Docker tools for
+    containers Prometheus and Loki do not cover, and to summarise in one
+    paragraph. Incident investigations use an extended prompt,
+    \pkg{INCIDENT\_SYSTEM\_PROMPT}, that asks for two to three ranked root-cause
+    hypotheses, each with the specific evidence (metric value, log line, or
+    container state) that supports it, rather than a single narrative, so an
+    operator can verify a ranked list quickly. Free-form \pkg{/ask} questions
+    keep the general prompt, since they are questions rather than incidents.
+  \item A human message carries the prompt (the service name or the user's
+    question).
+  \item The model is invoked with the tools bound. If it returns tool calls,
+    each call is executed, its output is truncated to 4000 characters, and a
+    \pkg{ToolMessage} is appended.
+  \item The cycle repeats, capped at \pkg{MAX\_STEPS}. If the step cap is hit
+    with pending tool calls, a final tool-less invocation forces a prose
+    summary instead of another tool call.
+  \item If the model returns no tool calls, the loop ends and the content is
+    the summary.
+\end{enumerate}
+
+The workflow has a two-level fallback. If the agentic loop raises or yields an
+empty summary, \pkg{\_static\_summary} assembles a status-plus-metrics-plus-logs
+context and asks the LLM for a one-paragraph summary. If the LLM itself is
+offline, the static fallback returns the raw context string so the incident is
+still recorded. This means the agent degrades gracefully along three tiers:
+agentic, static LLM summary, raw context. Listing~\ref{lst:loop} shows the
+core loop.
+
+\begin{lstlisting}[caption={Bounded tool-calling loop (module \pkg{agent.workflows.incident}).},label={lst:loop}]
+async def run_agentic_investigation(
+    prompt: str, *, system_prompt=SYSTEM_PROMPT, tools=TOOLS,
+) -> str:
+    by_name = {t.name: t for t in tools}
+    llm = get_llm().bind_tools(tools)
+    messages = [SystemMessage(system_prompt), HumanMessage(prompt)]
+    ai = None
+    for step in range(settings.max_tool_steps):
+        ai = await llm.ainvoke(messages)
+        messages.append(ai)
+        if not ai.tool_calls:
+            break
+        for call in ai.tool_calls:
+            name = call.get("name")
+            args = call.get("args") or {}
+            tool_id = call.get("id", "call")
+            try:
+                out = await by_name[name].ainvoke(args)
+            except Exception as exc:
+                out = f"tool error: {exc}"
+            messages.append(ToolMessage(str(out)[:4000], tool_call_id=tool_id))
+    if ai and ai.tool_calls:
+        ai = await get_llm().ainvoke(messages)  # tool-less final summary
+    return (ai.content if ai else "") or "No summary produced."
+\end{lstlisting}
+
+A helper, \pkg{llm\_supports\_tool\_calls}, probes the configured model by
+binding the tools and issuing a task that genuinely requires one (asking it to
+list the running containers through \pkg{list\_services}). A capable model
+emits a tool call; a model that answers in prose does not. The boolean is used
+at startup to warn the operator when the model cannot drive the agentic path.
+The probe deliberately uses a concrete task rather than a vague ``pick a tool''
+prompt, which under-reported capable local models that answer such prompts in
+prose while still calling tools on real investigations. The \pkg{@mention}
+handler and \pkg{/ask} both route through \pkg{run\_ask\_workflow}, which is the
+same loop without the persistence step.
+
+\subsection{Remediation agent and human-in-the-loop approval}
+\label{sec:remediation}
+
+The remediation agent, \pkg{agent.workflows.remediation}, is the system's
+second agent and the only path through which a write action reaches
+infrastructure. It reuses the investigator's parameterised loop with three
+distinct parts:
+
+\begin{itemize}[leftmargin=1.4em,itemsep=0.2em]
+  \item \textbf{Tool subset.} The agent runs with its own prompt
+    (\pkg{REMEDIATION\_PROMPT}) and a narrow tool set: \pkg{list\_services},
+    \pkg{docker\_status}, and a gated \pkg{propose\_restart} built per run as a
+    closure that binds the incident id, so the model cannot misroute an approval
+    to another incident.
+  \item \textbf{Structural gate.} \pkg{propose\_restart} resolves the target
+    container through \pkg{docker.find\_container}, records a \pkg{pending} row
+    in the \pkg{pending\_approvals} table, and returns the approval id to the
+    model; it never calls \pkg{docker.restart\_container}. The only function that
+    executes a restart is \pkg{execute\_approval}, invoked on human approval. It
+    refuses a missing or already-resolved approval, marks an approval
+    \pkg{expired} when it is older than \pkg{REMEDIATION\_APPROVAL\_TTL\_SECONDS}
+    (default 300), and marks it \pkg{failed} if the restart raises.
+    \pkg{reject\_approval} marks a pending approval \pkg{rejected}. A global kill
+    switch, \pkg{REMEDIATION\_ENABLED}, makes \pkg{run\_remediation\_workflow}
+    return early without consulting the LLM and makes \pkg{execute\_approval}
+    refuse to run, so the entire remediation path can be disabled with one
+    setting.
+  \item \textbf{Human surface.} The persistent \pkg{IncidentActionView} carries
+    a Remediate button that runs \pkg{run\_remediation\_workflow} against the
+    incident's stored diagnosis and posts one \pkg{RemediationApprovalView}
+    (Approve/Reject, persistent) per proposal. Approve calls
+    \pkg{execute\_approval}; Reject calls \pkg{reject\_approval}. The
+    \pkg{/remediate}, \pkg{/approve}, and \pkg{/reject} commands (and their
+    prefix equivalents) are fallbacks for when the buttons are not listening,
+    such as after a bot redeploy.
+\end{itemize}
+
+The \pkg{pending\_approvals} table schema is:
+
+\begin{table}[h]
+\centering
+\caption{SQLite \pkg{pending\_approvals} table schema (module \pkg{agent.storage.repository}).}
+\label{tab:schema-approvals}
+\small
+\begin{tabularx}{\textwidth}{llX}
+\toprule
+\textbf{Column} & \textbf{Type} & \textbf{Notes} \\
+\midrule
+\pkg{id} & TEXT PK & 8-character prefix of a UUID4 \\
+\pkg{incident\_id} & TEXT & Incident the proposal belongs to \\
+\pkg{container\_name} & TEXT & Resolved container name \\
+\pkg{container\_id} & TEXT & Docker container id at proposal time \\
+\pkg{action} & TEXT & e.g.\ \pkg{restart\_container} \\
+\pkg{status} & TEXT & \pkg{pending}, \pkg{approved}, \pkg{rejected}, \pkg{expired}, or \pkg{failed} \\
+\pkg{created\_at} & TEXT & ISO timestamp, used for TTL \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Background monitoring}
+\label{sec:monitor}
+
+\begin{sloppypar}
+The background monitor, \pkg{agent.bot.monitor}, runs inside the bot process as
+a \pkg{discord.ext.tasks.loop}. The poll interval is read from the setting
+\pkg{monitor\_interval\_seconds} and floored at 10 seconds, so a
+misconfiguration cannot flood the network. Each cycle runs three checks.
+\end{sloppypar}
+
+\subsubsection{HTTP endpoint liveness}
+
+For each \pkg{name=url} pair parsed from \pkg{MONITORED\_ENDPOINTS}, the monitor
+calls \pkg{check\_endpoint}. An endpoint counts as up when it is reachable and
+its status code is below 500. The previous state is kept in an in-memory dict.
+On any up-to-down or down-to-up transition, an info-severity alert is posted to
+the status channel. On a healthy-to-down transition only, a critical alert is
+posted to the alert channel and the incident workflow is run for that endpoint,
+opening a threaded incident.
+
+\subsubsection{PromQL alert rules}
+
+For each \pkg{name=<PromQL>} pair parsed from \pkg{PROMETHEUS\_ALERT\_RULES},
+the monitor evaluates the query. A rule is firing when the result set is
+non-empty. Alerting is edge-triggered: a critical alert and a threaded incident
+are created only on the not-firing to firing transition, and a recovery note is
+posted on the firing to not-firing transition. If Prometheus is unreachable the
+rule is skipped for that cycle, but the endpoint liveness check still covers
+basic reachability.
+
+\subsubsection{Docker container monitoring}
+
+When \pkg{DOCKER\_MONITOR} is enabled, the monitor lists containers each cycle:
+
+\begin{itemize}[leftmargin=1.4em,itemsep=0.2em]
+  \item \textbf{Behaviour.} It alerts when a previously running container stops.
+    New containers are picked up automatically with no configuration entry. A
+    name filter (\pkg{DOCKER\_NAME\_FILTER}) narrows the watch set.
+  \item \textbf{De-duplication state.} The de-duplication state is intentionally
+    in memory, which is acceptable for a single-instance MVP. The trade-off is
+    documented in the project goals: state resets on restart, which prevents
+    duplicate alerts after a cold start but loses continuity across redeploys.
+\end{itemize}
+
+\subsubsection{Periodic container-status snapshot}
+
+A second \pkg{discord.ext.tasks.loop} posts a compact status snapshot of the
+watched containers to the status channel on a fixed cadence
+(\pkg{STATUS\_SNAPSHOT\_INTERVAL\_SECONDS}, default 900 seconds). The snapshot
+reuses the \pkg{\_container\_state} map that the container poll refreshes each
+cycle, so it adds no extra Docker query and is at most one poll interval stale.
+It is quiet when no containers are watched or no status channel is
+configured, so an empty channel means ``nothing watched'' rather than
+``broken''. This gives operators a standing heartbeat of container health in
+the same channel that records up/down transitions, without requiring them to
+run a command.
+
+\subsection{Incident tracking and storage}
+\label{sec:storage}
+
+Incidents are persisted in a SQLite~\cite{sqlite} database managed by
+\pkg{agent.storage.repository}, which holds two tables: \pkg{incidents}
+(this section) and \pkg{pending\_approvals} (Section~\ref{sec:remediation}).
+The \pkg{incidents} schema is:
+
+\begin{table}[h]
+\centering
+\caption{SQLite \pkg{incidents} table schema (module \pkg{agent.storage.repository}).}
+\label{tab:schema}
+\small
+\begin{tabularx}{\textwidth}{llX}
+\toprule
+\textbf{Column} & \textbf{Type} & \textbf{Notes} \\
+\midrule
+\pkg{id} & TEXT PK & 8-character prefix of a UUID4 \\
+\pkg{service} & TEXT & Service or endpoint name \\
+\pkg{summary} & TEXT & LLM or fallback summary \\
+\pkg{status} & TEXT & \pkg{open}, \pkg{acknowledged}, or \pkg{resolved} \\
+\pkg{thread\_id} & INTEGER & Discord thread id, if one was opened \\
+\pkg{created\_at} & TEXT & ISO timestamp \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The repository resolves the database path relative to the repository root, so
+every entry point (bot, API, CLI, tests) shares one database. The store has a
+few properties worth noting:
+
+\begin{itemize}[leftmargin=1.4em,itemsep=0.2em]
+  \item \textbf{Lightweight migration.} \pkg{init\_db} adds the
+    \pkg{thread\_id} column if it is missing, so older MVP databases upgrade
+    transparently.
+  \item \textbf{Incident dataclass.} The \pkg{Incident} dataclass in
+    \pkg{agent.storage.models} defaults \pkg{created\_at} to the current UTC ISO
+    timestamp and provides a \pkg{to\_dict} helper.
+  \item \textbf{Lifecycle.} A simple three-state machine: created as \pkg{open},
+    moved to \pkg{acknowledged} by \pkg{/ack}, and moved to \pkg{resolved} by
+    \pkg{/resolve}, both of which post a follow-up into the incident's Discord
+    thread if one exists.
+\end{itemize}
+
+\subsection{Alerting}
+\label{sec:alerting}
+
+\pkg{agent.alerting.discord} posts rich embeds to Discord channels:
+
+\begin{itemize}[leftmargin=1.4em,itemsep=0.2em]
+  \item \textbf{Severity embeds.} \pkg{send\_alert} builds a \pkg{discord.Embed}
+    with a title, a description, and a colour chosen by severity: blue for
+    info, orange for warning, red for critical.
+  \item \textbf{Incident threads.} \pkg{open\_incident\_thread} creates a public
+    thread in the incidents channel, posts the summary into it, and records the
+    thread id back into the SQLite row via \pkg{update\_incident\_thread\_id},
+    so later ack/resolve updates can find the thread.
+  \item \textbf{Persistent action views.} The thread message carries an
+    \pkg{IncidentActionView} with Acknowledge, Resolve, and Remediate buttons;
+    the view uses \pkg{timeout=None} so the buttons never expire while the bot
+    is running, since incidents are often handled long after the thread opens.
+    The Remediate button runs the gated remediation agent, which posts each
+    proposal with its own \pkg{RemediationApprovalView} (Approve/Reject, likewise
+    persistent). After a bot restart the buttons stop listening;
+    \pkg{/ack}, \pkg{/resolve}, and \pkg{/remediate}/\pkg{/approve}/\pkg{/reject}
+    remain as fallbacks.
+  \item \textbf{Channel mapping.} The bot maps its output to six
+    purpose-specific channels, all optional. A feature is simply inactive when
+    its channel id is unset, so a deployment can adopt channels incrementally.
+    The two highest-value channels for a demo are the alerts channel (so
+    incidents surface) and the test-scenarios channel (to trigger reproducible
+    runs).
+\end{itemize}
+
+\subsection{Deployment and observability stack}
+\label{sec:deploy}
+
+The project ships a Docker Compose file that provisions the agent alongside a
+complete observability pipeline, so the whole system can be brought up with a
+single command. The stack contains:
+
+\begin{itemize}[leftmargin=1.4em,itemsep=0.2em]
+  \item \textbf{api} and \textbf{bot}: the two agent services, built from a
+    common \pkg{python:3.13-slim-bookworm} image using \pkg{uv}~\cite{uv} with a
+    cached
+    dependency layer, both using host networking to reach the local Prometheus
+    and Loki ports and the local LLM endpoint.
+  \item \textbf{prometheus}: scrapes the nginx exporter and itself.
+  \item \textbf{loki}: filesystem-backed log store.
+  \item \textbf{promtail}: ships nginx access and error logs into Loki with a
+    \pkg{service=nginx} label, so the agent's LogQL queries can select them.
+  \item \textbf{nginx}: a sample monitored service exposing a
+    \pkg{/nginx\_status} stub-status endpoint, with real log files in a shared
+    volume so Promtail can read them.
+  \item \textbf{nginx-exporter}: the nginx metrics exporter feeding Prometheus.
+\end{itemize}
+
+Both agent services mount the host Docker socket read-only so that the
+container-discovery tools (\pkg{/status}, \pkg{/containers}, the menu) see host
+containers. The API service exposes port 8123 and has a healthcheck. The bot
+service is configured with \pkg{MONITORED\_ENDPOINTS} pointing at the local API
+health endpoint and nginx, so the monitor has something real to watch out of
+the box.
+
+\subsubsection{Local LLM deployment and provider switching}
+
+The LLM is provider-portable without code changes:
+
+\begin{itemize}[leftmargin=1.4em,itemsep=0.2em]
+  \item \textbf{Provider selector.} The \pkg{get\_llm} factory reads a single
+    \pkg{LLM\_PROVIDER} selector and resolves it to a matching base URL and model
+    from preset settings: \pkg{ollama} selects an Ollama endpoint, \pkg{vllm}
+    selects a vLLM endpoint, and an empty value falls back to the legacy
+    \pkg{LLM\_BASE\_URL}/\pkg{LLM\_MODEL}. Local providers do not require an API
+    key, so a dummy key is passed to \pkg{ChatOpenAI}, which mandates a non-empty
+    one.
+  \item \textbf{Separate vLLM stack.} The vLLM server runs as a separate Docker
+    Compose stack outside the agent repository, keeping the GPU-bearing model
+    server decoupled from the application compose. It serves an
+    OpenAI-compatible endpoint on a host port and exposes the OpenAI
+    tool-calling protocol through vLLM's \pkg{--enable-auto-tool-choice} flag
+    with a model-appropriate \pkg{--tool-call-parser}.
+  \item \textbf{Two model legs.} The Ollama leg serves a Gemma 4 model and
+    tolerates GPU memory pressure through CPU offloading; the vLLM leg serves a
+    text-only model sized to fit the available VRAM. Switching between the two
+    is a one-line \pkg{LLM\_PROVIDER} change followed by a bot restart.
+\end{itemize}
+
+\subsection{Testing}
+\label{sec:testing}
+
+The test suite, under \pkg{tests}, contains 81 test functions across 18
+modules and is run with \pkg{pytest}. A shared fixture in
+\pkg{tests/conftest} points the repository at a temporary SQLite file, so
+storage tests are isolated. The suite covers five areas:
+
+\begin{itemize}[leftmargin=1.4em,itemsep=0.2em]
+  \item \textbf{Workflows} (\pkg{tests.test\_workflows}): the agentic loop with
+    a fake LLM that returns scripted tool calls, the step-cap termination
+    behaviour, the fallback path when the LLM raises, the no-persistence
+    property of the ask workflow, the use of the ranked-hypothesis prompt for
+    incidents versus the general prompt for \pkg{/ask}, and the tool-calling
+    probe.
+  \item \textbf{Remediation} (\pkg{tests.test\_remediation}): the pending-approval
+    store, the structural gate (\pkg{propose\_restart} records but never
+    executes), \pkg{execute\_approval} execution and TTL expiry, reject, the
+    failure path, and the \pkg{REMEDIATION\_ENABLED} kill switch.
+  \item \textbf{Monitor} (\pkg{tests.test\_monitor}): endpoint parsing, the
+    healthy-to-down escalation state machine, edge-triggered rule firing, the
+    container-status snapshot, and bearer-token header injection for both
+    sources.
+  \item \textbf{Tools and storage} (\pkg{tests.test\_docker},
+    \pkg{tests.test\_health}, \pkg{tests.test\_ssh},
+    \pkg{tests.test\_tools}, \pkg{tests.test\_storage}): the Docker socket
+    guard, HTTP health timing, systemd unit validation, the deterministic
+    fallback-stub path for the source tools, and the full CRUD lifecycle of
+    the incident repository.
+  \item \textbf{Interface} (\pkg{tests.test\_bot}, \pkg{tests.test\_api},
+    \pkg{tests.test\_alerting}, \pkg{tests.test\_reporting}): command routing,
+    API responses, embed colouring, and report formatting.
+\end{itemize}
+
+The suite uses no external services, so it runs in CI without provisioning
+Prometheus, Loki, or a live LLM. Test instances of the settings model are built
+with \pkg{\_env\_file=None} and, where needed, explicit field overrides, so that
+values from the deployment \pkg{.env} (loaded into \pkg{os.environ} at import
+time) do not leak into tests; the source-tool stub tests patch the underlying
+HTTP calls to raise, so the fallback path is exercised deterministically
+regardless of whether Prometheus or Loki is reachable. Tests marked
+\pkg{integration} exercise live endpoints and are opt-in.
+
+% ============================================================
+\section{Results and Impact}
+% ============================================================
+
+The MVP was delivered across the implementation phase of the internship and is
+functional against a live deployment. The measured outcomes are as follows.
+
+\subsection{Delivered capabilities}
+
+\begin{itemize}[leftmargin=1.4em,itemsep=0.2em]
+  \item \textbf{Integrated architecture.} The Discord bot, the FastAPI backend,
+    the SQLite store, the shared LLM client, and the common tool set run as one
+    codebase. A capability added to the tool layer is immediately reachable
+    from both chat and HTTP.
+  \item \textbf{Controlled agent tools.} Prometheus metric and label discovery,
+    PromQL instant and range queries, Loki instant and range queries, HTTP
+    health checks, Docker container discovery, and read-only Docker container
+    status and logs tools are all implemented and exercised. The agent loop
+    discovers real service names via \pkg{list\_services} and matches them
+    separator-agnostically. The incident lifecycle (open, acknowledge, resolve)
+    is persisted. Docker and SSH mutation functions are library-only, reached
+    through the gated remediation agent rather than bound to the investigator.
+  \item \textbf{Gated remediation.} A second, human-gated agent proposes Docker
+    restarts; each proposal is persisted, surfaced through Approve/Reject
+    buttons or commands, and executed only on approval, with a time-to-live
+    expiry and a global kill switch. The structural gate keeps the write path
+    out of the autonomous loop.
+  \item \textbf{Discord integration.} Prefix and slash command surfaces share
+    one tool layer; the @mention conversational handler, the background
+    monitor with its periodic container-status snapshot, the interactive
+    container menu and service panel, the persistent incident action and
+    remediation approval buttons, a reply-summarisation layer with a \pkg{raw}
+    opt-out, and the six-channel output mapping are all delivered and tested.
+  \item \textbf{Self-hosted, provider-switchable LLM.} The OpenAI-compatible
+    client drives the agentic loop on any conformant server, with a single
+    \pkg{LLM\_PROVIDER} selector switching between local Ollama and vLLM
+    backends, and a verified fallback when the configured model lacks
+    tool-calling support.
+  \item \textbf{Observability integration.} Prometheus and Loki sources return
+    real data when reachable and degrade to stubs when not, with optional
+    bearer-token authentication. A Docker Compose stack provisions the
+    monitoring pipeline alongside the agent, and a separate stack provisions
+    the vLLM model server.
+  \item \textbf{Documentation.} The README, setup guide, usage guide,
+    architecture overview, workflow reference, tool reference, and channel
+    mapping are all maintained in the project's \pkg{docs} directory.
+\end{itemize}
+
+\subsection{Quantitative scope}
+
+The implementation comprises approximately 2,871 lines of Python across 42
+source files (excluding generated artefacts), 81 test functions across 18 test
+modules, and 56 commits over the implementation window. The Docker Compose
+stack orchestrates seven services (the agent's api and bot, Prometheus, Loki,
+promtail, nginx, and the nginx exporter), with the vLLM model server in a
+separate stack. The dependency surface is deliberately small: eight runtime
+packages.
+
+\subsection{Operational impact}
+
+In use, the agent reduces the time between a suspected degradation and a
+useful summary from a multi-tool, multi-dashboard manual process to a single
+chat command or a monitored escalation. The @mention path suits ad-hoc
+questions that do not warrant a formal incident, because it reuses the same
+agentic loop without persisting a record. The background
+monitor closes the gap for degradations that no one is watching, and the
+threaded incident gives the team a durable, searchable record per event. The
+investigation loop is read-only, so it can be left running in a real
+environment with confidence that it will not change infrastructure state; the
+remediation loop can change state, but only through a human approval, keeping
+the blast radius of any single action to one explicitly approved restart.
+
+\subsection{Verification}
+
+The test suite passes with no external services provisioned. That confirms the
+graceful-degradation design holds: the agent responds correctly when
+Prometheus, Loki, or the LLM is absent. The integration path is exercised
+manually against the Docker Compose stack, where the monitor detects the
+nginx service going down and opens a threaded incident with an LLM summary.
+
+% ============================================================
+\section{Challenges}
+% ============================================================
+
+Several challenges were encountered and resolved during the implementation:
+
+\begin{enumerate}[leftmargin=1.4em,itemsep=0.4em]
+  \item \textbf{Tool-calling support varies by model.}
+    Not every OpenAI-compatible server implements the tool-calling protocol. The
+    \pkg{llm\_supports\_tool\_calls} probe and the startup warning were added so an
+    operator is told immediately that investigations will degrade to static
+    summaries. The two-level fallback (agentic, then static LLM summary, then raw
+    context) ensures the agent still produces output on an unsupported or offline
+    model.
+  \item \textbf{Gateway reconnect re-entrancy.}
+    The \pkg{discord.py} gateway can fire \pkg{on\_ready} more than once after a
+    reconnect. Without the \pkg{\_setup\_done} guard, the monitor and the log
+    handler would be started twice, duplicating alerts and pump tasks. The guard
+    is a single module-level boolean, which is sufficient for a single-process bot.
+  \item \textbf{Discord message length.}
+    LLM summaries and log dumps frequently exceed Discord's 2000-character limit.
+    The \pkg{split\_discord\_text} helper splits at the nearest newline, keeping
+    log lines intact. The code blocks are capped at 1900 characters to leave room
+    for the backtick delimiters.
+  \item \textbf{Log forwarding feedback loops.}
+    Forwarding logs to Discord risks a loop when the Discord client itself logs an
+    error that triggers another log record. The \pkg{DiscordLogHandler} skips any
+    record from a logger whose name starts with \pkg{discord} and writes send
+    failures to \pkg{stderr} rather than the root logger, which closes the loop.
+  \item \textbf{Configuration normalisation.}
+    Pydantic's \pkg{env\_parse\_none\_str} converts empty environment variables to
+    \pkg{None}, which broke string concatenation in several places. The
+    \pkg{@model\_validator(mode="before")} in the settings class normalises
+    \pkg{None} back to \pkg{""} for string fields, and this fix is covered by a
+    test.
+  \item \textbf{In-memory monitoring state.}
+    Storing alert de-duplication state in memory is the simplest correct choice
+    for a single-instance MVP, but it means state resets on restart. Persisting
+    this state is deferred to future work, and the trade-off is documented.
+  \item \textbf{Docker socket availability.}
+    The Docker tools must not crash when the socket is absent (as in a non-Docker
+    deployment or a container without the socket mounted). The
+    \pkg{\_docker\_available} guard and the try/except around the API call make
+    the tools degrade to empty results, which keeps the bot responsive in any
+    environment.
+  \item \textbf{Multimodal model footprints on a constrained GPU.}
+    A local vLLM server must fit the model and the KV cache in VRAM, which it cannot
+    offload. The Gemma~4 instruct checkpoints are unified multimodal bundles (text,
+    vision, and audio towers), so even the size labels that imply a small text head
+    load all towers and exceed an 8\,GiB card. Ollama tolerates the same models
+    through CPU offloading, so the Gemma~4 leg runs under Ollama; the vLLM leg runs
+    a text-only model sized for the available VRAM. The two legs are exposed
+    through the \pkg{LLM\_PROVIDER} selector so an operator compares backends
+    without touching code.
+  \item \textbf{Tool-calling probe fidelity.}
+    A startup probe that asks the model to ``pick a tool'' under-reports capable
+    local models, which answer such a vague prompt in prose while still calling
+    tools on real investigations. The probe issues a concrete task that requires
+    a tool (listing containers through \pkg{list\_services}), so a capable model
+    emits a tool call and the probe reports support correctly.
+\end{enumerate}
+
+% ============================================================
+\section{Future Work}
+% ============================================================
+
+The MVP is a foundation for several planned extensions, listed in priority
+order.
+
+\begin{enumerate}[leftmargin=1.4em,itemsep=0.2em]
+  \item \textbf{Additional gated runbooks.} Extend the remediation agent beyond
+    container restart to the other high-value, low-risk on-prem runbooks (clear
+    disk space, rotate logs, restart a Docker daemon), each reusing the
+    existing propose-then-approve gate and kill switch.
+  \item \textbf{Promote runbooks to autonomy individually.} Graduate a runbook
+    from human-approved to autonomous execution only after a track record of
+    correct approvals, using the history already captured in the
+    \pkg{pending\_approvals} table; each promotion keeps an allowlist entry, a
+    blast-radius limit, and the kill switch.
+  \item \textbf{Real service inventory for status.} Wire
+    \pkg{get\_service\_status} to a fuller registry (Docker labels, a service
+    catalogue, or an orchestrator API) so status reporting reflects more than
+    container liveness.
+  \item \textbf{Named multi-environment sources.} Add a registry of named
+    monitoring sources (production, staging) so the agent can be asked about a
+    specific environment rather than a single global Prometheus/Loki pair.
+  \item \textbf{Persisted monitoring state.} Move the alert de-duplication
+    state into SQLite so it survives restarts and redeploys without duplicate
+    alerts.
+  \item \textbf{Persistent action buttons across restarts.} Re-register the
+    incident action and remediation approval views on startup from the open
+    incidents and pending approvals in SQLite, so the buttons keep working
+    after a bot redeploy instead of falling back to the \pkg{/ack},
+    \pkg{/resolve}, \pkg{/approve}, and \pkg{/reject} commands.
+  \item \textbf{Role-based access control.} Restrict sensitive commands and
+    tools to authorised roles, and add an allowlist for SSH and Docker actions.
+  \item \textbf{Alertmanager webhook receiver.} Host a webhook receiver in the
+    bot process as an alternative to in-bot polling, letting an external
+    Alertmanager push alerts rather than having the bot poll Prometheus.
+  \item \textbf{Structured evaluation of the agentic loop.} Build a scenario
+    suite that scores the agent's ranked hypotheses against expected findings,
+    so model and prompt changes can be measured rather than judged by hand.
+\end{enumerate}
+
+% ============================================================
+\section{Conclusion}
+% ============================================================
+
+The Marconi Infrastructure Operations Agent demonstrates that a useful,
+safe, and self-hosted operations assistant can be built as a small Python
+codebase that reuses a mature LLM tool-calling protocol over read-only
+infrastructure tools. The deliberate read-only scoping lets the agent run in a
+real environment, the graceful-degradation design keeps it responsive during
+partial outages, and the shared workflow layer means the Discord and HTTP
+surfaces never drift. A gated remediation agent introduces the first write
+action behind a human approval, a time-to-live expiry, and a kill switch, so
+the autonomous investigation loop gains a tightly scoped, reviewable
+remediation counterpart. The MVP meets the internship charter and leaves a
+clear, prioritised path toward more runbooks and, eventually, individually
+promoted autonomous remediation.
+
+\clearpage
+\addcontentsline{toc}{section}{References}
+\begin{thebibliography}{99}
+
+\bibitem{react}
+S.~Yao, J.~Zhao, D.~Yu, N.~Du, I.~Shafran, T.~Narasimhan, Y.~Cao, and Y.~Wei,
+``ReAct: Synergizing reasoning and acting in language models,''
+\emph{arXiv preprint arXiv:2210.03629}, 2023.
+
+\bibitem{openai-tools}
+OpenAI, ``Function calling and other API updates,'' 2023. [Online].
+Available: \url{https://platform.openai.com/docs/guides/function-calling}
+
+\bibitem{langchain}
+LangChain, ``LangChain Python documentation,'' 2025. [Online].
+Available: \url{https://python.langchain.com/docs/}
+
+\bibitem{discordpy}
+Rapptz, ``discord.py: An API wrapper for Discord written in Python,'' 2025.
+[Online]. Available: \url{https://discordpy.readthedocs.io/}
+
+\bibitem{ollama}
+Ollama, ``Get up and running with large language models, locally,'' 2025.
+[Online]. Available: \url{https://ollama.com/}
+
+\bibitem{vllm}
+vLLM, ``A high-throughput and memory-efficient inference and serving engine for
+LLMs,'' 2025. [Online]. Available: \url{https://docs.vllm.ai/}
+
+\bibitem{prometheus}
+Prometheus Authors, ``Prometheus: Monitoring system and time series
+database,'' 2025. [Online]. Available: \url{https://prometheus.io/docs/}
+
+\bibitem{loki}
+Grafana Labs, ``Loki: Like Prometheus, but for logs,'' 2025. [Online].
+Available: \url{https://grafana.com/docs/loki/}
+
+\bibitem{docker}
+Docker Inc., ``Docker Engine API reference,'' 2025. [Online].
+Available: \url{https://docs.docker.com/reference/api/engine/}
+
+\bibitem{pydantic}
+S.~Colvin, E.~J.~Ziebarth, and the Pydantic Team, ``Pydantic: Data validation
+using Python type hints,'' 2025. [Online].
+Available: \url{https://docs.pydantic.dev/}
+
+\bibitem{fastapi}
+S.~Ram\'irez, ``FastAPI: Modern, fast web framework for building APIs with
+Python,'' 2025. [Online]. Available: \url{https://fastapi.tiangolo.com/}
+
+\bibitem{sqlite}
+D.~R.~Hipp, ``SQLite: A self-contained, serverless, zero-configuration SQL
+database engine,'' 2025. [Online]. Available: \url{https://www.sqlite.org/}
+
+\bibitem{uv}
+Astral, ``uv: An extremely fast Python package and project manager,'' 2025.
+[Online]. Available: \url{https://docs.astral.sh/uv/}
+
+\end{thebibliography}
+
+\clearpage
+\begin{appendices}
+
+\section{Discord channel mapping}
+\label{app:channels}
+
+The bot routes its output to six purpose-specific Discord channels, each
+opt-in via an environment variable. A feature is inactive when its channel id
+is unset, so a deployment can adopt channels incrementally.
+
+\begin{table}[h]
+\centering
+\caption{Discord channels and their roles.}
+\small
+\begin{tabularx}{\textwidth}{llX}
+\toprule
+\textbf{Channel} & \textbf{Env var} & \textbf{Role} \\
+\midrule
+\pkg{\#agent-commands} & (none) & Operators run \pkg{!} commands; the bot replies inline \\
+\pkg{\#alerts} & \pkg{DISCORD\_ALERT\_CHANNEL\_ID} & Severity-coloured embeds for down-alerts and incidents \\
+\pkg{\#status-updates} & \pkg{DISCORD\_STATUS\_CHANNEL\_ID} & Every up/down transition the monitor observes, plus the periodic container-status snapshot \\
+\pkg{\#incidents} & \pkg{DISCORD\_INCIDENT\_CHANNEL\_ID} & One thread per incident with ack/resolve/remediate updates and approval views \\
+\pkg{\#agent-logs} & \pkg{DISCORD\_LOG\_CHANNEL\_ID} & WARNING and above bot and backend log records \\
+\pkg{\#test-scenarios} & \pkg{DISCORD\_TEST\_SCENARIOS\_CHANNEL\_ID} & \pkg{/scenario} runs, restricted to this channel when set \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Scenario file format}
+\label{app:scenario}
+
+Scenarios are YAML files in the \pkg{scenarios} directory. The
+\pkg{/scenario <name>} command loads \pkg{scenarios/<name>.yml} and runs the
+incident workflow for the named service. The sample scenario,
+\pkg{scenarios/sample\_slow\_query.yml}, models a slow query on PostgreSQL:
+
+\begin{lstlisting}[caption={Scenario file format (YAML).}]
+name: Slow query on PostgreSQL
+service: postgres
+symptom: >
+  A query plan change causes CPU to spike and response times to climb.
+expected_agent_actions:
+  - retrieve service status
+  - query Prometheus for cpu usage
+  - query Loki for slow query logs
+  - summarize findings
+  - store incident
+  - alert Discord channel if configured
+\end{lstlisting}
+
+\section{Module reference}
+\label{app:modules}
+
+The table below lists every implementation module by its fully-qualified
+import path, the canonical way to locate code in this project.
+
+\begin{longtable}{p{0.40\textwidth} p{0.52\textwidth}}
+\caption{Module reference.} \\
+\toprule
+\textbf{Module} & \textbf{Responsibility} \\
+\midrule
+\endfirsthead
+\caption[]{(continued)} \\
+\toprule
+\textbf{Module} & \textbf{Responsibility} \\
+\midrule
+\endhead
+\pkg{agent.cli} & Command-line entry points for bot, API, incident, report \\
+\pkg{agent.config.settings} & Pydantic settings loaded from env and \pkg{.env} \\
+\pkg{agent.config.dotenv\_loader} & Explicit \pkg{.env} loading before settings \\
+\pkg{agent.bot.client} & Discord client, on\_ready, on\_message, log handler \\
+\pkg{agent.bot.commands} & Prefix command handlers \\
+\pkg{agent.bot.slash} & Slash command handlers (CommandTree) \\
+\pkg{agent.bot.menu} & Interactive container picker and action buttons \\
+\pkg{agent.bot.views} & Service panel view and persistent incident action buttons \\
+\pkg{agent.bot.summarize} & LLM reply summarisation with \pkg{raw} opt-out \\
+\pkg{agent.bot.monitor} & Background endpoint, rule, and container monitor \\
+\pkg{agent.bot.utils} & Discord text splitting and Prometheus/Loki formatting \\
+\pkg{agent.api.server} & FastAPI app and shared-secret dependency \\
+\pkg{agent.api.routes} & HTTP API routes \\
+\pkg{agent.workflows.incident} & Agentic investigation loop, ask workflow, and probe \\
+\pkg{agent.workflows.remediation} & Gated remediation agent, approval store, kill switch \\
+\pkg{agent.workflows.reporting} & Incident report formatting \\
+\pkg{agent.tools.services} & Service status via Docker container discovery \\
+\pkg{agent.tools.metrics} & Service metrics via Prometheus with escape and fallback \\
+\pkg{agent.tools.logs} & Service logs via Loki with fallback \\
+\pkg{agent.tools.health} & HTTP endpoint health checks \\
+\pkg{agent.tools.docker} & Docker Engine API tools; mutation functions are library-only, reached via the gated remediation agent \\
+\pkg{agent.tools.ssh} & SSH-based server tools with unit-name validation \\
+\pkg{agent.tools.normalize} & Separator-agnostic service-name matching \\
+\pkg{agent.tools.incidents} & Incident action tools over SQLite \\
+\pkg{agent.tools.query\_tools} & Read-only LangChain tools the LLM calls \\
+\pkg{agent.tools.sources.prometheus} & Prometheus query, discovery, and range helpers \\
+\pkg{agent.tools.sources.loki} & Loki instant and range query helpers \\
+\pkg{agent.storage.models} & Incident dataclass \\
+\pkg{agent.storage.repository} & SQLite incident and pending-approval repository \\
+\pkg{agent.alerting.discord} & Discord alert embeds, incident threads, and action views \\
+\pkg{agent.llm.client} & OpenAI-compatible ChatOpenAI factory with provider switching \\
+\bottomrule
+\end{longtable}
+
+\end{appendices}
+
+\end{document}

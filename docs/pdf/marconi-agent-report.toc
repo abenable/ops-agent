@@ -1,0 +1,42 @@
+\contentsline {section}{\numberline {1}Background}{4}{section.1}%
+\contentsline {section}{\numberline {2}Problem Statement}{4}{section.2}%
+\contentsline {section}{\numberline {3}Solution Overview}{5}{section.3}%
+\contentsline {subsection}{\numberline {3.1}Design principles}{5}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}System at a glance}{5}{subsection.3.2}%
+\contentsline {section}{\numberline {4}Implementation Methodology}{7}{section.4}%
+\contentsline {subsection}{\numberline {4.1}Configuration and settings}{7}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Discord interface}{7}{subsection.4.2}%
+\contentsline {subsubsection}{\numberline {4.2.1}Reply summarisation}{8}{subsubsection.4.2.1}%
+\contentsline {subsection}{\numberline {4.3}HTTP API}{9}{subsection.4.3}%
+\contentsline {subsection}{\numberline {4.4}Agent tools}{9}{subsection.4.4}%
+\contentsline {subsubsection}{\numberline {4.4.1}Service status}{9}{subsubsection.4.4.1}%
+\contentsline {subsubsection}{\numberline {4.4.2}Metrics and logs}{9}{subsubsection.4.4.2}%
+\contentsline {subsubsection}{\numberline {4.4.3}HTTP health}{9}{subsubsection.4.4.3}%
+\contentsline {subsubsection}{\numberline {4.4.4}Docker and SSH tools}{10}{subsubsection.4.4.4}%
+\contentsline {subsubsection}{\numberline {4.4.5}LangChain query tools}{10}{subsubsection.4.4.5}%
+\contentsline {subsection}{\numberline {4.5}Monitoring sources}{11}{subsection.4.5}%
+\contentsline {subsection}{\numberline {4.6}Agentic investigation workflow}{11}{subsection.4.6}%
+\contentsline {subsection}{\numberline {4.7}Remediation agent and human-in-the-loop approval}{12}{subsection.4.7}%
+\contentsline {subsection}{\numberline {4.8}Background monitoring}{13}{subsection.4.8}%
+\contentsline {subsubsection}{\numberline {4.8.1}HTTP endpoint liveness}{13}{subsubsection.4.8.1}%
+\contentsline {subsubsection}{\numberline {4.8.2}PromQL alert rules}{13}{subsubsection.4.8.2}%
+\contentsline {subsubsection}{\numberline {4.8.3}Docker container monitoring}{13}{subsubsection.4.8.3}%
+\contentsline {subsubsection}{\numberline {4.8.4}Periodic container-status snapshot}{13}{subsubsection.4.8.4}%
+\contentsline {subsection}{\numberline {4.9}Incident tracking and storage}{14}{subsection.4.9}%
+\contentsline {subsection}{\numberline {4.10}Alerting}{14}{subsection.4.10}%
+\contentsline {subsection}{\numberline {4.11}Deployment and observability stack}{15}{subsection.4.11}%
+\contentsline {subsubsection}{\numberline {4.11.1}Local LLM deployment and provider switching}{15}{subsubsection.4.11.1}%
+\contentsline {subsection}{\numberline {4.12}Testing}{15}{subsection.4.12}%
+\contentsline {section}{\numberline {5}Results and Impact}{16}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Delivered capabilities}{16}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}Quantitative scope}{17}{subsection.5.2}%
+\contentsline {subsection}{\numberline {5.3}Operational impact}{17}{subsection.5.3}%
+\contentsline {subsection}{\numberline {5.4}Verification}{17}{subsection.5.4}%
+\contentsline {section}{\numberline {6}Challenges}{17}{section.6}%
+\contentsline {section}{\numberline {7}Future Work}{18}{section.7}%
+\contentsline {section}{\numberline {8}Conclusion}{19}{section.8}%
+\contentsline {section}{References}{20}{section.8}%
+\contentsline {section}{Appendices}{21}{section*.1}%
+\contentsline {section}{\numberline {A}Discord channel mapping}{21}{appendix.1.A}%
+\contentsline {section}{\numberline {B}Scenario file format}{21}{appendix.1.B}%
+\contentsline {section}{\numberline {C}Module reference}{21}{appendix.1.C}%
