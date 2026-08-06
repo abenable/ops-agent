@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.28 (TeX Live 2025/Debian) (preloaded format=pdflatex 2026.5.13)  6 AUG 2026 12:56
+This is pdfTeX, Version 3.141592653-2.6-1.40.28 (TeX Live 2025/Debian) (preloaded format=pdflatex 2026.5.13)  6 AUG 2026 13:31
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -1398,18 +1398,14 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 LaTeX2e <2025-11-01>
 L3 programming layer <2026-01-19>
  ***********
-
-
-LaTeX Warning: Label(s) may have changed. Rerun to get cross-references right.
-
 Package rerunfilecheck Info: File `marconi-agent-report.out' has not changed.
 (rerunfilecheck)             Checksum: 4DFC57CE8644182E7D6C9978E711535A;7007.
  ) 
 Here is how much of TeX's memory you used:
- 32488 strings out of 469438
- 644143 string characters out of 5468410
+ 32502 strings out of 469438
+ 644340 string characters out of 5468410
  1577226 words of memory out of 5000000
- 60209 multiletter control sequences out of 15000+600000
+ 60222 multiletter control sequences out of 15000+600000
  722837 words of font info for 212 fonts, out of 8000000 for 9000
  59 hyphenation exceptions out of 8191
  98i,13n,108p,1017b,2163s stack positions out of 10000i,1000n,20000p,200000b,200000s
@@ -1424,10 +1420,10 @@ r8.pfb></usr/share/texmf/fonts/type1/public/lm/lmr9.pfb></usr/share/texmf/fonts
 /public/lm/lmtk10.pfb></usr/share/texmf/fonts/type1/public/lm/lmtt10.pfb></usr/
 share/texmf/fonts/type1/public/lm/lmtt8.pfb></usr/share/texmf/fonts/type1/publi
 c/lm/lmtt9.pfb></usr/share/texmf/fonts/type1/public/lm/lmtti10.pfb>
-Output written on marconi-agent-report.pdf (26 pages, 500576 bytes).
+Output written on marconi-agent-report.pdf (26 pages, 498891 bytes).
 PDF statistics:
- 645 PDF objects out of 1000 (max. 8388607)
- 552 compressed objects within 6 object streams
- 171 named destinations out of 1000 (max. 500000)
+ 646 PDF objects out of 1000 (max. 8388607)
+ 553 compressed objects within 6 object streams
+ 172 named destinations out of 1000 (max. 500000)
  55293 words of extra memory for PDF output out of 61914 (max. 10000000)
 

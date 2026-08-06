@@ -1,0 +1,10 @@
+name: Local LLM endpoint unreachable
+service: vllm
+symptom: >
+  The local vLLM endpoint is unreachable, so agent investigations fall back to
+  static summaries and tool-calling stops working. The operator wants to
+  confirm vllm is down and check its recent logs for a crash.
+expected_agent_actions:
+  - list_services
+  - docker_status
+  - docker_logs

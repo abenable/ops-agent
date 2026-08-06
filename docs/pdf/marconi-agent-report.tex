@@ -1547,26 +1547,30 @@ incident workflow for the named service. The name is resolved through
 \pkg{..} segments and confirms the resolved path stays under the
 \pkg{scenarios/} directory, so a name like \pkg{../../etc/passwd} cannot read
 an arbitrary file outside it; the file is parsed with \pkg{yaml.safe\_load}.
-Seven scenarios are included, covering
-container crashes, high CPU, endpoint timeouts, disk exhaustion, memory leaks,
-TLS certificate expiry, and slow database queries. The sample below shows the
-format; aspirational actions (requiring a stronger multi-step LLM) are kept
-as YAML comments so the file doubles as documentation of expected behaviour for
-future model upgrades:
+Six scenarios are included, each mapped to a real service in the deployment
+stack rather than a generic external system: the agent's own \pkg{api}
+container stopping, a Prometheus scrape target going \pkg{up=0} with zero
+samples (the \pkg{node-exporter}/\pkg{cadvisor} case), \pkg{n8n} under high
+CPU load, \pkg{n8n} memory pressure, Loki returning no logs for \pkg{n8n}
+(a \pkg{promtail} shipping failure), and the local \pkg{vllm} LLM endpoint
+becoming unreachable. The sample below shows the format; the
+\pkg{expected\_agent\_actions} list doubles as documentation of the tools the
+operator expects a capable model to call, which the evaluation harness checks:
 
-\begin{lstlisting}[caption={Scenario file format (YAML), with aspirational actions as comments.}]
-# Aspirational actions (require a stronger tool-calling LLM):
-#   - query Prometheus for cpu usage
-#   - query Loki for slow query logs
-name: Slow query on PostgreSQL
-service: postgres
+\begin{lstlisting}[caption={Scenario file format (YAML).}]
+name: Prometheus scrape target down
+service: node-exporter
 symptom: >
-  A query plan change causes CPU to spike and response times to climb.
+  Prometheus reports up=0 with 0 samples scraped and a scrape duration of
+  only ~4ms for node-exporter (and cadvisor) -- an immediate connection
+  failure, not a timeout. The exporter containers are running, so the scrape
+  config or inter-container networking is the likely cause.
 expected_agent_actions:
-  - retrieve service status
-  - summarize findings
-  - store incident
-  - alert Discord channel if configured
+  - list_services
+  - docker_status
+  - list_metric_names
+  - get_label_values
+  - query_prometheus
 \end{lstlisting}
 
 \section{Module reference}

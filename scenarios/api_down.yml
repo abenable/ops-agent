@@ -1,0 +1,11 @@
+name: API container stopped
+service: api
+symptom: >
+  The marconi-agent-api container has stopped and its /health endpoint is no
+  longer reachable. The bot's monitor fired a "Service down" alert for the API
+  health endpoint.
+expected_agent_actions:
+  - list_services
+  - docker_status
+  - docker_logs
+  - query_prometheus

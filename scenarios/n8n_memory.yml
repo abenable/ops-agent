@@ -1,0 +1,12 @@
+name: n8n memory pressure
+service: n8n
+symptom: >
+  n8n's resident memory and Node.js heap are climbing steadily toward an OOM.
+  The operator wants to confirm the growth and find the offending workflow or
+  leak before the container is killed.
+expected_agent_actions:
+  - list_services
+  - docker_status
+  - list_metric_names
+  - query_prometheus
+  - docker_logs

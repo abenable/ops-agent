@@ -8,7 +8,8 @@ import agent.bot.scenarios as scenarios
 
 def test_available_scenarios_lists_repo_files():
     names = scenarios._available_scenarios()
-    assert "container_down" in names
+    assert "api_down" in names
+    assert "scrape_target_down" in names
     assert all(n and "/" not in n for n in names)
 
 
@@ -18,7 +19,7 @@ def test_run_and_post_runs_workflow_with_symptom_hint(monkeypatch):
     async def fake_run(service, hint=None):
         captured["service"] = service
         captured["hint"] = hint
-        return {"incident_id": "abc123", "summary": "diagnosis of app"}
+        return {"incident_id": "abc123", "summary": "diagnosis of api"}
 
     monkeypatch.setattr(scenarios, "run_incident_workflow", fake_run)
 
@@ -27,12 +28,12 @@ def test_run_and_post_runs_workflow_with_symptom_hint(monkeypatch):
     async def send(msg):
         sent.append(msg)
 
-    asyncio.run(scenarios._run_and_post("container_down", send))
+    asyncio.run(scenarios._run_and_post("api_down", send))
 
-    assert captured["service"] == "app"
-    assert captured["hint"] and "container" in captured["hint"].lower()
+    assert captured["service"] == "api"
+    assert captured["hint"] and "api" in captured["hint"].lower()
     assert any("Simulating" in m for m in sent)
-    assert any("diagnosis of app" in m for m in sent)
+    assert any("diagnosis of api" in m for m in sent)
 
 
 def test_run_and_post_handles_missing_scenario(monkeypatch):

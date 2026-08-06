@@ -75,54 +75,53 @@ def patched_sources(monkeypatch):
 
 
 _SCENARIO_TOOL_CALLS: dict[str, list[dict]] = {
-    "sample_slow_query": [
+    "api_down": [
         {"name": "list_services", "args": {}, "id": "c1"},
-        {"name": "query_prometheus", "args": {"promql": "rate(cpu_usage[5m])"}, "id": "c2"},
-        {"name": "query_loki", "args": {"logql": '{service="postgres"} |= "slow"', "limit": 50}, "id": "c3"},
+        {"name": "docker_status", "args": {"container": "api"}, "id": "c2"},
+        {"name": "docker_logs", "args": {"container": "marconi-agent-api", "tail": 50}, "id": "c3"},
+        {"name": "query_prometheus", "args": {"promql": 'up{job="agent_api"}'}, "id": "c4"},
     ],
-    "container_down": [
+    "scrape_target_down": [
         {"name": "list_services", "args": {}, "id": "c1"},
-        {"name": "docker_status", "args": {"container": "app"}, "id": "c2"},
-        {"name": "query_loki", "args": {"logql": '{service="app"} |= "error"', "limit": 50}, "id": "c3"},
+        {"name": "docker_status", "args": {"container": "node-exporter"}, "id": "c2"},
+        {"name": "list_metric_names", "args": {"match": "scrape"}, "id": "c3"},
+        {"name": "get_label_values", "args": {"label": "job"}, "id": "c4"},
+        {"name": "query_prometheus", "args": {"promql": 'up{job="node-exporter"}'}, "id": "c5"},
     ],
-    "high_cpu": [
+    "n8n_high_cpu": [
         {"name": "list_services", "args": {}, "id": "c1"},
-        {"name": "list_metric_names", "args": {"match": "cpu"}, "id": "c2"},
-        {"name": "query_prometheus", "args": {"promql": "cpu_usage"}, "id": "c3"},
-        {"name": "query_loki", "args": {"logql": '{service="api"} |= "error"', "limit": 50}, "id": "c4"},
+        {"name": "docker_status", "args": {"container": "n8n"}, "id": "c2"},
+        {"name": "list_metric_names", "args": {"match": "cpu"}, "id": "c3"},
+        {"name": "query_prometheus", "args": {"promql": 'rate(n8n_process_cpu_seconds_total[5m])'}, "id": "c4"},
+        {"name": "docker_logs", "args": {"container": "marconi-agent-n8n", "tail": 50}, "id": "c5"},
     ],
-    "endpoint_timeout": [
+    "n8n_memory": [
         {"name": "list_services", "args": {}, "id": "c1"},
-        {"name": "query_loki", "args": {"logql": '{service="web"} |~ "timeout|504"', "limit": 50}, "id": "c2"},
-        {"name": "query_prometheus", "args": {"promql": "http_request_duration_seconds"}, "id": "c3"},
+        {"name": "docker_status", "args": {"container": "n8n"}, "id": "c2"},
+        {"name": "list_metric_names", "args": {"match": "memory"}, "id": "c3"},
+        {"name": "query_prometheus", "args": {"promql": 'n8n_process_resident_memory_bytes'}, "id": "c4"},
+        {"name": "docker_logs", "args": {"container": "marconi-agent-n8n", "tail": 50}, "id": "c5"},
     ],
-    "disk_full": [
+    "loki_no_logs": [
         {"name": "list_services", "args": {}, "id": "c1"},
-        {"name": "docker_status", "args": {"container": "postgres"}, "id": "c2"},
-        {"name": "query_loki", "args": {"logql": '{service="postgres"} |= "disk"', "limit": 50}, "id": "c3"},
+        {"name": "docker_status", "args": {"container": "n8n"}, "id": "c2"},
+        {"name": "query_loki", "args": {"logql": '{job="n8n"}', "limit": 50}, "id": "c3"},
+        {"name": "docker_logs", "args": {"container": "marconi-agent-promtail", "tail": 50}, "id": "c4"},
     ],
-    "memory_leak": [
+    "vllm_down": [
         {"name": "list_services", "args": {}, "id": "c1"},
-        {"name": "list_metric_names", "args": {"match": "memory"}, "id": "c2"},
-        {"name": "query_prometheus_range", "args": {"promql": "memory_usage", "minutes": 60}, "id": "c3"},
-        {"name": "query_loki", "args": {"logql": '{service="worker"} |= "warn"', "limit": 50}, "id": "c4"},
-    ],
-    "certificate_expiry": [
-        {"name": "list_services", "args": {}, "id": "c1"},
-        {"name": "list_metric_names", "args": {"match": "cert"}, "id": "c2"},
-        {"name": "query_prometheus", "args": {"promql": "ssl_expiry_days"}, "id": "c3"},
-        {"name": "query_loki", "args": {"logql": '{service="ingress"} |~ "TLS|tls|cert"', "limit": 50}, "id": "c4"},
+        {"name": "docker_status", "args": {"container": "vllm"}, "id": "c2"},
+        {"name": "docker_logs", "args": {"container": "vllm", "tail": 50}, "id": "c3"},
     ],
 }
 
 _SCENARIO_ANSWERS: dict[str, str] = {
-    "sample_slow_query": "Slow query caused CPU spike.",
-    "container_down": "Container app is stopped.",
-    "high_cpu": "CPU usage at 90%.",
-    "endpoint_timeout": "Web endpoint returning 504.",
-    "disk_full": "Postgres data volume full.",
-    "memory_leak": "Worker process memory leak.",
-    "certificate_expiry": "TLS cert expires in 3 days.",
+    "api_down": "The api container is stopped; /health is unreachable.",
+    "scrape_target_down": "Prometheus cannot reach node-exporter; up=0, 0 samples.",
+    "n8n_high_cpu": "n8n CPU rate is elevated under load.",
+    "n8n_memory": "n8n resident memory is climbing toward OOM.",
+    "loki_no_logs": "Promtail stopped shipping n8n logs into Loki.",
+    "vllm_down": "The local vLLM endpoint is unreachable.",
 }
 
 
@@ -196,10 +195,10 @@ def test_all_scenarios_parse():
         assert h.service, f"{h.name}: no service"
 
 
-def test_container_down_scenario_calls_docker_status(tmp_database, patched_sources, monkeypatch):
-    """Verify the 'container_down' scenario triggers docker_status specifically."""
-    tools = _SCENARIO_TOOL_CALLS["container_down"]
-    answer = _SCENARIO_ANSWERS["container_down"]
+def test_api_down_scenario_calls_docker_status(tmp_database, patched_sources, monkeypatch):
+    """Verify the 'api_down' scenario triggers docker_status specifically."""
+    tools = _SCENARIO_TOOL_CALLS["api_down"]
+    answer = _SCENARIO_ANSWERS["api_down"]
     responses = [FakeMessage(content="", tool_calls=tools), FakeMessage(content=answer)]
 
     from agent.config.settings import Settings
@@ -207,9 +206,9 @@ def test_container_down_scenario_calls_docker_status(tmp_database, patched_sourc
     monkeypatch.setattr(incident_module, "settings", Settings(max_tool_steps=6, _env_file=None))
 
     with patch("agent.workflows.incident.get_llm", return_value=FakeLLM(responses)):
-        calls = asyncio.run(_run_scenario("app", tools, answer))
+        calls = asyncio.run(_run_scenario("api", tools, answer))
 
-    harness = EvalHarness("scenarios/container_down.yml")
+    harness = EvalHarness("scenarios/api_down.yml")
     result = harness.evaluate(tool_calls=calls)
 
     assert result.passed
@@ -217,10 +216,10 @@ def test_container_down_scenario_calls_docker_status(tmp_database, patched_sourc
     assert result.score >= 0.7
 
 
-def test_memory_leak_scenario_calls_range_query(tmp_database, patched_sources, monkeypatch):
-    """The memory_leak scenario should query a Prometheus range."""
-    tools = _SCENARIO_TOOL_CALLS["memory_leak"]
-    answer = _SCENARIO_ANSWERS["memory_leak"]
+def test_scrape_target_down_scenario_calls_query_prometheus(tmp_database, patched_sources, monkeypatch):
+    """The scrape_target_down scenario should query Prometheus for scrape state."""
+    tools = _SCENARIO_TOOL_CALLS["scrape_target_down"]
+    answer = _SCENARIO_ANSWERS["scrape_target_down"]
     responses = [FakeMessage(content="", tool_calls=tools), FakeMessage(content=answer)]
 
     from agent.config.settings import Settings
@@ -228,11 +227,10 @@ def test_memory_leak_scenario_calls_range_query(tmp_database, patched_sources, m
     monkeypatch.setattr(incident_module, "settings", Settings(max_tool_steps=6, _env_file=None))
 
     with patch("agent.workflows.incident.get_llm", return_value=FakeLLM(responses)):
-        calls = asyncio.run(_run_scenario("worker", tools, answer))
+        calls = asyncio.run(_run_scenario("node-exporter", tools, answer))
 
-    harness = EvalHarness("scenarios/memory_leak.yml")
+    harness = EvalHarness("scenarios/scrape_target_down.yml")
     result = harness.evaluate(tool_calls=calls)
 
     assert result.passed
-    assert "query_prometheus_range" in result.actual_tool_calls
-    patched_sources["query_prometheus_range"].assert_awaited()
+    assert "query_prometheus" in result.actual_tool_calls
