@@ -16,6 +16,7 @@ from agent.bot.menu import MenuView
 from agent.bot.monitor import get_monitored_endpoints
 from agent.bot.summarize import clean, discordify
 from agent.bot.utils import build_info_embed, format_container_list, format_status, scenario_path, split_discord_text
+from agent.bot.scenarios import _PANEL_MARKER, ScenarioPanelView
 from agent.bot.views import LLMProviderView, ServicePanelView
 from agent.config.settings import settings
 from agent.storage.repository import (
@@ -259,9 +260,24 @@ def setup_slash_commands(bot: commands.Bot) -> None:
         await interaction.response.send_message(
             f"▶ Simulating: {data['name']} — {data.get('symptom', '')}"
         )
-        result = await run_incident_workflow(data["service"])
+        result = await run_incident_workflow(data["service"], hint=data.get("symptom"))
         for chunk in split_discord_text(discordify(result["summary"])):
             await interaction.followup.send(chunk)
+
+    @bot.tree.command(name="scenarios", description="Re-post the clickable scenario runner panel")
+    async def slash_scenarios(interaction: discord.Interaction):
+        if (
+            settings.discord_test_scenarios_channel_id is not None
+            and interaction.channel_id != settings.discord_test_scenarios_channel_id
+        ):
+            await interaction.response.send_message(
+                "This command only works in the test-scenarios channel.",
+                ephemeral=True,
+            )
+            return
+        await interaction.response.send_message(
+            f"{_PANEL_MARKER} — click a scenario to simulate:", view=ScenarioPanelView()
+        )
 
     @bot.tree.command(name="ack", description="Acknowledge a stored incident")
     @app_commands.describe(incident_id="Incident ID")

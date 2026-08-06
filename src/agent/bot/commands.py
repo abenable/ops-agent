@@ -180,7 +180,7 @@ def setup_commands(bot: commands.Bot) -> None:
         await ctx.send(
             f"▶ Simulating: {data['name']} — {data.get('symptom', '')}"
         )
-        result = await run_incident_workflow(data["service"])
+        result = await run_incident_workflow(data["service"], hint=data.get("symptom"))
         for chunk in split_discord_text(discordify(result["summary"])):
             await ctx.send(chunk)
 

@@ -9,6 +9,7 @@ from discord.ext import commands
 
 from agent.bot.commands import setup_commands
 from agent.bot.monitor import get_alert_rules, get_monitored_endpoints, start_monitor
+from agent.bot.scenarios import ensure_scenario_panel
 from agent.bot.summarize import discordify
 from agent.bot.utils import split_discord_text
 from agent.config.settings import settings
@@ -159,6 +160,7 @@ def run_bot():
             logger.warning("Slash-command sync failed: %s", exc)
 
         _attach_discord_log_handler(bot)
+        asyncio.create_task(ensure_scenario_panel(bot))
 
         # Check LLM capability in the background; a slow LLM probe should not delay
         # the gateway heartbeat/ready acknowledgement.

@@ -245,9 +245,16 @@ async def run_agentic_investigation(
     return "No summary produced."
 
 
-async def run_incident_workflow(service: str) -> dict:
-    """Collect signals for a service and return an incident id and summary."""
+async def run_incident_workflow(service: str, hint: str | None = None) -> dict:
+    """Collect signals for a service and return an incident id and summary.
+
+    ``hint`` is optional operator-supplied context (e.g. a scenario's reported
+    symptom) appended to the investigation prompt so the agent investigates
+    with the reported problem in mind, not just the bare service name.
+    """
     prompt = f"Investigate service {service}."
+    if hint:
+        prompt += f" Reported symptom: {hint}"
     try:
         summary = await run_agentic_investigation(prompt, system_prompt=INCIDENT_SYSTEM_PROMPT, kind="incident")
     except Exception as exc:
@@ -261,13 +268,16 @@ async def run_incident_workflow(service: str) -> dict:
     return {"incident_id": incident_id, "summary": summary}
 
 
-async def run_incident_workflow_stream(service: str):
+async def run_incident_workflow_stream(service: str, hint: str | None = None):
     """Stream the incident investigation, then persist and yield the incident id at ``done``.
 
     Falls back to ``_static_summary`` on exception, mirroring the non-stream path, and
     emits an ``error`` event instead of raising so the SSE connection stays usable.
+    ``hint`` is optional operator-supplied context appended to the prompt.
     """
     prompt = f"Investigate service {service}."
+    if hint:
+        prompt += f" Reported symptom: {hint}"
     try:
         async for event in run_agentic_investigation_stream(
             prompt, system_prompt=INCIDENT_SYSTEM_PROMPT, kind="incident"
