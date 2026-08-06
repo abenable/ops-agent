@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
+from agent.api import activity
 from agent.api.routes import router
 from agent.config.settings import settings
 
@@ -49,6 +50,9 @@ async def _track_requests(request: Request, call_next):
 
 
 app.include_router(router)
+
+# Capture agent log activity for the web Activity panel's SSE stream.
+activity.install()
 
 # Root-level endpoints (not under /api/) for Docker healthcheck and scraping.
 @app.get("/health")

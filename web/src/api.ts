@@ -37,6 +37,32 @@ export type IncidentResult = { incident_id: string; summary: string };
 
 export type WatchList = { containers: string[] };
 
+export type Scenario = {
+  name: string;
+  title: string;
+  service: string;
+  symptom: string;
+  expected_actions: string[];
+};
+
+export type Approval = {
+  id: string;
+  incident_id: string;
+  container_name: string;
+  container_id: string;
+  action: string;
+  status: string;
+  created_at: string;
+};
+
+export type RemediationResult = {
+  incident_id: string;
+  summary: string;
+  proposals: Approval[];
+};
+
+export type ApprovalResult = { ok: boolean; error?: string; approval?: Approval; result?: unknown };
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`);
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
@@ -45,6 +71,15 @@ async function get<T>(path: string): Promise<T> {
 
 async function send<T>(method: string, path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { method });
+  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+  return res.json() as Promise<T>;
+}
+
+async function postJson<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   return res.json() as Promise<T>;
 }
@@ -62,6 +97,13 @@ export const api = {
     get<Incident[]>(`/incidents${status ? `?status=${status}` : ""}`),
   incident: (id: string) => get<Incident | null>(`/incidents/${id}`),
   createIncident: (s: string) => send<IncidentResult>("POST", `/incidents/${encodeURIComponent(s)}`),
+  scenarios: () => get<Scenario[]>("/scenarios"),
+  approvals: (incidentId?: string) =>
+    get<Approval[]>(`/approvals${incidentId ? `?incident_id=${incidentId}` : ""}`),
+  remediate: (incidentId: string) => postJson<RemediationResult>(`/incidents/${incidentId}/remediate`),
+  approve: (id: string) => postJson<ApprovalResult>(`/approvals/${id}/approve`),
+  reject: (id: string) => postJson<ApprovalResult>(`/approvals/${id}/reject`),
+  resolve: (id: string) => postJson<Incident>(`/incidents/${id}/resolve`),
 };
 
 export function containerName(c: ContainerInfo): string {
@@ -81,6 +123,14 @@ export type AgentEvent =
   | { type: "done"; content: string }
   | { type: "done"; incident_id: string; summary: string }
   | { type: "error"; message: string };
+
+// SSE event stream of agent log activity.
+export type ActivityEvent = {
+  ts: number;
+  level: string;
+  logger: string;
+  message: string;
+};
 
 export async function streamAgent(
   path: string,
@@ -110,6 +160,34 @@ export async function streamAgent(
       if (!line) continue;
       try {
         onEvent(JSON.parse(line.slice(6)) as AgentEvent);
+      } catch {
+        // ponytail: skip malformed chunk rather than abort the whole stream
+      }
+    }
+  }
+}
+
+export async function streamActivity(
+  onEvent: (e: ActivityEvent) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  const res = await fetch(`${BASE}/activity/stream`, { signal });
+  if (!res.ok || !res.body) throw new Error(`${res.status} ${await res.text()}`);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop() ?? "";
+    for (const frame of frames) {
+      const line = frame.split("\n").find((l) => l.startsWith("data: "));
+      if (!line) continue;
+      try {
+        onEvent(JSON.parse(line.slice(6)) as ActivityEvent);
       } catch {
         // ponytail: skip malformed chunk rather than abort the whole stream
       }

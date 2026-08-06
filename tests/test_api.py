@@ -29,3 +29,35 @@ def test_watch_container_lifecycle(tmp_database):
 
     response = client.get("/api/watch/containers")
     assert response.json() == {"containers": []}
+
+
+def test_scenarios_list_has_real_scenarios():
+    response = client.get("/api/scenarios")
+    assert response.status_code == 200
+    names = {s["name"] for s in response.json()}
+    assert "api_down" in names
+    # each entry carries the metadata the web cards render
+    sample = next(s for s in response.json() if s["name"] == "api_down")
+    assert sample["service"] == "api"
+    assert sample["expected_actions"]
+
+
+def test_scenario_stream_unknown_returns_404():
+    response = client.post("/api/scenarios/does-not-exist/stream")
+    assert response.status_code == 404
+
+
+def test_resolve_incident_unknown_returns_404():
+    response = client.post("/api/incidents/no-such-id/resolve")
+    assert response.status_code == 404
+
+
+def test_remediate_incident_unknown_returns_404():
+    response = client.post("/api/incidents/no-such-id/remediate")
+    assert response.status_code == 404
+
+
+def test_approve_unknown_returns_approval_not_found():
+    response = client.post("/api/approvals/no-such-id/approve")
+    assert response.json()["ok"] is False
+    assert "not found" in response.json()["error"]

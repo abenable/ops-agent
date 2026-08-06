@@ -4,6 +4,7 @@ import {
   AlertTriangleIcon,
   BoxesIcon,
   BotIcon,
+  FlaskConicalIcon,
   MessagesSquareIcon,
   RadioIcon,
   ShieldCheckIcon,
@@ -34,7 +35,9 @@ const NAV = [
     items: [
       { to: "/", label: "Dashboard", icon: BoxesIcon },
       { to: "/incidents", label: "Incidents", icon: AlertTriangleIcon },
+      { to: "/scenarios", label: "Scenarios", icon: FlaskConicalIcon },
       { to: "/chat", label: "Chat", icon: MessagesSquareIcon },
+      { to: "/activity", label: "Activity", icon: ActivityIcon },
     ],
   },
 ] as const;

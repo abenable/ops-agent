@@ -6,12 +6,16 @@ from fastapi import APIRouter, Request, Response
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
+from agent.api import activity
+from agent.scenarios import available_scenarios, load_scenario
 from agent.storage.repository import (
     add_watched_container,
     get_incident,
     list_incidents,
+    list_pending_approvals,
     list_watched_containers,
     remove_watched_container,
+    update_incident_status,
 )
 from agent.tools import docker
 from agent.tools.health import check_endpoint
@@ -22,6 +26,11 @@ from agent.workflows.incident import (
     run_ask_workflow_stream,
     run_incident_workflow,
     run_incident_workflow_stream,
+)
+from agent.workflows.remediation import (
+    execute_approval,
+    reject_approval,
+    run_remediation_workflow,
 )
 
 router = APIRouter(prefix="/api")
@@ -117,3 +126,113 @@ async def incident(incident_id: str):
 @router.get("/health-check")
 async def health_check(url: str):
     return await check_endpoint(url)
+
+
+@router.get("/scenarios")
+async def scenarios():
+    """List the available scenarios under ``scenarios/`` with their metadata."""
+    out = []
+    for name in available_scenarios():
+        data = load_scenario(name) or {}
+        out.append(
+            {
+                "name": name,
+                "title": data.get("name", name),
+                "service": data.get("service"),
+                "symptom": (data.get("symptom") or "").strip(),
+                "expected_actions": data.get("expected_agent_actions", []),
+            }
+        )
+    return out
+
+
+@router.post("/scenarios/{name}/stream")
+async def scenario_stream(name: str):
+    """SSE stream of a scenario run. Loads ``scenarios/<name>.yml``, runs the
+    incident workflow for its service with the scenario symptom as a hint, and
+    persists the incident at ``done`` — mirrors the Discord scenario button.
+    """
+    data = load_scenario(name)
+    if data is None:
+        return Response(
+            content=json.dumps({"type": "error", "message": f"no scenario named '{name}'"}),
+            media_type="application/json",
+            status_code=404,
+        )
+
+    service = data["service"]
+    symptom = (data.get("symptom") or "").strip() or None
+
+    async def gen():
+        async for event in run_incident_workflow_stream(service, hint=symptom):
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@router.post("/incidents/{incident_id}/remediate")
+async def remediate_incident(incident_id: str):
+    """Run the gated remediation agent against an incident's stored diagnosis.
+    Returns the remediator's summary and any pending proposals it created; does
+    not execute a restart (that needs an approval below).
+    """
+    incident = get_incident(incident_id)
+    if incident is None:
+        return Response(
+            content=json.dumps({"error": "incident not found"}),
+            media_type="application/json",
+            status_code=404,
+        )
+    result = await run_remediation_workflow(incident_id, incident["service"], incident["summary"])
+    return result
+
+
+@router.get("/approvals")
+async def approvals(incident_id: str | None = None, status: str | None = None):
+    """List pending remediation approvals, optionally filtered by incident/status."""
+    return list_pending_approvals(incident_id=incident_id, status=status)
+
+
+@router.post("/approvals/{approval_id}/approve")
+async def approve_approval(approval_id: str):
+    return await execute_approval(approval_id)
+
+
+@router.post("/approvals/{approval_id}/reject")
+async def reject_approval_endpoint(approval_id: str):
+    return reject_approval(approval_id)
+
+
+@router.post("/incidents/{incident_id}/resolve")
+async def resolve_incident(incident_id: str):
+    """Mark a stored incident resolved."""
+    incident = update_incident_status(incident_id, "resolved")
+    if incident is None:
+        return Response(
+            content=json.dumps({"error": "incident not found"}),
+            media_type="application/json",
+            status_code=404,
+        )
+    return incident
+
+
+@router.get("/activity/stream")
+async def activity_stream():
+    """SSE stream of live agent log activity (INFO+). Yields a snapshot of
+    recent history, then live events as they are logged in the API process.
+    """
+    import asyncio
+
+    snapshot, q = activity.subscribe()
+
+    async def gen():
+        try:
+            for evt in snapshot:
+                yield f"data: {json.dumps(evt)}\n\n"
+            while True:
+                evt = await q.get()
+                yield f"data: {json.dumps(evt)}\n\n"
+        finally:
+            activity.unsubscribe(q)
+
+    return StreamingResponse(gen(), media_type="text/event-stream")

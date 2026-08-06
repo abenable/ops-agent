@@ -14,26 +14,18 @@ redeploy. ``/scenarios`` refreshes the panel (e.g. after adding a scenario file)
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 import discord
 
 from agent.bot.summarize import discordify
 from agent.bot.utils import scenario_path, split_discord_text
 from agent.config.settings import settings
+from agent.scenarios import available_scenarios as _available_scenarios
 from agent.workflows.incident import run_incident_workflow
 
 logger = logging.getLogger(__name__)
 
 _PANEL_MARKER = "\U0001F9EA **Scenario runner**"  # 🧪
-
-
-def _available_scenarios() -> list[str]:
-    """Return scenario names (file stems) under ``scenarios/``, sorted."""
-    base = Path("scenarios")
-    if not base.is_dir():
-        return []
-    return sorted(p.stem for p in base.glob("*.yml"))
 
 
 async def _run_and_post(name: str, send) -> None:
