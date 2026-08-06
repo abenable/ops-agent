@@ -1291,6 +1291,78 @@ cost of sending operational data off-prem. The tradeoff between capability and
 self-hosting is a deliberate deployment decision; a fuller treatment is in
 \texttt{docs/model-comparison.md}.
 
+\subsection{Robustness and usability of the incident pipeline}
+\label{sec:incident-robustness}
+
+A second class of problem appeared once the larger model was wired in: the
+investigation loop is correct, but the model's \emph{output format} and a
+hardcoded query path defeated the purpose of an LLM-driven agent. Five defects
+were diagnosed and fixed end-to-end against the live \pkg{deepseek-v4-pro}
+endpoint.
+
+\paragraph{Inline tool-call recovery.}
+DeepSeek intermittently emits tool calls inline in the \pkg{content} field as
+its native \texttt{<\textbar\textbar DSML\textbar\textbar>} XML rather than in
+the OpenAI-structured \pkg{tool\_calls} field the loop reads. When this happened
+the calls were never executed and the raw XML leaked into the incident summary,
+so a thread showed a half-finished ``let me check\ldots'' prelude with no
+diagnosis. The loop (\pkg{run\_agentic\_investigation\_stream}) now parses
+those inline \texttt{<\textbar\textbar DSML\textbar\textbar invoke>} blocks back
+into the structured call shape and executes them, so the turn continues instead
+of ending early. The step cap was raised from 6 to 10 (a non-trivial diagnosis
+such as ``zero samples scraped'' needs $\sim$8 tool rounds), and the
+tool-less fallback now explicitly instructs the model to synthesise ranked
+hypotheses as prose and not emit tool-call markup; any residual
+\texttt{<\textbar\textbar DSML\textbar\textbar>} tags are stripped from the
+final content.
+
+\paragraph{No hardcoded queries in \texttt{!metrics}/\texttt{!logs}.}
+The \pkg{get\_service\_metrics} tool hardcoded
+\pkg{avg(process\_cpu\_seconds\_total\{service=\textasciitilde".*X.*"\})},
+which returns nothing for exporters that expose a \pkg{job=} label or
+differently-named metrics (\pkg{n8n} exposes
+\pkg{n8n\_process\_cpu\_seconds\_total} with \pkg{job="n8n"}). The whole point
+of an LLM agent is that it picks the user's intent and writes the right query
+even with typos, so \pkg{!metrics} and \pkg{!logs} (prefix and slash) now run
+the same agentic loop as \pkg{!ask} through a \pkg{run\_scoped\_investigation}
+helper: the model calls \pkg{list\_services} to resolve the name, discovers
+metrics and labels with \pkg{list\_metric\_names}/\pkg{get\_label\_values}, and
+writes its own PromQL/LogQL. The deterministic helpers are retained only for
+non-LLM callers that need deterministic output (the REST API, the offline
+fallback, and the Discord button views).
+
+\paragraph{Discord-readable formatting.}
+Discord renders neither Markdown tables nor \pkg{\#} headings---they appear as
+a wall of pipes or literal hashes. The \pkg{\_discordify} post-processor was
+extended to convert Markdown tables into \pkg{- \textbf{Label:} value} bullets
+(wider tables join extra columns with a middle dot), and is now applied to all
+agentic narrative sent to Discord (\pkg{!metrics}/\pkg{!logs}/\pkg{!ask}/
+\pkg{!incident}/\pkg{!remediate} and the incident thread body and DM), while
+raw opt-outs and deterministic output pass through untouched. The system
+prompt also tells the model to prefer bold and bullets over tables.
+
+\paragraph{Concise incident reports with suggested fixes.}
+The incident system prompt was tightened to lead with the affected
+container(s) and a one-sentence root cause, then a compact ranked list in which
+each hypothesis carries a one-line claim, the single strongest piece of
+evidence, and a \emph{one-line concrete fix} an operator could apply (restart
+the container, re-add it to the scrape network, fix the address). The report
+stays informational; execution stays human-gated. Incident thread titles now
+name the affected targets---\pkg{target\_down: node-exporter, cadvisor --
+<id>}---instead of an opaque rule name and id, extracted from the alert's
+\pkg{job}/\pkg{instance} labels so the operator can tell what is down without
+opening the thread.
+
+\paragraph{Incident thread actions and live logging.}
+The thread's action buttons were reduced to \textbf{Resolve} and \textbf{Fix};
+\textbf{Fix} launches the remediation agent, which proposes a restart and posts
+an Approve/Reject view---a second human gate before any container is touched.
+The \texttt{agent-logs} Discord channel was repurposed from a WARNING-only
+alarm (which read as empty in steady state because a healthy agent emits no
+warnings) to a live INFO feed of agent activity (tool calls, workflow steps,
+connect/sync events), with the chatty \pkg{httpx}/\pkg{httpx2} transport
+loggers silenced to WARNING so the channel carries signal, not request spam.
+
 % ============================================================
 \section{Challenges}
 % ============================================================
