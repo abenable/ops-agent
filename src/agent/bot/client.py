@@ -87,14 +87,28 @@ def _attach_discord_log_handler(bot: discord.Client) -> None:
     asyncio.create_task(handler.pump())
 
 
-def _environment_context() -> str:
+async def _environment_context() -> str:
     endpoints = get_monitored_endpoints()
     endpoint_lines = [f"- {name}: {url}" for name, url in endpoints.items()]
     rules = get_alert_rules()
     rule_lines = [f"- {name}: {expr}" for name, expr in rules.items()]
     base_url, model = _resolve(settings.llm_provider)
+    # Ground the agent in the live container list so it answers questions about
+    # containers from real data, not memory. The agent still decides whether to
+    # call tools; this just seeds the context with the truth, the way the
+    # monitored-endpoint and channel lines already do. Degrades to "(unreachable)"
+    # when the Docker socket is absent.
+    from agent.tools import docker as _docker
+
+    try:
+        containers = await _docker.list_containers(all_containers=True)
+        names = [_docker.container_name(c) for c in containers]
+    except Exception:
+        names = []
+    container_line = ", ".join(names) if names else "(none / docker unreachable)"
     return (
         "Environment context:\n"
+        f"Running containers: {container_line}\n"
         f"Monitored endpoints:\n{'\n'.join(endpoint_lines) if endpoint_lines else '- none configured'}\n"
         f"PromQL alert rules:\n{'\n'.join(rule_lines) if rule_lines else '- none configured'}\n"
         f"Alert channel: {settings.discord_alert_channel_id or 'not set'}\n"
@@ -196,14 +210,15 @@ def run_bot():
                 return
 
             channel_id = message.channel.id
-            context = _environment_context()
+            context = await _environment_context()
             prompt = (
                 "You are Oracle, a friendly infrastructure-operations assistant. "
                 "Use the environment context below, and the read-only Prometheus/Loki tools if needed. "
                 "Be brief and conversational; if you don't know, say so.\n\n"
                 "Answer the user's question directly; do not change the topic unless asked. "
                 "If the user asks what model or LLM powers you, use the Model line in the context. "
-                "If the user asks for a list of containers or wants to pick one, call list_services and show the names. "
+                "For questions about containers, services, or endpoints, use the 'Running containers' "
+                "line in the context or call list_services — never list containers from memory. "
                 "Use the conversation history to resolve vague references such as 'logs', 'status', 'the web container', or 'that one' by reusing the exact container or service name mentioned earlier. "
                 "Only ask for clarification when no matching name exists in the history.\n\n"
                 f"{context}\n\n"

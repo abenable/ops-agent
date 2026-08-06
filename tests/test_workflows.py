@@ -28,7 +28,7 @@ class FakeLLM:
         self._responses = responses or [FakeMessage("fake incident summary")]
         self._index = 0
 
-    def bind_tools(self, _tools):
+    def bind_tools(self, _tools, **kwargs):
         return self
 
     async def ainvoke(self, _messages):
@@ -38,7 +38,7 @@ class FakeLLM:
 
 
 class RaisingLLM:
-    def bind_tools(self, _tools):
+    def bind_tools(self, _tools, **kwargs):
         return self
 
     async def ainvoke(self, _messages):
