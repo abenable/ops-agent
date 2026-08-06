@@ -9,6 +9,7 @@ from agent.alerting.discord import RemediationApprovalView
 from agent.bot.history import ask_with_memory
 from agent.bot.monitor import get_monitored_endpoints
 from agent.bot.menu import MenuView
+from agent.bot.onboarding import post_project_notes
 from agent.bot.summarize import clean, discordify
 from agent.bot.utils import build_info_embed, format_container_list, format_status, scenario_path, split_discord_text
 from agent.bot.views import LLMProviderView, ServicePanelView
@@ -31,6 +32,14 @@ def setup_commands(bot: commands.Bot) -> None:
     @bot.command(name="info")
     async def info(ctx: commands.Context):
         await ctx.send(embed=build_info_embed(bot.user))
+
+    @bot.command(name="project-notes")
+    async def project_notes(ctx: commands.Context):
+        if settings.discord_project_notes_channel_id is None:
+            await ctx.send("No #project-notes channel configured.")
+            return
+        await post_project_notes(bot)
+        await ctx.send("Posted the project-notes embed to #project-notes.")
 
     @bot.command(name="menu")
     async def menu(ctx: commands.Context):

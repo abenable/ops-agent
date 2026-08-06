@@ -91,6 +91,7 @@ def test_commands_registered():
     assert "logs" in bot.commands
     assert "metrics" in bot.commands
     assert "incident" in bot.commands
+    assert "project-notes" in bot.commands
 
 
 def test_discord_log_handler_forwards_info_and_quiets_httpx():

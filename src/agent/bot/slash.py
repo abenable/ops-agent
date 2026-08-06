@@ -14,6 +14,7 @@ from agent.alerting.discord import RemediationApprovalView
 from agent.bot.history import ask_with_memory
 from agent.bot.menu import MenuView
 from agent.bot.monitor import get_monitored_endpoints
+from agent.bot.onboarding import post_project_notes
 from agent.bot.summarize import clean, discordify
 from agent.bot.utils import build_info_embed, format_container_list, format_status, scenario_path, split_discord_text
 from agent.bot.scenarios import _PANEL_MARKER, ScenarioPanelView
@@ -277,6 +278,18 @@ def setup_slash_commands(bot: commands.Bot) -> None:
             return
         await interaction.response.send_message(
             f"{_PANEL_MARKER} — click a scenario to simulate:", view=ScenarioPanelView()
+        )
+
+    @bot.tree.command(name="project-notes", description="Post or refresh the project-notes embed in #project-notes")
+    async def slash_project_notes(interaction: discord.Interaction):
+        if settings.discord_project_notes_channel_id is None:
+            await interaction.response.send_message(
+                "No #project-notes channel configured.", ephemeral=True
+            )
+            return
+        await post_project_notes(bot)
+        await interaction.response.send_message(
+            "Posted the project-notes embed to #project-notes.", ephemeral=True
         )
 
     @bot.tree.command(name="ack", description="Acknowledge a stored incident")
