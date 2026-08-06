@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.28 (TeX Live 2025/Debian) (preloaded format=pdflatex 2026.5.13)  6 AUG 2026 13:54
+This is pdfTeX, Version 3.141592653-2.6-1.40.28 (TeX Live 2025/Debian) (preloaded format=pdflatex 2026.5.13)  6 AUG 2026 14:02
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -1123,13 +1123,6 @@ mtt/m/n/10.95 agent.config.settings\T1/lmr/m/n/10.95 (+20) , a Py-dan-tic [[]]
  []
 
 
-Overfull \hbox (49.12514pt too wide) in paragraph at lines 449--459
-\T1/lmr/m/n/10.95 (-20) tored end-points. The per-sis-tent incident-action view
- (\T1/lmtt/m/n/10.95 agent.alerting.discord.IncidentActionView\T1/lmr/m/n/10.95
- (-20) )
- []
-
-
 Package fancyhdr Warning: \headheight is too small (12.0pt): 
 (fancyhdr)                Make it at least 12.4pt, for example:
 (fancyhdr)                \setlength{\headheight}{12.4pt}.
@@ -1137,7 +1130,7 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
 
 [7]
-Underfull \hbox (badness 10000) in paragraph at lines 502--506
+Underfull \hbox (badness 10000) in paragraph at lines 505--509
 \T1/lmr/m/n/10.95 (+20) Verbose tool out-put (con-tainer lists, logs, met-rics)
  is routed through
  []
@@ -1145,7 +1138,7 @@ Underfull \hbox (badness 10000) in paragraph at lines 502--506
 ! Illegal parameter number in definition of \reserved@b.
 <to be read again> 
                    }
-l.519 ...enders poorly: ATX headings (\pkg{## Foo}
+l.522 ...enders poorly: ATX headings (\pkg{## Foo}
                                                   ) become \pkg{**bold**}, and
 You meant to type ## instead of #, right?
 Or maybe a } was forgotten somewhere earlier, and things
@@ -1154,7 +1147,7 @@ are all screwed up? I'm going to assume that you meant ##.
 ! You can't use `macro parameter character #' in horizontal mode.
 <recently read> ##
                   
-l.519 ...enders poorly: ATX headings (\pkg{## Foo}
+l.522 ...enders poorly: ATX headings (\pkg{## Foo}
                                                   ) become \pkg{**bold**}, and
 Sorry, but I'm not programmed to handle this case;
 I'll just pretend that you didn't ask for it.
@@ -1164,7 +1157,7 @@ return to the right one by typing `I}' or `I$' or `I\par'.
 ! You can't use `macro parameter character #' in horizontal mode.
 <argument> ####
                 Foo
-l.519 ...enders poorly: ATX headings (\pkg{## Foo}
+l.522 ...enders poorly: ATX headings (\pkg{## Foo}
                                                   ) become \pkg{**bold**}, and
 Sorry, but I'm not programmed to handle this case;
 I'll just pretend that you didn't ask for it.
@@ -1174,7 +1167,7 @@ return to the right one by typing `I}' or `I$' or `I\par'.
 ! Illegal parameter number in definition of \reserved@b.
 <to be read again> 
                    }
-l.524     left untouched so a pasted \pkg{#}
+l.527     left untouched so a pasted \pkg{#}
                                              comment or \pkg{|} log line is not
 You meant to type ## instead of #, right?
 Or maybe a } was forgotten somewhere earlier, and things
@@ -1183,7 +1176,7 @@ are all screwed up? I'm going to assume that you meant ##.
 ! You can't use `macro parameter character #' in horizontal mode.
 <recently read> ##
                   
-l.524     left untouched so a pasted \pkg{#}
+l.527     left untouched so a pasted \pkg{#}
                                              comment or \pkg{|} log line is not
 Sorry, but I'm not programmed to handle this case;
 I'll just pretend that you didn't ask for it.
@@ -1198,6 +1191,9 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
 
 [8]
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
 
 Package fancyhdr Warning: \headheight is too small (12.0pt): 
 (fancyhdr)                Make it at least 12.4pt, for example:
@@ -1214,13 +1210,13 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
 
 [10]
-Underfull \hbox (badness 10000) in paragraph at lines 733--743
+Underfull \hbox (badness 10000) in paragraph at lines 736--746
 \T1/lmr/m/n/10.95 (+20) The source helpers live in \T1/lmtt/m/n/10.95 agent.too
 ls.sources.prometheus \T1/lmr/m/n/10.95 (+20) [[]] and
  []
 
 
-Underfull \hbox (badness 1048) in paragraph at lines 733--743
+Underfull \hbox (badness 1048) in paragraph at lines 736--746
 \T1/lmtt/m/n/10.95 agent.tools.sources.loki \T1/lmr/m/n/10.95 (+20) [[]]. Each 
 is a thin \T1/lmtt/m/n/10.95 httpx.AsyncClient \T1/lmr/m/n/10.95 (+20) wrap-per
  with a
@@ -1235,9 +1231,9 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 
 [11]
 Package hyperref Info: bookmark level for unknown lstlisting defaults to 0 on i
-nput line 795.
+nput line 798.
 LaTeX Font Info:    Font shape `T1/lmtt/bx/n' in size <9> not available
-(Font)              Font shape `T1/lmtt/b/n' tried instead on input line 796.
+(Font)              Font shape `T1/lmtt/b/n' tried instead on input line 799.
 
 
 Package fancyhdr Warning: \headheight is too small (12.0pt): 
@@ -1255,7 +1251,7 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
 
 [13{/usr/share/texmf/fonts/enc/dvips/lm/lm-mathsy.enc}]
-Underfull \hbox (badness 4229) in paragraph at lines 911--915
+Underfull \hbox (badness 4229) in paragraph at lines 914--918
 \T1/lmr/m/n/10.95 (+20) The back-ground mon-i-tor, \T1/lmtt/m/n/10.95 agent.bot
 .monitor\T1/lmr/m/n/10.95 (+20) , runs in-side the bot pro-cess as a
  []
@@ -1295,7 +1291,7 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
 
 [17]
-Underfull \hbox (badness 5431) in paragraph at lines 1197--1203
+Underfull \hbox (badness 5431) in paragraph at lines 1200--1206
 []\T1/lmr/bx/n/10.95 (+20) Tools and stor-age \T1/lmr/m/n/10.95 (+20) (\T1/lmtt
 /m/n/10.95 tests.test_-docker\T1/lmr/m/n/10.95 (+20) , \T1/lmtt/m/n/10.95 tests
 .test_-health\T1/lmr/m/n/10.95 (+20) , \T1/lmtt/m/n/10.95 tests.test_-ssh\T1/lm
@@ -1303,7 +1299,7 @@ r/m/n/10.95 (+20) ,
  []
 
 
-Underfull \hbox (badness 1983) in paragraph at lines 1203--1206
+Underfull \hbox (badness 1983) in paragraph at lines 1206--1209
 []\T1/lmr/bx/n/10.95 (+20) Interface \T1/lmr/m/n/10.95 (+20) (\T1/lmtt/m/n/10.9
 5 tests.test_-bot\T1/lmr/m/n/10.95 (+20) , \T1/lmtt/m/n/10.95 tests.test_-api\T
 1/lmr/m/n/10.95 (+20) , \T1/lmtt/m/n/10.95 tests.test_-alerting\T1/lmr/m/n/10.9
@@ -1360,7 +1356,7 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 [23
 
 ]
-Underfull \hbox (badness 1655) in paragraph at lines 1548--1548
+Underfull \hbox (badness 1655) in paragraph at lines 1553--1553
 []|\T1/lmr/m/n/10 (+20) One thread per in-ci-dent with re-
  []
 
@@ -1400,10 +1396,10 @@ Package rerunfilecheck Info: File `marconi-agent-report.out' has not changed.
  ) 
 Here is how much of TeX's memory you used:
  32502 strings out of 469438
- 644340 string characters out of 5468410
+ 644334 string characters out of 5468410
  1642226 words of memory out of 5000000
  60222 multiletter control sequences out of 15000+600000
- 722837 words of font info for 212 fonts, out of 8000000 for 9000
+ 722815 words of font info for 212 fonts, out of 8000000 for 9000
  59 hyphenation exceptions out of 8191
  98i,13n,108p,1017b,2163s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/share/texmf/fonts/type1/public/lm/lmbx10.pfb></usr/share/texmf/fonts/ty
@@ -1417,7 +1413,7 @@ r8.pfb></usr/share/texmf/fonts/type1/public/lm/lmr9.pfb></usr/share/texmf/fonts
 /public/lm/lmtk10.pfb></usr/share/texmf/fonts/type1/public/lm/lmtt10.pfb></usr/
 share/texmf/fonts/type1/public/lm/lmtt8.pfb></usr/share/texmf/fonts/type1/publi
 c/lm/lmtt9.pfb></usr/share/texmf/fonts/type1/public/lm/lmtti10.pfb>
-Output written on marconi-agent-report.pdf (26 pages, 498903 bytes).
+Output written on marconi-agent-report.pdf (26 pages, 499984 bytes).
 PDF statistics:
  646 PDF objects out of 1000 (max. 8388607)
  553 compressed objects within 6 object streams

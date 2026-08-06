@@ -256,8 +256,8 @@ The implementation follows a small set of explicit principles:
     Loki, the LLM) is optional at runtime. When a source is unreachable, the
     tool returns a stub or a fallback summary rather than raising, so the bot
     keeps responding during partial outages.
-  \item \textbf{Bounded autonomy.} The agentic loop is capped at a configurable
-    number of tool calls (\pkg{MAX\_TOOL\_STEPS}, default 6). If the model has not
+    \item \textbf{Bounded autonomy.} The agentic loop is capped at a configurable
+    number of tool calls (\pkg{MAX\_TOOL\_STEPS}, default 10). If the model has not
     converged, a final tool-less invocation is used to force a prose summary.
   \item \textbf{One codebase, two surfaces.} Discord commands and HTTP routes
     are thin adapters over a shared workflow and tool layer, preventing drift
@@ -449,13 +449,15 @@ shared tool and workflow layer:
   \item \textbf{Interactive views.} \pkg{agent.bot.menu} presents a Discord
     select dropdown of container names (capped at 25 options by the platform)
     and, once a container is chosen, offers ephemeral Watch/Unwatch, Status,
-    Logs, and Metrics buttons. \pkg{agent.bot.views.ServicePanelView} offers a
-    service picker with Status, Health, Logs, Metrics, and Incident buttons
-     for the monitored endpoints. The persistent incident-action view
-     (\pkg{agent.alerting.discord.IncidentActionView}) carries Resolve and Fix
-     buttons; the Fix button runs the gated remediation agent, whose proposals
-     are posted with their own Approve/Reject view
-     (\pkg{RemediationApprovalView}).
+    Logs, and Metrics buttons. \pkg{ServicePanelView} offers a service picker
+    with Status, Health, Logs, Metrics, and Incident buttons for the monitored
+    endpoints. The persistent incident-action view (\pkg{IncidentActionView})
+    carries Resolve and Fix buttons; the Fix button runs the gated remediation
+    agent, whose proposals are posted with their own Approve/Reject view
+    (\pkg{RemediationApprovalView}). A clickable scenario panel
+    (\pkg{ScenarioPanelView}) posts one button per scenario and re-posts on
+    startup or via \pkg{/scenarios}, so an operator triggers a reproducible run
+    with a single click.
 \end{itemize}
 
 Table~\ref{tab:cmds} summarises the slash commands. Each has a prefix
@@ -483,6 +485,7 @@ chat.
 \pkg{/ask <question>} & Free-form agentic investigation using read-only tools \\
 \pkg{/incident <service>} & Run the incident workflow, open a thread, alert \\
 \pkg{/scenario <name>} & Run a simulated scenario from a YAML file \\
+\pkg{/scenarios} & Re-post the clickable scenario runner panel \\
 \pkg{/ack <id>} & Acknowledge a stored incident \\
 \pkg{/resolve <id>} & Resolve a stored incident \\
 \pkg{/remediate <id>} & Run the gated remediation agent against an incident's diagnosis \\
@@ -777,7 +780,7 @@ The loop is a standard ReAct-style cycle~\cite{react} with explicit bounds:
   \item The model is invoked with the tools bound. If it returns tool calls,
     each call is executed, its output is truncated to 4000 characters, and a
     \pkg{ToolMessage} is appended.
-  \item The cycle repeats, capped at \pkg{MAX\_STEPS}. If the step cap is hit
+  \item The cycle repeats, capped at \pkg{MAX\_TOOL\_STEPS}. If the step cap is hit
     with pending tool calls, a final tool-less invocation forces a prose
     summary instead of another tool call.
   \item If the model returns no tool calls, the loop ends and the content is
@@ -1105,7 +1108,7 @@ few properties worth noting:
     its own \pkg{RemediationApprovalView} (Approve/Reject, likewise persistent).
     After a bot restart the buttons stop listening; \pkg{/resolve} and
     \pkg{/remediate}/\pkg{/approve}/\pkg{/reject} remain as fallbacks.
-  \item \textbf{Channel mapping.} The bot maps its output to six
+  \item \textbf{Channel mapping.} The bot maps its output to eight
     purpose-specific channels, all optional. A feature is simply inactive when
     its channel id is unset, so a deployment can adopt channels incrementally.
     The two highest-value channels for a demo are the alerts channel (so
@@ -1174,7 +1177,7 @@ The LLM is provider-portable without code changes:
 \subsection{Testing}
 \label{sec:testing}
 
-The test suite, under \pkg{tests}, contains 100 test functions across 20
+The test suite, under \pkg{tests}, contains 124 test functions across 24
 modules and is run with \pkg{pytest}. A shared fixture in
 \pkg{tests/conftest} points the repository at a temporary SQLite file, so
 storage tests are isolated. The suite covers five areas:
@@ -1203,7 +1206,7 @@ storage tests are isolated. The suite covers five areas:
   \item \textbf{Interface} (\pkg{tests.test\_bot}, \pkg{tests.test\_api},
     \pkg{tests.test\_alerting}, \pkg{tests.test\_reporting}): command routing,
     API responses, embed colouring, and report formatting.
-  \item \textbf{Evaluation} (\pkg{tests.test\_eval}): nine parametrised tests
+  \item \textbf{Evaluation} (\pkg{tests.test\_eval}): a parametrised test
     loading every scenario YAML and verifying that observed tool calls satisfy
     the expected actions declared in the file.
   \item \textbf{Watch list} (\pkg{tests.test\_storage}, \pkg{tests.test\_monitor},
@@ -1252,7 +1255,7 @@ functional against a live deployment. The measured outcomes are as follows.
     monitor with its periodic container-status snapshot, the interactive
     container menu and service panel, the persistent incident action and
     remediation approval buttons, a reply-summarisation layer with a \pkg{raw}
-    opt-out, and the six-channel output mapping are all delivered and tested.
+    opt-out, and the eight-channel output mapping are all delivered and tested.
   \item \textbf{Self-hosted, provider-switchable LLM.} The OpenAI-compatible
     client drives the agentic loop on any conformant server, with a single
     \pkg{LLM\_PROVIDER} selector switching between local Ollama and vLLM
@@ -1270,9 +1273,9 @@ functional against a live deployment. The measured outcomes are as follows.
 
 \subsection{Quantitative scope}
 
-The implementation comprises approximately 2,871 lines of Python across 42
-source files (excluding generated artefacts), 100 test functions across 20 test
-modules, and 56 commits over the implementation window. The Docker Compose
+The implementation comprises approximately 4,494 lines of Python across 47
+source files (excluding generated artefacts), 124 test functions across 24 test
+modules, and 98 commits over the implementation window. The Docker Compose
 stack orchestrates seven services (the agent's api, bot, and web dashboard;
 Prometheus; Loki; promtail; n8n), with the vLLM model server in a separate
 stack. The dependency surface is purposely small: nine runtime packages.
@@ -1526,7 +1529,7 @@ Astral, ``uv: An extremely fast Python package and project manager,'' 2025.
 \section{Discord channel mapping}
 \label{app:channels}
 
-The bot routes its output to six purpose-specific Discord channels, each
+The bot routes its output to eight purpose-specific Discord channels, each
 opt-in via an environment variable. A feature is inactive when its channel id
 is unset, so a deployment can adopt channels incrementally.
 
@@ -1544,6 +1547,8 @@ is unset, so a deployment can adopt channels incrementally.
 \pkg{\#incidents} & \pkg{DISCORD\_INCIDENT\_CHANNEL\_ID} & One thread per incident with resolve/fix updates and approval views \\
 \pkg{\#agent-logs} & \pkg{DISCORD\_LOG\_CHANNEL\_ID} & INFO and above bot and backend log records (agent activity; HTTP transport loggers silenced) \\
 \pkg{\#test-scenarios} & \pkg{DISCORD\_TEST\_SCENARIOS\_CHANNEL\_ID} & \pkg{/scenario} runs, restricted to this channel when set \\
+\pkg{\#welcome} & \pkg{DISCORD\_WELCOME\_CHANNEL\_ID} & Pinned onboarding embed (commands, channels, how to try the agent); refreshed on startup \\
+\pkg{\#project-notes} & \pkg{DISCORD\_PROJECT\_NOTES\_CHANNEL\_ID} & Pinned project-notes embed (architecture, tools, channels, scenarios, LLM); refreshed on startup \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -1612,6 +1617,8 @@ import path, the canonical way to locate code in this project.
 \pkg{agent.bot.summarize} & LLM reply summarisation with \pkg{raw} opt-out \\
 \pkg{agent.bot.monitor} & Background endpoint, rule, and container monitor \\
 \pkg{agent.bot.utils} & Discord text splitting and Prometheus/Loki formatting \\
+\pkg{agent.bot.scenarios} & Clickable scenario panel (persistent buttons, auto-posted on startup) \\
+\pkg{agent.bot.onboarding} & Pinned welcome and project-notes embeds, refreshed on startup \\
 \pkg{agent.api.server} & FastAPI app and shared-secret dependency \\
 \pkg{agent.api.routes} & HTTP API routes \\
 \pkg{agent.workflows.incident} & Agentic investigation loop, ask workflow, and probe \\
