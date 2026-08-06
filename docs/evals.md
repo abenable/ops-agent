@@ -65,6 +65,42 @@ With `--trials N`:
 A model at 90% per-trial that flaps 30% of the time scores pass@k≈1.0 but
 pass^k≈0.73 — pass^k is what catches it.
 
+## pass^k baseline — Qwen2.5-1.5B-Instruct (vLLM, `--trials 5`)
+
+Run on the deployment host against the live compose stack (api, n8n, vllm,
+prometheus, loki, node-exporter, cadvisor) and the local vLLM serving
+`Qwen/Qwen2.5-1.5B-Instruct`. **16/85 trials passed across 17 tasks.** This is
+the consistency bar; a low pass^k here is the honest signal for a 1.5B model,
+not a grader bug to tune away.
+
+| Task | pass@k | pass^k | Dominant failing grader |
+| --- | --- | --- | --- |
+| `logs_loki_hit` | 100% | 100% | — |
+| `loki_no_logs` | 100% | 100% | — |
+| `status_running` | 100% | 100% | — |
+| `scrape_target_down` | 100% | 0% | inconsistent (4/5 pass) |
+| `api_down` | 0% | 0% | groundedness (summary not grounded in tool_result) |
+| `vllm_down` | 0% | 0% | groundedness |
+| `n8n_high_cpu` | 0% | 0% | groundedness |
+| `n8n_memory` | 0% | 0% | groundedness |
+| `status_stopped_misnamed` | 0% | 0% | groundedness |
+| `healthy_service` | 0% | 0% | groundedness (+ no_false_alarm 80%) |
+| `perf_latency` | 0% | 0% | groundedness + right_metric (wrong family) |
+| `perf_request_rate` | 0% | 0% | groundedness |
+| `cascading_api_and_n8n` | 0% | 0% | tool_calls (didn't call query_prometheus+query_loki) |
+| `logs_loki_miss` | 0% | 0% | tool_calls (didn't fall back to docker_logs) |
+| `memory_resolve_that_container` | 0% | 0% | tool_calls (didn't run the full set) |
+| `grounding_no_hallucination` | 0% | 0% | no_hallucination (echoed the hallucinated name) |
+| `remediate_api_restart` | 0% | 0% | right_container + exactly_one |
+
+**Reading:** the 1.5B model can read a single container's status/logs
+(`status_running`, `logs_loki_hit`, `loki_no_logs`) but under-grounds its
+summaries in the evidence it observed (groundedness=0% on 8 tasks), mis-selects
+tools on multi-step tasks (tool_calls=0% on 3), echoes hallucinated names
+(no_hallucination=0%), and picks the wrong metric family (right_metric=0%).
+This matches the report's "1.5B hallucinates / under-grounds" finding. The
+harness is doing its job: the failures are capability gaps, not grader noise.
+
 ## Capability → task → grader map
 
 The operator capabilities, the tasks that exercise them, and the graders that
@@ -127,9 +163,8 @@ safety/correctness strengths are covered by the unit/integration test suite.
   outcome graders are green across all capabilities (the current graders are
   deterministic and cheat-resistant; an LLM-judge adds nuance at the cost of
   calibration drift).
-- **No pass^k baseline yet.** A `--trials 5` baseline per capability on the
-  vLLM/Qwen stack is the next live run; it populates the consistency bar in this
-  doc. The harness records it; the run has not been done.
+- **pass^k baseline recorded** above for Qwen2.5-1.5B-Instruct on vLLM. A second
+  model (e.g. a larger Qwen) for A/B comparison is planned once it is served.
 - **`healthy_service` is environment-coupled**: it assumes `api` is up in the
   live stack. If `api` is actually down, the task "fails" because the agent
   correctly reports a problem — that is the right signal, not a bug.
