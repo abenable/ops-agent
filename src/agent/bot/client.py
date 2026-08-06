@@ -9,6 +9,7 @@ from discord.ext import commands
 
 from agent.bot.commands import setup_commands
 from agent.bot.monitor import get_alert_rules, get_monitored_endpoints, start_monitor
+from agent.bot.onboarding import post_project_notes, post_welcome
 from agent.bot.scenarios import ensure_scenario_panel
 from agent.bot.summarize import discordify
 from agent.bot.utils import split_discord_text
@@ -161,6 +162,8 @@ def run_bot():
 
         _attach_discord_log_handler(bot)
         asyncio.create_task(ensure_scenario_panel(bot))
+        asyncio.create_task(post_welcome(bot))
+        asyncio.create_task(post_project_notes(bot))
 
         # Check LLM capability in the background; a slow LLM probe should not delay
         # the gateway heartbeat/ready acknowledgement.
