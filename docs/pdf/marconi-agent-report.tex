@@ -609,28 +609,39 @@ image, backed by live Docker container discovery.
 
 \subsubsection{Metrics and logs}
 
+\begin{sloppypar}
 The Discord \pkg{!metrics} and \pkg{!logs} commands (and their slash forms) do
 not run a fixed query; they route through the same agentic loop as \pkg{!ask}
 via a \pkg{run\_scoped\_investigation} helper with a scoped prompt. The model
 calls \pkg{list\_services} to resolve the name the operator typed (handling
-typos and differing separators), discovers the available metric names and label
-values with \pkg{list\_metric\_names} and \pkg{get\_label\_values}, and writes
-its own PromQL or LogQL against the names it discovered. The \pkg{raw} opt-out
-returns the concatenated tool results instead of the narrative. This keeps the
-agent's core property---that it picks the user's intent and writes the right
-query---in the metrics and logs surfaces, rather than hardcoding a single
-metric name and label.
+typos and differing separators), discovers the available metric names and
+label values with \pkg{list\_metric\_names} and \pkg{get\_label\_values}, and
+writes its own PromQL or LogQL against the names it discovered. The \pkg{raw}
+opt-out returns the concatenated tool results instead of the narrative. This
+keeps the agent's core property---that it picks the user's intent and writes the
+right query, even on a typo---in the metrics and logs surfaces, rather than
+hardcoding a single metric name and label.
+\end{sloppypar}
 
-The deterministic helpers \pkg{agent.tools.metrics.get\_service\_metrics} and
-\pkg{agent.tools.logs.get\_recent\_logs} are retained for the callers that need
-deterministic output: the REST API endpoints
-(\pkg{GET /services/\{service\}/metrics}, \pkg{/logs}), the offline
-\pkg{\_static\_summary} fallback, and the Discord button views. A small
-\pkg{\_escape\_label\_value} function escapes backslashes and quotes in the
-service name before interpolation into the query string, preventing a naive
+The deterministic helpers \pkg{get\_service\_metrics} and
+\pkg{get\_recent\_logs} are retained for the callers that need deterministic
+output rather than an LLM narrative:
+
+\begin{itemize}[leftmargin=1.4em,itemsep=0.2em]
+  \item the REST API endpoints \pkg{GET /services/\{service\}/metrics} and
+    \pkg{/logs};
+  \item the offline \pkg{\_static\_summary} fallback used when the agentic loop
+    is unavailable; and
+  \item the Discord button views (the container menu and watch panel).
+\end{itemize}
+
+\begin{sloppypar}
+A small \pkg{\_escape\_label\_value} function escapes backslashes and quotes in
+the service name before interpolation into the query string, preventing a naive
 injection. On any exception the metrics helper falls back to a zeroed stub dict
 and the logs helper falls back to Docker container logs, so a missing source
 never surfaces as a crash.
+\end{sloppypar}
 
 \subsubsection{HTTP health}
 

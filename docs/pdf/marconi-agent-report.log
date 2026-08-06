@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.28 (TeX Live 2025/Debian) (preloaded format=pdflatex 2026.5.13)  6 AUG 2026 13:31
+This is pdfTeX, Version 3.141592653-2.6-1.40.28 (TeX Live 2025/Debian) (preloaded format=pdflatex 2026.5.13)  6 AUG 2026 13:51
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -1206,12 +1206,6 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
 
 [9]
-Overfull \hbox (53.84776pt too wide) in paragraph at lines 624--634
-[]\T1/lmr/m/n/10.95 (-20) The de-ter-min-is-tic helpers \T1/lmtt/m/n/10.95 agen
-t.tools.metrics.get_-service_-metrics \T1/lmr/m/n/10.95 (-20) and \T1/lmtt/m/n/
-10.95 agent.tools.logs.get_-
- []
-
 
 Package fancyhdr Warning: \headheight is too small (12.0pt): 
 (fancyhdr)                Make it at least 12.4pt, for example:
@@ -1220,13 +1214,13 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
 
 [10]
-Underfull \hbox (badness 10000) in paragraph at lines 722--732
+Underfull \hbox (badness 10000) in paragraph at lines 733--743
 \T1/lmr/m/n/10.95 (+20) The source helpers live in \T1/lmtt/m/n/10.95 agent.too
 ls.sources.prometheus \T1/lmr/m/n/10.95 (+20) [[]] and
  []
 
 
-Underfull \hbox (badness 1048) in paragraph at lines 722--732
+Underfull \hbox (badness 1048) in paragraph at lines 733--743
 \T1/lmtt/m/n/10.95 agent.tools.sources.loki \T1/lmr/m/n/10.95 (+20) [[]]. Each 
 is a thin \T1/lmtt/m/n/10.95 httpx.AsyncClient \T1/lmr/m/n/10.95 (+20) wrap-per
  with a
@@ -1241,9 +1235,9 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 
 [11]
 Package hyperref Info: bookmark level for unknown lstlisting defaults to 0 on i
-nput line 784.
+nput line 795.
 LaTeX Font Info:    Font shape `T1/lmtt/bx/n' in size <9> not available
-(Font)              Font shape `T1/lmtt/b/n' tried instead on input line 785.
+(Font)              Font shape `T1/lmtt/b/n' tried instead on input line 796.
 
 
 Package fancyhdr Warning: \headheight is too small (12.0pt): 
@@ -1261,7 +1255,7 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
 
 [13{/usr/share/texmf/fonts/enc/dvips/lm/lm-mathsy.enc}]
-Underfull \hbox (badness 4229) in paragraph at lines 900--904
+Underfull \hbox (badness 4229) in paragraph at lines 911--915
 \T1/lmr/m/n/10.95 (+20) The back-ground mon-i-tor, \T1/lmtt/m/n/10.95 agent.bot
 .monitor\T1/lmr/m/n/10.95 (+20) , runs in-side the bot pro-cess as a
  []
@@ -1274,6 +1268,9 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
 
 [14]
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
 
 Package fancyhdr Warning: \headheight is too small (12.0pt): 
 (fancyhdr)                Make it at least 12.4pt, for example:
@@ -1298,7 +1295,7 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
 
 [17]
-Underfull \hbox (badness 5431) in paragraph at lines 1186--1192
+Underfull \hbox (badness 5431) in paragraph at lines 1197--1203
 []\T1/lmr/bx/n/10.95 (+20) Tools and stor-age \T1/lmr/m/n/10.95 (+20) (\T1/lmtt
 /m/n/10.95 tests.test_-docker\T1/lmr/m/n/10.95 (+20) , \T1/lmtt/m/n/10.95 tests
 .test_-health\T1/lmr/m/n/10.95 (+20) , \T1/lmtt/m/n/10.95 tests.test_-ssh\T1/lm
@@ -1306,7 +1303,7 @@ r/m/n/10.95 (+20) ,
  []
 
 
-Underfull \hbox (badness 1983) in paragraph at lines 1192--1195
+Underfull \hbox (badness 1983) in paragraph at lines 1203--1206
 []\T1/lmr/bx/n/10.95 (+20) Interface \T1/lmr/m/n/10.95 (+20) (\T1/lmtt/m/n/10.9
 5 tests.test_-bot\T1/lmr/m/n/10.95 (+20) , \T1/lmtt/m/n/10.95 tests.test_-api\T
 1/lmr/m/n/10.95 (+20) , \T1/lmtt/m/n/10.95 tests.test_-alerting\T1/lmr/m/n/10.9
@@ -1363,7 +1360,7 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 [23
 
 ]
-Underfull \hbox (badness 1655) in paragraph at lines 1537--1537
+Underfull \hbox (badness 1655) in paragraph at lines 1548--1548
 []|\T1/lmr/m/n/10 (+20) One thread per in-ci-dent with re-
  []
 
@@ -1398,13 +1395,17 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 LaTeX2e <2025-11-01>
 L3 programming layer <2026-01-19>
  ***********
+
+
+LaTeX Warning: Label(s) may have changed. Rerun to get cross-references right.
+
 Package rerunfilecheck Info: File `marconi-agent-report.out' has not changed.
 (rerunfilecheck)             Checksum: 4DFC57CE8644182E7D6C9978E711535A;7007.
  ) 
 Here is how much of TeX's memory you used:
  32502 strings out of 469438
  644340 string characters out of 5468410
- 1577226 words of memory out of 5000000
+ 1642226 words of memory out of 5000000
  60222 multiletter control sequences out of 15000+600000
  722837 words of font info for 212 fonts, out of 8000000 for 9000
  59 hyphenation exceptions out of 8191
@@ -1420,7 +1421,7 @@ r8.pfb></usr/share/texmf/fonts/type1/public/lm/lmr9.pfb></usr/share/texmf/fonts
 /public/lm/lmtk10.pfb></usr/share/texmf/fonts/type1/public/lm/lmtt10.pfb></usr/
 share/texmf/fonts/type1/public/lm/lmtt8.pfb></usr/share/texmf/fonts/type1/publi
 c/lm/lmtt9.pfb></usr/share/texmf/fonts/type1/public/lm/lmtti10.pfb>
-Output written on marconi-agent-report.pdf (26 pages, 498891 bytes).
+Output written on marconi-agent-report.pdf (26 pages, 498904 bytes).
 PDF statistics:
  646 PDF objects out of 1000 (max. 8388607)
  553 compressed objects within 6 object streams
