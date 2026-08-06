@@ -234,6 +234,29 @@ async def run_ask_workflow_stream(question: str, history: list[dict] | None = No
         yield {"type": "error", "message": str(exc)}
 
 
+async def run_scoped_investigation(prompt: str) -> tuple[str, str]:
+    """Run the agentic loop for a scoped command (``!metrics`` / ``!logs``) and
+    return ``(summary, raw_results)``.
+
+    ``summary`` is the model's final narrative; ``raw_results`` is the
+    concatenated tool outputs (PromQL/LogQL results, container state) for the
+    ``raw`` opt-out. The loop is the same one ``!ask`` uses, so the model
+    resolves the service name (typos, separators) via ``list_services``,
+    discovers the available metrics/labels, and writes its own PromQL/LogQL
+    rather than running a hardcoded query.
+    """
+    summary = ""
+    raw_parts: list[str] = []
+    async for event in run_ask_workflow_stream(prompt):
+        if event["type"] == "tool_result":
+            raw_parts.append(f"### {event['name']}\n{event['result']}")
+        elif event["type"] == "done":
+            summary = event.get("content", "") or ""
+        elif event["type"] == "error":
+            summary = f"Agentic loop failed: {event.get('message', '')}"
+    return summary, "\n\n".join(raw_parts)
+
+
 async def run_ask_workflow(question: str, history: list[dict] | None = None) -> str:
     """Free-form agentic answer; does not persist an incident.
 

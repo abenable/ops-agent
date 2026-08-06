@@ -10,7 +10,7 @@ from agent.bot.history import ask_with_memory
 from agent.bot.monitor import get_monitored_endpoints
 from agent.bot.menu import MenuView
 from agent.bot.summarize import clean
-from agent.bot.utils import build_info_embed, format_container_list, format_prometheus, format_status, scenario_path, split_discord_text
+from agent.bot.utils import build_info_embed, format_container_list, format_status, scenario_path, split_discord_text
 from agent.bot.views import LLMProviderView, ServicePanelView
 from agent.config.settings import settings
 from agent.storage.repository import (
@@ -22,10 +22,8 @@ from agent.storage.repository import (
 )
 from agent.tools import docker
 from agent.tools.health import check_endpoint
-from agent.tools.logs import get_recent_logs
-from agent.tools.metrics import get_service_metrics
 from agent.tools.services import get_service_status
-from agent.workflows.incident import run_incident_workflow
+from agent.workflows.incident import run_incident_workflow, run_scoped_investigation
 from agent.workflows.remediation import execute_approval, reject_approval, run_remediation_workflow
 
 
@@ -81,24 +79,34 @@ def setup_commands(bot: commands.Bot) -> None:
 
     @bot.command(name="logs")
     async def logs(ctx: commands.Context, service: str, lines: int = 10, raw: bool = False):
-        result = await get_recent_logs(service, lines)
-        if raw:
-            for chunk in split_discord_text(result):
-                await ctx.send(chunk)
-            return
         async with ctx.typing():
-            summary = await clean(result, service=service, action="fetch recent logs")
-        await ctx.send(summary)
+            prompt = (
+                f"Show the last ~{lines} log lines for the service matching '{service}'. "
+                "Call list_services first to resolve the real container/endpoint name "
+                "(the user may have typos or use different separators), then use query_loki "
+                "or query_loki_range to fetch recent logs; fall back to docker_logs if Loki "
+                "has nothing for it. Summarize the key lines briefly."
+            )
+            summary, raw_results = await run_scoped_investigation(prompt)
+        out = raw_results if raw else (summary or "(no logs)")
+        for chunk in split_discord_text(out):
+            await ctx.send(chunk)
 
     @bot.command(name="metrics")
     async def metrics(ctx: commands.Context, service: str, raw: bool = False):
-        raw_out = format_prometheus(await get_service_metrics(service))
-        if raw:
-            await ctx.send(raw_out)
-            return
         async with ctx.typing():
-            summary = await clean(raw_out, service=service, action="fetch Prometheus metrics")
-        await ctx.send(summary)
+            prompt = (
+                f"Report the current Prometheus metrics for the service matching '{service}'. "
+                "Call list_services first to resolve the real container/endpoint name (the "
+                "user may have typos or use different separators), then discover the available "
+                "metric names with list_metric_names and label values with get_label_values, "
+                "and query the most relevant current metrics with query_prometheus. "
+                "Summarize the key values in a few lines; if no metrics exist, say so."
+            )
+            summary, raw_results = await run_scoped_investigation(prompt)
+        out = raw_results if raw else (summary or "(no metrics)")
+        for chunk in split_discord_text(out):
+            await ctx.send(chunk)
 
     @bot.command(name="incident")
     async def incident(ctx: commands.Context, service: str):

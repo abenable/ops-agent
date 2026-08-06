@@ -14,6 +14,7 @@ from agent.workflows.incident import (
     run_agentic_investigation,
     run_ask_workflow,
     run_incident_workflow,
+    run_scoped_investigation,
 )
 
 
@@ -221,3 +222,25 @@ def test_llm_supports_tool_calls_probe(tmp_database):
 
     with patch("agent.workflows.incident.get_llm", return_value=RaisingLLM()):
         assert asyncio.run(llm_supports_tool_calls()) is False
+
+
+def test_scoped_investigation_returns_summary_and_raw(tmp_database, patched_tool_sources, monkeypatch):
+    """!metrics/!logs run the agentic loop and return (summary, concatenated raw tool output)."""
+    monkeypatch.setattr(incident_module.settings, "max_tool_steps", 6)
+
+    responses = [
+        FakeMessage(
+            content="",
+            tool_calls=[
+                {"name": "query_prometheus", "args": {"promql": "up{job='n8n'}"}, "id": "call-1"}
+            ],
+        ),
+        FakeMessage(content="n8n is up with 9 containers reporting."),
+    ]
+
+    with patch("agent.workflows.incident.get_llm", return_value=FakeLLM(responses)):
+        summary, raw = asyncio.run(run_scoped_investigation("metrics for n8n"))
+
+    assert summary == "n8n is up with 9 containers reporting."
+    assert "query_prometheus" in raw
+    patched_tool_sources["query_prometheus"].assert_awaited_once_with("up{job='n8n'}")
