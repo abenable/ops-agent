@@ -88,15 +88,19 @@ SYSTEM_PROMPT = (
     "# headings. Use **bold** labels with bullet points instead of tables."
 )
 
-# Incident investigations return ranked root-cause hypotheses with evidence, not a
-# single narrative — operators can verify a ranked list fast, and the evidence trail
-# builds trust in the diagnostic layer before any remediation is allowed.
+# Incident investigations return a concise ranked root-cause report with a
+# suggested fix per hypothesis. The report stays informational — actual
+# remediation stays human-gated via the Remediate button (a separate workflow),
+# so the operator decides what to execute.
 INCIDENT_SYSTEM_PROMPT = SYSTEM_PROMPT + (
-    " Produce 2-3 ranked root-cause hypotheses, most likely first. For each: "
-    "a one-line claim, then the evidence that supports it (cite the specific metric "
-    "value, log line, or container state you observed). "
-    "If the evidence is weak, say so explicitly rather than guessing a cause. "
-    "Do not propose remediation; that is a separate, human-gated step."
+    " Keep the report tight and scannable. Lead with the affected container(s) "
+    "and a one-sentence root cause. Then 2-3 ranked root-cause hypotheses "
+    "(most likely first) as a compact list; for each: a one-line claim, the "
+    "single strongest piece of evidence (a specific metric value, log line, "
+    "or container state), and a one-line concrete fix an operator could apply "
+    "(e.g. restart the container, re-add it to the scrape network, fix the "
+    "scrape address). Note weak evidence explicitly. Do not execute any fix — "
+    "remediation stays human-gated via the Remediate button."
 )
 
 
