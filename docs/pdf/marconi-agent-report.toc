@@ -34,17 +34,11 @@
 \contentsline {subsection}{\numberline {5.3}Operational impact}{19}{subsection.5.3}%
 \contentsline {subsection}{\numberline {5.4}Verification}{19}{subsection.5.4}%
 \contentsline {subsection}{\numberline {5.5}Model size and tool-selection reliability}{19}{subsection.5.5}%
-\contentsline {subsection}{\numberline {5.6}Robustness and usability of the incident pipeline}{20}{subsection.5.6}%
-\contentsline {paragraph}{Inline tool-call recovery.}{20}{subsection.5.6}%
-\contentsline {paragraph}{No hardcoded queries in \texttt {!metrics}/\texttt {!logs}.}{20}{subsection.5.6}%
-\contentsline {paragraph}{Discord-readable formatting.}{20}{subsection.5.6}%
-\contentsline {paragraph}{Concise incident reports with suggested fixes.}{20}{subsection.5.6}%
-\contentsline {paragraph}{Incident thread actions and live logging.}{20}{subsection.5.6}%
-\contentsline {section}{\numberline {6}Challenges}{21}{section.6}%
-\contentsline {section}{\numberline {7}Future Work}{22}{section.7}%
-\contentsline {section}{\numberline {8}Conclusion}{22}{section.8}%
-\contentsline {section}{References}{23}{section.8}%
-\contentsline {section}{Appendices}{24}{section*.1}%
-\contentsline {section}{\numberline {A}Discord channel mapping}{24}{appendix.1.A}%
-\contentsline {section}{\numberline {B}Scenario file format}{24}{appendix.1.B}%
-\contentsline {section}{\numberline {C}Module reference}{25}{appendix.1.C}%
+\contentsline {section}{\numberline {6}Challenges}{20}{section.6}%
+\contentsline {section}{\numberline {7}Future Work}{21}{section.7}%
+\contentsline {section}{\numberline {8}Conclusion}{21}{section.8}%
+\contentsline {section}{References}{22}{section.8}%
+\contentsline {section}{Appendices}{23}{section*.1}%
+\contentsline {section}{\numberline {A}Discord channel mapping}{23}{appendix.1.A}%
+\contentsline {section}{\numberline {B}Scenario file format}{23}{appendix.1.B}%
+\contentsline {section}{\numberline {C}Module reference}{24}{appendix.1.C}%
