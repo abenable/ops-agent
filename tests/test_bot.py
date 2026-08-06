@@ -91,3 +91,56 @@ def test_commands_registered():
     assert "logs" in bot.commands
     assert "metrics" in bot.commands
     assert "incident" in bot.commands
+
+
+def test_discord_log_handler_forwards_info_and_quiets_httpx():
+    import asyncio
+    import logging
+
+    from agent.bot.client import DiscordLogHandler, _setup_logging
+
+    _setup_logging()
+    # httpx/httpx2 are transport noise; one INFO line per request would flood the
+    # Discord log channel, so they must be silenced to WARNING.
+    assert logging.getLogger("httpx").level == logging.WARNING
+    assert logging.getLogger("httpx2").level == logging.WARNING
+
+    class FakeChannel:
+        def __init__(self):
+            self.sent = []
+
+        async def send(self, msg):
+            self.sent.append(msg)
+
+    class FakeBot:
+        def __init__(self, ch):
+            self._ch = ch
+
+        def get_channel(self, _id):
+            return self._ch
+
+        async def fetch_channel(self, _id):
+            return self._ch
+
+    ch = FakeChannel()
+    bot = FakeBot(ch)
+    handler = DiscordLogHandler(bot, 123)
+    handler.setFormatter(logging.Formatter("%(levelname)s %(name)s\n%(message)s"))
+    test_logger = logging.getLogger("agent.test")
+    test_logger.addHandler(handler)
+    test_logger.setLevel(logging.INFO)  # don't depend on root's effective level
+    # Drive the pump so the bootstrap banner and any queued records flush.
+    async def run():
+        import asyncio as _aio
+        task = _aio.create_task(handler.pump())
+        test_logger.info("tool call happened")
+        await _aio.sleep(0.2)
+        task.cancel()
+        try:
+            await task
+        except _aio.CancelledError:
+            pass
+
+    asyncio.run(run())
+    assert any("Log forwarding active (INFO and above)." in m for m in ch.sent)
+    assert any("tool call happened" in m for m in ch.sent)

@@ -24,10 +24,10 @@ _setup_done = False
 
 
 class DiscordLogHandler(logging.Handler):
-    """Forward WARNING+ logs to a Discord channel without blocking emit()."""
+    """Forward INFO+ logs to a Discord channel without blocking emit()."""
 
     def __init__(self, bot: discord.Client, channel_id: int):
-        super().__init__(level=logging.WARNING)
+        super().__init__(level=logging.INFO)
         self.bot = bot
         self.channel_id = channel_id
         self.queue: asyncio.Queue[str] = asyncio.Queue()
@@ -55,9 +55,9 @@ class DiscordLogHandler(logging.Handler):
                 )
                 return
 
-        # Confirm the wiring loudly so an empty channel means "no warnings", not "broken".
+        # Confirm the wiring loudly so an empty channel means "nothing happening", not "broken".
         try:
-            await channel.send("Log forwarding active (WARNING and above).")
+            await channel.send("Log forwarding active (INFO and above).")
         except Exception as exc:
             print(f"Cannot send to Discord log channel: {exc}", file=sys.stderr)
             return
@@ -76,6 +76,12 @@ def _setup_logging() -> None:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    # Quiet the HTTP transport loggers: they emit one INFO line per request
+    # (every DeepSeek/Prometheus/Docker call), which floods the Discord log
+    # channel and the console without being useful activity signal. Warnings
+    # and errors still surface.
+    for noisy in ("httpx", "httpx2"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
 def _attach_discord_log_handler(bot: discord.Client) -> None:
