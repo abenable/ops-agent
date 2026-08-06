@@ -9,7 +9,7 @@ from agent.alerting.discord import RemediationApprovalView
 from agent.bot.history import ask_with_memory
 from agent.bot.monitor import get_monitored_endpoints
 from agent.bot.menu import MenuView
-from agent.bot.summarize import clean
+from agent.bot.summarize import clean, discordify
 from agent.bot.utils import build_info_embed, format_container_list, format_status, scenario_path, split_discord_text
 from agent.bot.views import LLMProviderView, ServicePanelView
 from agent.config.settings import settings
@@ -88,7 +88,7 @@ def setup_commands(bot: commands.Bot) -> None:
                 "has nothing for it. Summarize the key lines briefly."
             )
             summary, raw_results = await run_scoped_investigation(prompt)
-        out = raw_results if raw else (summary or "(no logs)")
+        out = raw_results if raw else discordify(summary or "(no logs)")
         for chunk in split_discord_text(out):
             await ctx.send(chunk)
 
@@ -104,7 +104,7 @@ def setup_commands(bot: commands.Bot) -> None:
                 "Summarize the key values in a few lines; if no metrics exist, say so."
             )
             summary, raw_results = await run_scoped_investigation(prompt)
-        out = raw_results if raw else (summary or "(no metrics)")
+        out = raw_results if raw else discordify(summary or "(no metrics)")
         for chunk in split_discord_text(out):
             await ctx.send(chunk)
 
@@ -112,7 +112,7 @@ def setup_commands(bot: commands.Bot) -> None:
     async def incident(ctx: commands.Context, service: str):
         result = await run_incident_workflow(service)
         summary = result["summary"]
-        for chunk in split_discord_text(summary):
+        for chunk in split_discord_text(discordify(summary)):
             await ctx.send(chunk)
         await ctx.send(f"Incident ID: {result['incident_id']}")
 
@@ -181,7 +181,7 @@ def setup_commands(bot: commands.Bot) -> None:
             f"▶ Simulating: {data['name']} — {data.get('symptom', '')}"
         )
         result = await run_incident_workflow(data["service"])
-        for chunk in split_discord_text(result["summary"]):
+        for chunk in split_discord_text(discordify(result["summary"])):
             await ctx.send(chunk)
 
     @bot.command(name="health")
@@ -244,7 +244,7 @@ def setup_commands(bot: commands.Bot) -> None:
             answer = await ask_with_memory(ctx.channel.id, question)
         except Exception as exc:  # LLM may be offline
             answer = f"Ask failed: {exc}"
-        for chunk in split_discord_text(answer):
+        for chunk in split_discord_text(discordify(answer)):
             await ctx.send(chunk)
 
     @bot.command(name="remediate")
@@ -262,7 +262,7 @@ def setup_commands(bot: commands.Bot) -> None:
             result = await run_remediation_workflow(
                 incident_id, incident["service"], incident["summary"]
             )
-        for chunk in split_discord_text(result["summary"]):
+        for chunk in split_discord_text(discordify(result["summary"])):
             await ctx.send(chunk)
         for proposal in result["proposals"]:
             await ctx.send(

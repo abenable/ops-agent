@@ -16,24 +16,73 @@ _MAX_OUT_LEN = 1900
 # normalize them to **bold**. Small models emit `####` even when asked not to.
 _HEADING_RE = re.compile(r"^[ \t]{0,3}#{1,6}[ \t]+(.+?)[ \t]*#*[ \t]*$", re.MULTILINE)
 
+# A markdown table row: starts and ends with a pipe with cells between.
+_ROW_RE = re.compile(r"^\|.*\|\s*$")
+# The separator row of a table: only dashes, colons, pipes, spaces (---|:---|).
+_SEP_RE = re.compile(r"^\|[\s:|-]+\|\s*$")
+
 
 def _sanitize(value: str) -> str:
     """Collapse whitespace and cap length so user input cannot inject prompt lines."""
     return " ".join(str(value).split())[:200]
 
 
-def _discordify(text: str) -> str:
-    """Normalize markdown heading syntax to Discord **bold**.
+def _split_row(line: str) -> list[str]:
+    s = line.strip()
+    s = s[1:] if s.startswith("|") else s
+    s = s[:-1] if s.endswith("|") else s
+    return [c.strip() for c in s.split("|")]
 
-    Discord does not render ``#``/``##``/``####`` headings — they show as literal
-    text. Small models emit them despite prompt instructions, so we convert
-    ``## Foo`` to ``**Foo**``. Content inside ``` code fences is left untouched
-    so a ``# comment`` inside a pasted log block is not mangled.
+
+def _convert_tables(text: str) -> str:
+    """Turn a markdown table into Discord bullets.
+
+    Discord does not render ``| a | b |`` grids — they show as a wall of pipes.
+    A 2-column table (the common metric/value shape) becomes ``- **Label:** value``
+    lines; wider tables join the extra columns with `` · ``.
+    """
+    lines = text.split("\n")
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        if i + 1 < len(lines) and _ROW_RE.match(lines[i].strip()) and _SEP_RE.match(lines[i + 1].strip()):
+            header = _split_row(lines[i])
+            i += 2
+            rows: list[list[str]] = []
+            while i < len(lines) and _ROW_RE.match(lines[i].strip()):
+                rows.append(_split_row(lines[i]))
+                i += 1
+            for row in rows:
+                if not row:
+                    continue
+                label = row[0]
+                rest = row[1:]
+                if len(rest) <= 1:
+                    out.append(f"- **{label}:** {rest[0] if rest else ''}".rstrip())
+                else:
+                    out.append(f"- **{label}:** " + " \u00b7 ".join(rest))
+            out.append("")
+        else:
+            out.append(lines[i])
+            i += 1
+    return "\n".join(out)
+
+
+def _discordify(text: str) -> str:
+    """Normalize markdown Discord can't render: ``#`` headings -> **bold** and
+    markdown tables -> bullet lists. Content inside ``` code fences is left
+    untouched so a ``# comment`` or a pasted ``|`` log line is not mangled.
     """
     parts = text.split("```")
     for i in range(0, len(parts), 2):  # even indices are outside code fences
         parts[i] = _HEADING_RE.sub(r"**\1**", parts[i])
+        parts[i] = _convert_tables(parts[i])
     return "```".join(parts)
+
+
+def discordify(text: str) -> str:
+    """Public alias for the Discord markdown normalizer used by command handlers."""
+    return _discordify(text)
 
 
 def _fit(text: str) -> str:

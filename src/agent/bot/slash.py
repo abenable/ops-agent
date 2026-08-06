@@ -14,7 +14,7 @@ from agent.alerting.discord import RemediationApprovalView
 from agent.bot.history import ask_with_memory
 from agent.bot.menu import MenuView
 from agent.bot.monitor import get_monitored_endpoints
-from agent.bot.summarize import clean
+from agent.bot.summarize import clean, discordify
 from agent.bot.utils import build_info_embed, format_container_list, format_status, scenario_path, split_discord_text
 from agent.bot.views import LLMProviderView, ServicePanelView
 from agent.config.settings import settings
@@ -87,7 +87,7 @@ def setup_slash_commands(bot: commands.Bot) -> None:
             "nothing for it. Summarize the key lines briefly."
         )
         summary, raw_results = await run_scoped_investigation(prompt)
-        out = raw_results if raw else (summary or "(no logs)")
+        out = raw_results if raw else discordify(summary or "(no logs)")
         for chunk in split_discord_text(out):
             await interaction.followup.send(chunk)
 
@@ -104,7 +104,7 @@ def setup_slash_commands(bot: commands.Bot) -> None:
             "values in a few lines; if no metrics exist, say so."
         )
         summary, raw_results = await run_scoped_investigation(prompt)
-        out = raw_results if raw else (summary or "(no metrics)")
+        out = raw_results if raw else discordify(summary or "(no metrics)")
         for chunk in split_discord_text(out):
             await interaction.followup.send(chunk)
 
@@ -210,7 +210,7 @@ def setup_slash_commands(bot: commands.Bot) -> None:
         await interaction.response.defer(ephemeral=True)
         result = await run_incident_workflow(service)
         summary = result["summary"]
-        for chunk in split_discord_text(summary):
+        for chunk in split_discord_text(discordify(summary)):
             await interaction.followup.send(chunk)
         await interaction.followup.send(f"Incident ID: {result['incident_id']}")
 
@@ -260,7 +260,7 @@ def setup_slash_commands(bot: commands.Bot) -> None:
             f"▶ Simulating: {data['name']} — {data.get('symptom', '')}"
         )
         result = await run_incident_workflow(data["service"])
-        for chunk in split_discord_text(result["summary"]):
+        for chunk in split_discord_text(discordify(result["summary"])):
             await interaction.followup.send(chunk)
 
     @bot.tree.command(name="ack", description="Acknowledge a stored incident")
@@ -305,7 +305,7 @@ def setup_slash_commands(bot: commands.Bot) -> None:
             answer = await ask_with_memory(interaction.channel_id, question)
         except Exception as exc:
             answer = f"Ask failed: {exc}"
-        for chunk in split_discord_text(answer):
+        for chunk in split_discord_text(discordify(answer)):
             await interaction.followup.send(chunk)
 
     @bot.tree.command(name="remediate", description="Run the remediation agent on an existing incident")
@@ -319,7 +319,7 @@ def setup_slash_commands(bot: commands.Bot) -> None:
         result = await run_remediation_workflow(
             incident_id, incident["service"], incident["summary"]
         )
-        for chunk in split_discord_text(result["summary"]):
+        for chunk in split_discord_text(discordify(result["summary"])):
             await interaction.followup.send(chunk, ephemeral=True)
         for proposal in result["proposals"]:
             await interaction.followup.send(

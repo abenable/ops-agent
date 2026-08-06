@@ -9,6 +9,7 @@ from discord.ext import commands
 
 from agent.bot.commands import setup_commands
 from agent.bot.monitor import get_alert_rules, get_monitored_endpoints, start_monitor
+from agent.bot.summarize import discordify
 from agent.bot.utils import split_discord_text
 from agent.config.settings import settings
 from agent.bot.history import ask_with_memory
@@ -230,7 +231,7 @@ def run_bot():
                 logger.warning("Mention response failed: %s", exc)
                 answer = "My agent is unreachable right now — try a `!` command instead."
 
-            chunks = split_discord_text(answer)
+            chunks = split_discord_text(discordify(answer))
             if not chunks:
                 await message.reply("(no response)")
                 return

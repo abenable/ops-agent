@@ -44,7 +44,9 @@ SYSTEM_PROMPT = (
     "Use the actual names you discover, not the user's spelling, for your queries. "
     "Use docker_status and docker_logs to inspect containers Prometheus/Loki do not cover. "
     "Write cheap PromQL/LogQL queries and prefer short time windows. "
-    "Summarize findings in one paragraph."
+    "Summarize findings in one paragraph. "
+    "Your output goes to Discord, which does not render markdown tables or "
+    "# headings. Use **bold** labels with bullet points instead of tables."
 )
 
 # Incident investigations return ranked root-cause hypotheses with evidence, not a

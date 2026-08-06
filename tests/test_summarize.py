@@ -96,3 +96,24 @@ def test_clean_runs_discordify_on_llm_output():
         out = asyncio.run(summarize.clean("raw", service="n8n", action="show logs"))
     assert "####" not in out
     assert "**Build Workflow Index**" in out
+
+
+def test_discordify_converts_markdown_table_to_bullets():
+    # Discord renders | a | b | grids as a wall of pipes; a 2-column metric
+    # table must become "- **Label:** value" lines.
+    src = (
+        "| Metric | Value |\n"
+        "|---|---|\n"
+        "| Status | up |\n"
+        "| Version | v2.33.3 |\n"
+    )
+    out = summarize.discordify(src)
+    assert "|" not in out
+    assert "- **Status:** up" in out
+    assert "- **Version:** v2.33.3" in out
+
+
+def test_discordify_leaves_table_inside_code_fence_untouched():
+    src = "```\n| a | b |\n|---|---|\n| 1 | 2 |\n```"
+    out = summarize.discordify(src)
+    assert "| a | b |" in out  # raw table preserved inside the code block
