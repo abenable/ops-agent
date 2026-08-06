@@ -1,14 +1,15 @@
-"""Clickable scenario runner for the #test-scenarios channel.
+"""Clickable task runner for the #test-tasks channel.
 
-A persistent Discord message carries one button per ``scenarios/*.yml`` file;
-clicking a button runs that scenario's incident workflow (with the scenario's
+A persistent Discord message carries one button per ``tasks/*.yml`` file;
+clicking a button runs that task's incident workflow (with the task's
 symptom as a hint) and posts the diagnosis into the channel, so an operator
 can run a reproducible test with a single click instead of typing
-``/scenario <name>``.
+``/task <name>``. The on-disk unit is a *task*; the operator verb is a
+*task*.
 
-The panel is auto-created on startup when ``DISCORD_TEST_SCENARIOS_CHANNEL_ID``
+The panel is auto-created on startup when ``DISCORD_TEST_TASKS_CHANNEL_ID``
 is set, and re-registered on reconnect so its buttons keep working after a
-redeploy. ``/scenarios`` refreshes the panel (e.g. after adding a scenario file).
+redeploy. ``/tasks`` refreshes the panel (e.g. after adding a task file).
 """
 
 from __future__ import annotations
@@ -18,25 +19,25 @@ import logging
 import discord
 
 from agent.bot.summarize import discordify
-from agent.bot.utils import scenario_path, split_discord_text
+from agent.bot.utils import task_path, split_discord_text
 from agent.config.settings import settings
-from agent.scenarios import available_scenarios as _available_scenarios
+from agent.tasks import available_tasks
 from agent.workflows.incident import run_incident_workflow
 
 logger = logging.getLogger(__name__)
 
-_PANEL_MARKER = "\U0001F9EA **Scenario runner**"  # 🧪
+_PANEL_MARKER = "\U0001F9EA **Task runner**"  # 🧪
 
 
 async def _run_and_post(name: str, send) -> None:
-    """Load a scenario, run its incident workflow, and post the result via *send*.
+    """Load a task, run its incident workflow, and post the result via *send*.
 
     *send* is an awaitable that takes a string and posts it (``ctx.send`` or
     ``interaction.followup.send``), so the button and the command share one path.
     """
-    path = scenario_path(name)
+    path = task_path(name)
     if path is None:
-        await send(f"No scenario named '{name}'.")
+        await send(f"No task named '{name}'.")
         return
     import yaml
 
@@ -47,43 +48,43 @@ async def _run_and_post(name: str, send) -> None:
         await send(chunk)
 
 
-class ScenarioButton(discord.ui.Button):
-    """One button per scenario; ``custom_id`` is stable across restarts."""
+class TaskButton(discord.ui.Button):
+    """One button per task; ``custom_id`` is stable across restarts."""
 
     def __init__(self, name: str):
         super().__init__(
             label=name,
-            custom_id=f"scenario:{name}",
+            custom_id=f"task:{name}",
             style=discord.ButtonStyle.secondary,
         )
-        self.scenario_name = name
+        self.task_name = name
 
     async def callback(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
-        await _run_and_post(self.scenario_name, interaction.followup.send)
+        await _run_and_post(self.task_name, interaction.followup.send)
 
 
-class ScenarioPanelView(discord.ui.View):
-    """A persistent row of scenario buttons, rebuilt from ``scenarios/*.yml``."""
+class TaskPanelView(discord.ui.View):
+    """A persistent row of task buttons, rebuilt from ``tasks/*.yml``."""
 
     def __init__(self) -> None:
         super().__init__(timeout=None)
-        for name in _available_scenarios():
-            self.add_item(ScenarioButton(name))
+        for name in available_tasks():
+            self.add_item(TaskButton(name))
 
 
-async def ensure_scenario_panel(bot: discord.Client) -> None:
-    """Create the runner panel in the test-scenarios channel if missing, or
+async def ensure_task_panel(bot: discord.Client) -> None:
+    """Create the runner panel in the test-tasks channel if missing, or
     re-register its view on an existing panel so clicks survive a redeploy.
     """
-    if settings.discord_test_scenarios_channel_id is None:
+    if settings.discord_test_tasks_channel_id is None:
         return
-    channel = bot.get_channel(settings.discord_test_scenarios_channel_id)
+    channel = bot.get_channel(settings.discord_test_tasks_channel_id)
     if channel is None:
         try:
-            channel = await bot.fetch_channel(settings.discord_test_scenarios_channel_id)
+            channel = await bot.fetch_channel(settings.discord_test_tasks_channel_id)
         except Exception as exc:
-            logger.warning("Scenario channel %s unreachable: %s", settings.discord_test_scenarios_channel_id, exc)
+            logger.warning("Task channel %s unreachable: %s", settings.discord_test_tasks_channel_id, exc)
             return
 
     # Reuse an existing panel if the bot posted one recently, to avoid spamming
@@ -91,12 +92,12 @@ async def ensure_scenario_panel(bot: discord.Client) -> None:
     try:
         hist = [m async for m in channel.history(limit=20, oldest_first=False)]
     except Exception as exc:
-        logger.warning("Cannot read scenario channel history: %s", exc)
+        logger.warning("Cannot read task channel history: %s", exc)
         return
 
     existing = next((m for m in hist if m.author.id == bot.user.id and m.content.startswith(_PANEL_MARKER)), None)
     if existing is not None:
-        bot.add_view(ScenarioPanelView(), message_id=existing.id)
+        bot.add_view(TaskPanelView(), message_id=existing.id)
         return
 
-    await channel.send(f"{_PANEL_MARKER} \u2014 click a scenario to simulate:", view=ScenarioPanelView())
+    await channel.send(f"{_PANEL_MARKER} \u2014 click a task to simulate:", view=TaskPanelView())

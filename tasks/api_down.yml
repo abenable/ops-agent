@@ -9,3 +9,6 @@ expected_agent_actions:
   - docker_status
   - docker_logs
   - query_prometheus
+expected_evidence:
+  - api
+  - stopped

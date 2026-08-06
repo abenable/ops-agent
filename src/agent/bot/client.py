@@ -10,7 +10,7 @@ from discord.ext import commands
 from agent.bot.commands import setup_commands
 from agent.bot.monitor import get_alert_rules, get_monitored_endpoints, start_monitor
 from agent.bot.onboarding import post_project_notes, post_welcome
-from agent.bot.scenarios import ensure_scenario_panel
+from agent.bot.tasks import ensure_task_panel
 from agent.bot.summarize import discordify
 from agent.bot.utils import split_discord_text
 from agent.config.settings import settings
@@ -126,7 +126,7 @@ async def _environment_context() -> str:
         f"Prometheus: {settings.prometheus_url}\n"
         f"Loki: {settings.loki_url}\n"
         f"Model: {model} (provider={settings.llm_provider or 'legacy'}, base_url={base_url})\n"
-        "Available tools: menu, status, containers, logs, metrics, health, incident, scenario, ack, resolve, watching, remediate, approve, reject"
+        "Available tools: menu, status, containers, logs, metrics, health, incident, task, ack, resolve, watching, remediate, approve, reject"
     )
 
 
@@ -161,7 +161,7 @@ def run_bot():
             logger.warning("Slash-command sync failed: %s", exc)
 
         _attach_discord_log_handler(bot)
-        asyncio.create_task(ensure_scenario_panel(bot))
+        asyncio.create_task(ensure_task_panel(bot))
         asyncio.create_task(post_welcome(bot))
         asyncio.create_task(post_project_notes(bot))
 

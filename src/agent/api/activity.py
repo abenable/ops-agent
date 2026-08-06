@@ -3,7 +3,7 @@
 A logging handler captures INFO+ records from the ``agent.*`` loggers and fans
 them out to SSE subscribers (the web Activity panel), keeping a small ring
 buffer so a freshly connected client sees recent history. Lives only in the
-API process, so it mirrors the workflows the web triggers (chat, scenarios,
+API process, so it mirrors the workflows the web triggers (chat, tasks,
 incidents, remediation) rather than the separate bot process.
 """
 

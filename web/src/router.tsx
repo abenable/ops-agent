@@ -3,7 +3,7 @@ import { AppShell } from "./components/AppShell";
 import { Dashboard } from "./routes/Dashboard";
 import { ServiceDetail } from "./routes/ServiceDetail";
 import { Incidents } from "./routes/Incidents";
-import { Scenarios } from "./routes/Scenarios";
+import { Tasks } from "./routes/Tasks";
 import { Chat } from "./routes/Chat";
 import { Activity } from "./routes/Activity";
 
@@ -18,12 +18,12 @@ const service = createRoute({
   component: ServiceDetail,
 });
 const incidents = createRoute({ getParentRoute: () => root, path: "/incidents", component: Incidents });
-const scenarios = createRoute({ getParentRoute: () => root, path: "/scenarios", component: Scenarios });
+const tasks = createRoute({ getParentRoute: () => root, path: "/tasks", component: Tasks });
 const chat = createRoute({ getParentRoute: () => root, path: "/chat", component: Chat });
 const activity = createRoute({ getParentRoute: () => root, path: "/activity", component: Activity });
 
 export const router = createRouter({
-  routeTree: root.addChildren([index, service, incidents, scenarios, chat, activity]),
+  routeTree: root.addChildren([index, service, incidents, tasks, chat, activity]),
   defaultPreload: "intent",
 });
 

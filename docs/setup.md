@@ -33,7 +33,7 @@ cp .env.example .env
 | `DISCORD_INCIDENT_CHANNEL_ID` | no | — | Channel where per-incident threads are opened |
 | `DISCORD_STATUS_CHANNEL_ID` | no | — | Channel for status transitions + periodic snapshots of watched containers |
 | `DISCORD_LOG_CHANNEL_ID` | no | — | Channel for WARNING+ bot/backend logs |
-| `DISCORD_TEST_SCENARIOS_CHANNEL_ID` | no | — | Restricts `!scenario` to this channel |
+| `DISCORD_TEST_TASKS_CHANNEL_ID` | no | — | Restricts `!task` to this channel |
 | `MONITORED_ENDPOINTS` | no | *(empty)* | Comma-separated `name=url` pairs the monitor polls; empty disables the monitor |
 | `MONITOR_INTERVAL_SECONDS` | no | `60` | Poll interval (floored at 10s) |
 | `STATUS_SNAPSHOT_INTERVAL_SECONDS` | no | `3600` | Cadence for periodic watched-container status snapshot in `#status-updates` |
@@ -111,10 +111,13 @@ python -m agent incident --service web
 # Print a stored incident report
 python -m agent report --incident-id <id>
 
-# Run automated scenario evaluation against the live LLM
-python -m agent eval                      # all scenarios
-python -m agent eval --scenario scenarios/container_down.yml
+# Run automated task evaluation against the live LLM
+python -m agent eval                      # all tasks, 1 trial each
+python -m agent eval --task tasks/api_down.yml
+python -m agent eval --trials 5 --label qwen2.5-14b   # pass@k / pass^k
 ```
+
+See [evals.md](evals.md) for graders, transcripts, and the strength → coverage map.
 
 ## Docker
 

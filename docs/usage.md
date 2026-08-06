@@ -19,7 +19,7 @@ show the full output.
 | `!watchlist` / `/watchlist` | List the containers currently being watched |
 | `!ask <question>` / `/ask` | Free-form agentic investigation using read-only tools |
 | `!incident <service>` / `/incident` | Run the incident investigation workflow; posts summary + incident id, opens an incident thread, and alerts the alert channel |
-| `!scenario <name>` / `/scenario` | Run a simulated scenario from `scenarios/<name>.yml` (restricted to the test-scenarios channel if configured) |
+| `!task <name>` / `/task` | Run a simulated task from `tasks/<name>.yml` (restricted to the test-tasks channel if configured) |
 | `!ack <incident_id>` / `/ack` | Acknowledge a stored incident (and post to its thread) |
 | `!resolve <incident_id>` / `/resolve` | Resolve a stored incident (and post to its thread) |
 | `!menu` / `/menu` | Interactive container picker with Status/Logs/Metrics buttons |

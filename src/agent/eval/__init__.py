@@ -1,24 +1,61 @@
-"""Automated scenario evaluation harness.
+"""Automated task evaluation harness.
 
-Parses scenario YAML files and checks whether observed agent tool calls
-match the ``expected_agent_actions`` declared in each scenario.
+Parses task YAML files and grades observed agent behavior against the
+declared expectations using one or more *graders*.
 
-The harness is a *pure checker* — it does not run the agent.  The test or
-CLI is responsible for invoking the investigation and collecting tool-call
-names, then passing them to :meth:`EvalHarness.evaluate`.
+Vocabulary (after Anthropic, "Demystifying evals for AI agents"):
+- A *task* is one YAML file under ``tasks/`` (a problem / test case).
+- A *trial* is one attempt at a task. The CLI runs N trials per task
+  (``--trials N``) and records pass@k / pass^k.
+- A *grader* scores one aspect of a trial. A task can have several graders;
+  the trial passes only if every applicable grader passes (partial credit:
+  the trial score is the fraction of graders that passed).
+- A *transcript* is the full event trace of a trial (tool_call / tool_result /
+  done), saved to disk per trial.
+
+Built-in graders (code-based):
+- ``tool_calls``   — the agent called a tool from each expected action's set.
+- ``no_raw_markup``— the summary has no leaked ``<｜｜DSML｜｜>`` XML and no
+  raw markdown table rows (Discord renders ``|`` as a wall of pipes).
+- ``groundedness`` — each ``expected_evidence`` string appears in the summary
+  (coverage: the answer mentions the key facts). Only runs when the task
+  declares ``expected_evidence``.
+- ``no_false_alarm``— for ``kind: negative`` tasks, the summary does not assert
+  a problem (no escalation words). Validates the agent does not over-alarm on
+  healthy services.
+
+The harness is a *pure checker* — it does not run the agent.  The CLI is
+responsible for invoking the investigation, collecting tool-call names and the
+summary, then passing them to :meth:`EvalHarness.evaluate`.
 
 CLI usage::
 
-    python -m agent eval              # run all scenarios against real LLM
-    python -m agent eval --scenario scenarios/container_down.yml
+    python -m agent eval                      # run all tasks, 1 trial each
+    python -m agent eval --task tasks/api_down.yml
+    python -m agent eval --trials 5 --label qwen2.5-14b   # pass@k / pass^k
 """
 from __future__ import annotations
 
-import asyncio
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
+
+# DSML inline tool-call marker DeepSeek sometimes emits in ``content`` instead
+# of the OpenAI ``tool_calls`` field. See ``workflows.incident._parse_dsml_calls``.
+_PIPE = "\uFF5C"
+_DSML_MARKER = _PIPE + _PIPE + "DSML" + _PIPE + _PIPE
+# Markdown table row: ``| a | b |`` — Discord renders this as a wall of pipes.
+_TABLE_ROW_RE = re.compile(r"^\s*\|.*\|\s*$", re.MULTILINE)
+
+# Words a healthy-service summary should not contain (``no_false_alarm`` grader).
+# Word-boundary regex so "down" does not match "download".
+_ALARM_WORDS_RE = re.compile(
+    r"\b(down|unreachable|stopped|crash|crashed|killed|oom|fail|failed|failure|"
+    r"error|errors|unhealthy|not responding|not reachable)\b",
+    re.IGNORECASE,
+)
 
 
 _ACTION_TO_TOOLS: dict[str, list[str]] = {
@@ -103,10 +140,19 @@ _ACTION_INDEX: dict[str, list[str]] = {
 
 
 @dataclass
-class EvalResult:
-    """Structured outcome of a single scenario evaluation."""
+class GraderResult:
+    """Outcome of a single grader on a single trial."""
 
-    scenario: str
+    name: str
+    passed: bool
+    detail: str = ""
+
+
+@dataclass
+class EvalResult:
+    """Structured outcome of a single task evaluation (one trial)."""
+
+    task: str
     service: str
     passed: bool
     total_actions: int
@@ -115,80 +161,160 @@ class EvalResult:
     actual_tool_calls: list[str] = field(default_factory=list)
     final_summary: str = ""
     error: str | None = None
+    graders: list[GraderResult] = field(default_factory=list)
 
     @property
     def score(self) -> float:
-        if self.total_actions == 0:
-            return 1.0
-        return self.matched_actions / self.total_actions
+        """Fraction of applicable graders that passed (partial credit)."""
+        if not self.graders:
+            if self.total_actions == 0:
+                return 1.0
+            return self.matched_actions / self.total_actions
+        return sum(1 for g in self.graders if g.passed) / len(self.graders)
+
+
+# --- graders ----------------------------------------------------------------
+
+def _grade_tool_calls(harness: "EvalHarness", tool_calls: list[str]) -> GraderResult:
+    actions = harness.expected_actions()
+    if not actions:
+        return GraderResult("tool_calls", True, "no expected actions")
+    matched = 0
+    missing: list[str] = []
+    for action in actions:
+        expected_tools = harness._map_action_to_tools(action)
+        if not expected_tools:
+            matched += 1
+            continue
+        if any(tool in tool_calls for tool in expected_tools):
+            matched += 1
+        else:
+            missing.append(action)
+    passed = matched == len(actions)
+    detail = f"{matched}/{len(actions)} actions" + (
+        f"; missing: {', '.join(missing)}" if missing else ""
+    )
+    return GraderResult("tool_calls", passed, detail)
+
+
+def _grade_no_raw_markup(_harness: "EvalHarness", summary: str) -> GraderResult:
+    problems: list[str] = []
+    if _DSML_MARKER in summary:
+        problems.append("DSML XML leaked into summary")
+    if _TABLE_ROW_RE.search(summary):
+        problems.append("markdown table row present (Discord renders | as pipes)")
+    return GraderResult(
+        "no_raw_markup",
+        not problems,
+        "; ".join(problems) if problems else "clean",
+    )
+
+
+def _grade_groundedness(harness: "EvalHarness", summary: str) -> GraderResult:
+    evidence = harness.expected_evidence()
+    if not evidence:
+        return GraderResult("groundedness", True, "no expected_evidence declared")
+    low = summary.lower()
+    missing = [e for e in evidence if e.lower() not in low]
+    return GraderResult(
+        "groundedness",
+        not missing,
+        f"{len(evidence) - len(missing)}/{len(evidence)} evidence strings"
+        + (f"; missing: {', '.join(missing)}" if missing else ""),
+    )
+
+
+def _grade_no_false_alarm(harness: "EvalHarness", summary: str) -> GraderResult:
+    if harness.kind != "negative":
+        return GraderResult("no_false_alarm", True, "n/a (task is not 'negative')")
+    m = _ALARM_WORDS_RE.search(summary)
+    return GraderResult(
+        "no_false_alarm",
+        m is None,
+        "clean" if m is None else f"escalation word: {m.group(0)!r}",
+    )
 
 
 class EvalHarness:
-    """Loads a scenario YAML and checks tool calls against expectations.
+    """Loads a task YAML and grades a trial against the applicable graders.
 
     Call :meth:`evaluate` with the list of tool-call names actually observed
-    during the investigation.
+    and the final summary the agent produced.
     """
 
-    def __init__(self, scenario_path: str | Path) -> None:
-        self._path = Path(scenario_path)
+    def __init__(self, task_path: str | Path) -> None:
+        self._path = Path(task_path)
         if not self._path.exists():
-            raise FileNotFoundError(f"Scenario not found: {self._path}")
-        self._scenario = yaml.safe_load(self._path.read_text(encoding="utf-8"))
+            raise FileNotFoundError(f"Task not found: {self._path}")
+        self._task = yaml.safe_load(self._path.read_text(encoding="utf-8"))
 
     @property
     def name(self) -> str:
-        return self._scenario.get("name", self._path.stem)
+        return self._task.get("name", self._path.stem)
+
+    @property
+    def stem(self) -> str:
+        return self._path.stem
 
     @property
     def service(self) -> str:
-        return self._scenario.get("service", "unknown")
+        return self._task.get("service", "unknown")
 
     @property
     def symptom(self) -> str:
-        return self._scenario.get("symptom", "")
+        return self._task.get("symptom", "")
+
+    @property
+    def kind(self) -> str:
+        return self._task.get("kind", "investigate")
 
     def expected_actions(self) -> list[str]:
-        return self._scenario.get("expected_agent_actions", [])
+        return self._task.get("expected_agent_actions", [])
+
+    def expected_evidence(self) -> list[str]:
+        return self._task.get("expected_evidence", [])
 
     def _map_action_to_tools(self, action: str) -> list[str]:
         return _ACTION_INDEX.get(action.lower(), [])
 
     def evaluate(self, *, tool_calls: list[str], summary: str = "", error: str | None = None) -> EvalResult:
-        """Check whether *tool_calls* satisfy the expected actions.
+        """Run all applicable graders against one trial.
 
-        ``tool_calls`` is the list of tool function names (strings) called by
-        the agent during investigation.
+        ``tool_calls`` is the list of tool function names called by the agent;
+        ``summary`` is the agent's final prose answer.
         """
         result = EvalResult(
-            scenario=self.name,
+            task=self.name,
             service=self.service,
             passed=False,
-            total_actions=0,
+            total_actions=len(self.expected_actions()),
             matched_actions=0,
             actual_tool_calls=tool_calls,
             final_summary=summary,
             error=error,
         )
 
+        # Keep matched/missing for backward compat with older readers.
         actions = self.expected_actions()
-        result.total_actions = len(actions)
-
         for action in actions:
             expected_tools = self._map_action_to_tools(action)
-            if not expected_tools:
-                result.matched_actions += 1
-                continue
-            if any(tool in tool_calls for tool in expected_tools):
+            if not expected_tools or any(t in tool_calls for t in expected_tools):
                 result.matched_actions += 1
             else:
                 result.missing_actions.append(action)
 
-        result.passed = result.matched_actions == result.total_actions
+        # Graders (article: combine code-based graders; grade outcome not path).
+        result.graders = [
+            _grade_tool_calls(self, tool_calls),
+            _grade_no_raw_markup(self, summary),
+            _grade_groundedness(self, summary),
+            _grade_no_false_alarm(self, summary),
+        ]
+        result.passed = all(g.passed for g in result.graders) and not error
         return result
 
 
-def discover_scenarios(root: str | Path = "scenarios") -> list[EvalHarness]:
+def discover_tasks(root: str | Path = "tasks") -> list[EvalHarness]:
     """Return a harness for every ``*.yml`` file under *root*."""
     root = Path(root)
     if not root.is_dir():
@@ -200,3 +326,38 @@ def discover_scenarios(root: str | Path = "scenarios") -> list[EvalHarness]:
         except Exception:
             continue
     return harnesses
+
+
+def aggregate_trials(results: list[EvalResult]) -> dict:
+    """Aggregate N trials of one task into pass@k / pass^k statistics.
+
+    - ``pass_at_k``: probability at least one trial passed (>= 1 success in k).
+    - ``pass_k``:    probability all trials passed (consistency).
+    - per-grader pass rate.
+    """
+    k = len(results)
+    if k == 0:
+        return {"k": 0, "pass_at_k": 0.0, "pass_k": 0.0, "graders": {}}
+    wins = sum(1 for r in results if r.passed)
+    pass_at_k = 1.0 if wins >= 1 else 0.0  # at least one success in k trials
+    pass_k = 1.0 if wins == k else 0.0  # all k succeeded
+
+    # Per-grader pass rate across trials.
+    g_names: list[str] = []
+    for r in results:
+        for g in r.graders:
+            if g.name not in g_names:
+                g_names.append(g.name)
+    graders = {
+        name: sum(1 for r in results for g in r.graders if g.name == name and g.passed)
+        / k
+        for name in g_names
+    }
+    return {
+        "k": k,
+        "pass_at_k": pass_at_k,
+        "pass_k": pass_k,
+        "wins": wins,
+        "score_mean": sum(r.score for r in results) / k,
+        "graders": graders,
+    }

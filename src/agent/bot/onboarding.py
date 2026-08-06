@@ -1,7 +1,7 @@
 """Startup messages for the #welcome and #project-notes channels.
 
 On connect the bot posts a help embed to #welcome (commands, channels, the
-scenario panel) and an architecture/design note to #project-notes. Both are
+task panel) and an architecture/design note to #project-notes. Both are
 pinned and refreshed in place: the bot edits its existing pinned message if it
 already posted one, so the channels don't accumulate stale copies across
 redeploys.
@@ -13,7 +13,7 @@ import logging
 
 import discord
 
-from agent.bot.scenarios import _available_scenarios
+from agent.bot.tasks import available_tasks
 from agent.config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ _CHANNELS = [
     ("incidents", "discord_incident_channel_id", "\U0001F4CB one thread per incident (Resolve/Fix)"),
     ("status-updates", "discord_status_channel_id", "\U0001F4CA up/down transitions + status snapshot"),
     ("agent-logs", "discord_log_channel_id", "\U0001F4DD live agent activity (tool calls, workflow)"),
-    ("test-scenarios", "discord_test_scenarios_channel_id", "\U0001F9EA clickable scenario runner panel"),
+    ("test-tasks", "discord_test_tasks_channel_id", "\U0001F9EA clickable task runner panel"),
 ]
 
 
@@ -55,7 +55,7 @@ def build_welcome_embed(bot_user: discord.ClientUser | None) -> discord.Embed:
         inline=False,
         value=(
             "`status <svc>` `containers` `logs <svc>` `metrics <svc>` "
-            "`health <url>` `ask <question>` `incident <svc>` `scenario <name>` "
+            "`health <url>` `ask <question>` `incident <svc>` `task <name>` "
             "`ack/resolve <id>` `remediate <id>` `watch <name>` `info`"
         ),
     )
@@ -64,7 +64,7 @@ def build_welcome_embed(bot_user: discord.ClientUser | None) -> discord.Embed:
         name="Try it",
         inline=False,
         value=(
-            "In `#test-scenarios` click a scenario button, or ask me a question "
+            "In `#test-tasks` click a task button, or ask me a question "
             "with `!ask` / `/ask`. Watch `#agent-logs` to see the tools I call."
         ),
     )
@@ -103,11 +103,11 @@ def build_project_notes_embed() -> discord.Embed:
         ),
     )
     embed.add_field(name="Channels", inline=False, value="\n".join(_configured_channels()))
-    scenarios = _available_scenarios() or ["(none)"]
+    tasks = available_tasks() or ["(none)"]
     embed.add_field(
-        name="Scenarios",
+        name="Tasks",
         inline=False,
-        value="\n".join(f"`{s}`" for s in scenarios),
+        value="\n".join(f"`{s}`" for s in tasks),
     )
     embed.add_field(
         name="LLM",

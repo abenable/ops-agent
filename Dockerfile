@@ -20,9 +20,9 @@ RUN pip install --no-cache-dir uv
 COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev --no-install-project
 
-# Copy source and scenarios after dependencies are installed.
+# Copy source and tasks after dependencies are installed.
 COPY src ./src
-COPY scenarios ./scenarios
+COPY tasks ./tasks
 RUN uv sync --frozen --no-dev
 
 # Copy the built SPA so the API's StaticFiles mount picks it up at /.

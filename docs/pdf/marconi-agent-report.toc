@@ -40,5 +40,5 @@
 \contentsline {section}{References}{23}{section.8}%
 \contentsline {section}{Appendices}{24}{section*.1}%
 \contentsline {section}{\numberline {A}Discord channel mapping}{24}{appendix.1.A}%
-\contentsline {section}{\numberline {B}Scenario file format}{24}{appendix.1.B}%
+\contentsline {section}{\numberline {B}Task file format}{24}{appendix.1.B}%
 \contentsline {section}{\numberline {C}Module reference}{25}{appendix.1.C}%

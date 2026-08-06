@@ -16,8 +16,8 @@ from agent.bot.menu import MenuView
 from agent.bot.monitor import get_monitored_endpoints
 from agent.bot.onboarding import post_project_notes
 from agent.bot.summarize import clean, discordify
-from agent.bot.utils import build_info_embed, format_container_list, format_status, scenario_path, split_discord_text
-from agent.bot.scenarios import _PANEL_MARKER, ScenarioPanelView
+from agent.bot.utils import build_info_embed, format_container_list, format_status, task_path, split_discord_text
+from agent.bot.tasks import _PANEL_MARKER, TaskPanelView
 from agent.bot.views import LLMProviderView, ServicePanelView
 from agent.config.settings import settings
 from agent.storage.repository import (
@@ -237,23 +237,23 @@ def setup_slash_commands(bot: commands.Bot) -> None:
                 title="Incident Reported",
             )
 
-    @bot.tree.command(name="scenario", description="Run a simulated scenario from scenarios/<name>.yml")
-    @app_commands.describe(name="Scenario file name (without .yml)")
-    async def slash_scenario(interaction: discord.Interaction, name: str):
+    @bot.tree.command(name="task", description="Run a simulated task from tasks/<name>.yml")
+    @app_commands.describe(name="Task file name (without .yml)")
+    async def slash_task(interaction: discord.Interaction, name: str):
         if (
-            settings.discord_test_scenarios_channel_id is not None
-            and interaction.channel_id != settings.discord_test_scenarios_channel_id
+            settings.discord_test_tasks_channel_id is not None
+            and interaction.channel_id != settings.discord_test_tasks_channel_id
         ):
             await interaction.response.send_message(
-                "This command only works in the test-scenarios channel.",
+                "This command only works in the test-tasks channel.",
                 ephemeral=True,
             )
             return
 
-        path = scenario_path(name)
+        path = task_path(name)
         if path is None:
             await interaction.response.send_message(
-                f"No scenario named '{name}'.", ephemeral=True
+                f"No task named '{name}'.", ephemeral=True
             )
             return
 
@@ -265,19 +265,19 @@ def setup_slash_commands(bot: commands.Bot) -> None:
         for chunk in split_discord_text(discordify(result["summary"])):
             await interaction.followup.send(chunk)
 
-    @bot.tree.command(name="scenarios", description="Re-post the clickable scenario runner panel")
-    async def slash_scenarios(interaction: discord.Interaction):
+    @bot.tree.command(name="tasks", description="Re-post the clickable task runner panel")
+    async def slash_tasks(interaction: discord.Interaction):
         if (
-            settings.discord_test_scenarios_channel_id is not None
-            and interaction.channel_id != settings.discord_test_scenarios_channel_id
+            settings.discord_test_tasks_channel_id is not None
+            and interaction.channel_id != settings.discord_test_tasks_channel_id
         ):
             await interaction.response.send_message(
-                "This command only works in the test-scenarios channel.",
+                "This command only works in the test-tasks channel.",
                 ephemeral=True,
             )
             return
         await interaction.response.send_message(
-            f"{_PANEL_MARKER} — click a scenario to simulate:", view=ScenarioPanelView()
+            f"{_PANEL_MARKER} — click a task to simulate:", view=TaskPanelView()
         )
 
     @bot.tree.command(name="project-notes", description="Post or refresh the project-notes embed in #project-notes")

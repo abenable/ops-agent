@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.28 (TeX Live 2025/Debian) (preloaded format=pdflatex 2026.5.13)  6 AUG 2026 14:02
+This is pdfTeX, Version 3.141592653-2.6-1.40.28 (TeX Live 2025/Debian) (preloaded format=pdflatex 2026.5.13)  6 AUG 2026 21:32
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -1135,54 +1135,6 @@ Underfull \hbox (badness 10000) in paragraph at lines 505--509
  is routed through
  []
 
-! Illegal parameter number in definition of \reserved@b.
-<to be read again> 
-                   }
-l.522 ...enders poorly: ATX headings (\pkg{## Foo}
-                                                  ) become \pkg{**bold**}, and
-You meant to type ## instead of #, right?
-Or maybe a } was forgotten somewhere earlier, and things
-are all screwed up? I'm going to assume that you meant ##.
-
-! You can't use `macro parameter character #' in horizontal mode.
-<recently read> ##
-                  
-l.522 ...enders poorly: ATX headings (\pkg{## Foo}
-                                                  ) become \pkg{**bold**}, and
-Sorry, but I'm not programmed to handle this case;
-I'll just pretend that you didn't ask for it.
-If you're in the wrong mode, you might be able to
-return to the right one by typing `I}' or `I$' or `I\par'.
-
-! You can't use `macro parameter character #' in horizontal mode.
-<argument> ####
-                Foo
-l.522 ...enders poorly: ATX headings (\pkg{## Foo}
-                                                  ) become \pkg{**bold**}, and
-Sorry, but I'm not programmed to handle this case;
-I'll just pretend that you didn't ask for it.
-If you're in the wrong mode, you might be able to
-return to the right one by typing `I}' or `I$' or `I\par'.
-
-! Illegal parameter number in definition of \reserved@b.
-<to be read again> 
-                   }
-l.527     left untouched so a pasted \pkg{#}
-                                             comment or \pkg{|} log line is not
-You meant to type ## instead of #, right?
-Or maybe a } was forgotten somewhere earlier, and things
-are all screwed up? I'm going to assume that you meant ##.
-
-! You can't use `macro parameter character #' in horizontal mode.
-<recently read> ##
-                  
-l.527     left untouched so a pasted \pkg{#}
-                                             comment or \pkg{|} log line is not
-Sorry, but I'm not programmed to handle this case;
-I'll just pretend that you didn't ask for it.
-If you're in the wrong mode, you might be able to
-return to the right one by typing `I}' or `I$' or `I\par'.
-
 
 Package fancyhdr Warning: \headheight is too small (12.0pt): 
 (fancyhdr)                Make it at least 12.4pt, for example:
@@ -1356,8 +1308,15 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 [23
 
 ]
-Underfull \hbox (badness 1655) in paragraph at lines 1553--1553
-[]|\T1/lmr/m/n/10 (+20) One thread per in-ci-dent with re-
+Underfull \hbox (badness 1859) in paragraph at lines 1553--1553
+[]|\T1/lmr/m/n/10 (+20) Severity-coloured em-beds for down-
+ []
+
+
+Underfull \hbox (badness 1466) in paragraph at lines 1559--1575
+\T1/lmr/m/n/10.95 (+20) Tasks are YAML files in the \T1/lmtt/m/n/10.95 tasks \T
+1/lmr/m/n/10.95 (+20) di-rec-tory. The \T1/lmtt/m/n/10.95 /task <name> \T1/lmr/
+m/n/10.95 (+20) com-mand loads
  []
 
 
@@ -1391,15 +1350,19 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 LaTeX2e <2025-11-01>
 L3 programming layer <2026-01-19>
  ***********
+
+
+LaTeX Warning: Label(s) may have changed. Rerun to get cross-references right.
+
 Package rerunfilecheck Info: File `marconi-agent-report.out' has not changed.
-(rerunfilecheck)             Checksum: 4DFC57CE8644182E7D6C9978E711535A;7007.
+(rerunfilecheck)             Checksum: A02C207EF5FE4F50D6230BE8E908580C;6987.
  ) 
 Here is how much of TeX's memory you used:
- 32502 strings out of 469438
- 644334 string characters out of 5468410
+ 32500 strings out of 469438
+ 644314 string characters out of 5468410
  1642226 words of memory out of 5000000
  60222 multiletter control sequences out of 15000+600000
- 722815 words of font info for 212 fonts, out of 8000000 for 9000
+ 722732 words of font info for 211 fonts, out of 8000000 for 9000
  59 hyphenation exceptions out of 8191
  98i,13n,108p,1017b,2163s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/share/texmf/fonts/type1/public/lm/lmbx10.pfb></usr/share/texmf/fonts/ty
@@ -1413,7 +1376,7 @@ r8.pfb></usr/share/texmf/fonts/type1/public/lm/lmr9.pfb></usr/share/texmf/fonts
 /public/lm/lmtk10.pfb></usr/share/texmf/fonts/type1/public/lm/lmtt10.pfb></usr/
 share/texmf/fonts/type1/public/lm/lmtt8.pfb></usr/share/texmf/fonts/type1/publi
 c/lm/lmtt9.pfb></usr/share/texmf/fonts/type1/public/lm/lmtti10.pfb>
-Output written on marconi-agent-report.pdf (26 pages, 499984 bytes).
+Output written on marconi-agent-report.pdf (26 pages, 500338 bytes).
 PDF statistics:
  646 PDF objects out of 1000 (max. 8388607)
  553 compressed objects within 6 object streams

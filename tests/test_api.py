@@ -31,8 +31,8 @@ def test_watch_container_lifecycle(tmp_database):
     assert response.json() == {"containers": []}
 
 
-def test_scenarios_list_has_real_scenarios():
-    response = client.get("/api/scenarios")
+def test_tasks_list_has_real_tasks():
+    response = client.get("/api/tasks")
     assert response.status_code == 200
     names = {s["name"] for s in response.json()}
     assert "api_down" in names
@@ -42,8 +42,8 @@ def test_scenarios_list_has_real_scenarios():
     assert sample["expected_actions"]
 
 
-def test_scenario_stream_unknown_returns_404():
-    response = client.post("/api/scenarios/does-not-exist/stream")
+def test_task_stream_unknown_returns_404():
+    response = client.post("/api/tasks/does-not-exist/stream")
     assert response.status_code == 404
 
 

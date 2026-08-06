@@ -37,7 +37,7 @@ export type IncidentResult = { incident_id: string; summary: string };
 
 export type WatchList = { containers: string[] };
 
-export type Scenario = {
+export type Task = {
   name: string;
   title: string;
   service: string;
@@ -97,7 +97,7 @@ export const api = {
     get<Incident[]>(`/incidents${status ? `?status=${status}` : ""}`),
   incident: (id: string) => get<Incident | null>(`/incidents/${id}`),
   createIncident: (s: string) => send<IncidentResult>("POST", `/incidents/${encodeURIComponent(s)}`),
-  scenarios: () => get<Scenario[]>("/scenarios"),
+  tasks: () => get<Task[]>("/tasks"),
   approvals: (incidentId?: string) =>
     get<Approval[]>(`/approvals${incidentId ? `?incident_id=${incidentId}` : ""}`),
   remediate: (incidentId: string) => postJson<RemediationResult>(`/incidents/${incidentId}/remediate`),

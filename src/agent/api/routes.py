@@ -7,7 +7,7 @@ from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
 from agent.api import activity
-from agent.scenarios import available_scenarios, load_scenario
+from agent.tasks import available_tasks, load_task
 from agent.storage.repository import (
     add_watched_container,
     get_incident,
@@ -128,12 +128,12 @@ async def health_check(url: str):
     return await check_endpoint(url)
 
 
-@router.get("/scenarios")
-async def scenarios():
-    """List the available scenarios under ``scenarios/`` with their metadata."""
+@router.get("/tasks")
+async def tasks():
+    """List the available tasks under ``tasks/`` with their metadata."""
     out = []
-    for name in available_scenarios():
-        data = load_scenario(name) or {}
+    for name in available_tasks():
+        data = load_task(name) or {}
         out.append(
             {
                 "name": name,
@@ -146,16 +146,16 @@ async def scenarios():
     return out
 
 
-@router.post("/scenarios/{name}/stream")
-async def scenario_stream(name: str):
-    """SSE stream of a scenario run. Loads ``scenarios/<name>.yml``, runs the
-    incident workflow for its service with the scenario symptom as a hint, and
-    persists the incident at ``done`` — mirrors the Discord scenario button.
+@router.post("/tasks/{name}/stream")
+async def task_stream(name: str):
+    """SSE stream of a task run. Loads ``tasks/<name>.yml``, runs the
+    incident workflow for its service with the task symptom as a hint, and
+    persists the incident at ``done`` — mirrors the Discord task button.
     """
-    data = load_scenario(name)
+    data = load_task(name)
     if data is None:
         return Response(
-            content=json.dumps({"type": "error", "message": f"no scenario named '{name}'"}),
+            content=json.dumps({"type": "error", "message": f"no task named '{name}'"}),
             media_type="application/json",
             status_code=404,
         )

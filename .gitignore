@@ -15,6 +15,7 @@ data/*.db
 data/*.db-journal
 .pytest_cache/
 specs/
+eval_runs/
 
 # Web bundle published by the compose `web` service (served by Caddy)
 web-dist/

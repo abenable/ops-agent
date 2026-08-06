@@ -8,3 +8,6 @@ expected_agent_actions:
   - list_services
   - docker_status
   - docker_logs
+expected_evidence:
+  - vllm
+  - unreachable

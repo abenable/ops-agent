@@ -46,19 +46,19 @@ By design, actions that can mutate infrastructure (Docker restart, SSH systemctl
 
 The bot handles:
 
-- Prefix commands (`!`) and slash commands (`/`) sharing one tool layer, for `status`, `containers`, `logs`, `metrics`, `health`, `ask`, `incident`, `scenario`, `ack`, `resolve`, `watching`, `watch`, `unwatch`, `watchlist`, `menu`, `panel`, `info`
+- Prefix commands (`!`) and slash commands (`/`) sharing one tool layer, for `status`, `containers`, `logs`, `metrics`, `health`, `ask`, `incident`, `task`, `ack`, `resolve`, `watching`, `watch`, `unwatch`, `watchlist`, `menu`, `panel`, `info`
 - Reply summarisation of verbose output through the LLM, with a `raw` opt-out
 - Conversational replies via @mention or DM using the same agentic loop
 - Interactive container menu and service panel with action buttons
 - Background monitoring alerts, status transitions, and incident threads in purpose-specific channels
-- Scenario simulation restricted to a configured test-scenarios channel
+- Task simulation restricted to a configured test-tasks channel
 
 ### 4. Documentation and demonstration
 
 **Status:** Documentation delivered; demonstration expected.
 
 - README, setup guide, usage guide, architecture, workflows, tools reference, and channel mapping are in `docs/`.
-- The scenario directory provides reproducible test cases.
+- The task directory provides reproducible test cases.
 - A final demo is expected to show the agent checking status, investigating an issue, summarizing findings, and generating an incident response.
 
 ## Expected Deliverables
@@ -71,11 +71,11 @@ The bot handles:
 | Self-hosted LLM integration | Delivered | OpenAI-compatible endpoint; tool-calling models preferred, graceful fallback otherwise |
 | Monitoring and logging integration | Delivered | Prometheus + Loki sources with fallback stubs; Prometheus self-metrics endpoint for the agent itself |
 | Technical documentation | Delivered | Lives in `docs/` and this README |
-| Scenario evaluation harness | Delivered | `agent/eval` + `tests/test_eval.py` + `python -m agent eval` CLI |
+| Task evaluation harness | Delivered | `agent/eval` + `tests/test_eval.py` + `python -m agent eval` CLI |
 | k6 load-test scripts | Delivered | `loadtests/agent.js` covers health, status, containers, incidents, and metrics |
 | Web dashboard | Delivered | React SPA at `web/`, served via nginx on port 8088 |
 | n8n monitoring integration | Delivered | n8n in compose stack, scraped by Prometheus, logs shipped via promtail to Loki |
-| Final demonstration | Pending | Scheduled end-of-internship demo using real or scenario-driven cases |
+| Final demonstration | Pending | Scheduled end-of-internship demo using real or task-driven cases |
 
 ## What Changed Since the Original Charter
 
@@ -85,7 +85,7 @@ The bot handles:
 - **Slash commands.** A slash (`/`) command surface with autocomplete now runs alongside the prefix (`!`) commands, sharing one tool layer.
 - **Background monitoring inside the bot.** HTTP and Docker endpoint polling plus PromQL alert evaluation run in the Discord bot process rather than requiring a separate monitor.
 - **SQLite over a larger database.** Single-node SQLite is sufficient for the MVP and reduces deployment surface.
-- **Eval harness and agent self-metrics.** Programmatic scenario evaluation and Prometheus self-instrumentation were added for ongoing quality assessment.
+- **Eval harness and agent self-metrics.** Programmatic task evaluation and Prometheus self-instrumentation were added for ongoing quality assessment.
 - **Container watch list.** Only explicitly-selected containers are monitored, preventing alert noise from the full Docker inventory.
 
 ## Remaining Work and Future Extensions
@@ -95,5 +95,5 @@ The bot handles:
 - Implement human-in-the-loop approval before any Docker/SSH write action is executed.
 - Persist monitor/alert state so de-duplication survives restarts.
 - Introduce RBAC for command channels and sensitive tools.
-- Expand the eval harness scenario coverage and integrate k6 load tests into CI.
+- Expand the eval harness task coverage and integrate k6 load tests into CI.
 - Build Prometheus recording rules and Grafana dashboards for agent self-metrics.

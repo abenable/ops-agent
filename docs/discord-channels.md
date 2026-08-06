@@ -11,7 +11,7 @@ Set the ids in `.env` (see [setup.md](setup.md) for how to copy a channel id).
 | `#status-updates` | `DISCORD_STATUS_CHANNEL_ID` | Every up/down transition + periodic snapshot for **watched** containers | bot |
 | `#incidents` | `DISCORD_INCIDENT_CHANNEL_ID` | One thread per incident, with ack/resolve/remediation updates | bot |
 | `#agent-logs` | `DISCORD_LOG_CHANNEL_ID` | WARNING+ bot/backend log records | bot |
-| `#test-scenarios` | `DISCORD_TEST_SCENARIOS_CHANNEL_ID` | `!scenario` runs (command is restricted to this channel when set) | humans ↔ bot |
+| `#test-tasks` | `DISCORD_TEST_TASKS_CHANNEL_ID` | `!task` runs (command is restricted to this channel when set) | humans ↔ bot |
 | `#welcome`, `#project-notes` | — | Human-authored docs and notes | humans |
 
 ## Behavior notes
@@ -26,10 +26,10 @@ Set the ids in `.env` (see [setup.md](setup.md) for how to copy a channel id).
 - **#agent-logs:** only records at `WARNING` and above are forwarded; `discord.py`'s own logs
   are excluded to avoid feedback loops. Leave `DISCORD_LOG_CHANNEL_ID` unset to keep logs on
   stdout only.
-- **#test-scenarios:** if `DISCORD_TEST_SCENARIOS_CHANNEL_ID` is set, `!scenario` refuses to
-  run elsewhere. Scenario files live in `scenarios/*.yml`.
+- **#test-tasks:** if `DISCORD_TEST_TASKS_CHANNEL_ID` is set, `!task` refuses to
+  run elsewhere. Task files live in `tasks/*.yml`.
 
 ## Minimum useful setup
 
 For a demo, the two highest-value channels are `#alerts` (so incidents surface) and
-`#test-scenarios` (to trigger a reproducible run). The rest can be added as needed.
+`#test-tasks` (to trigger a reproducible run). The rest can be added as needed.

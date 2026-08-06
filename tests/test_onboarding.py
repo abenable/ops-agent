@@ -12,11 +12,11 @@ def test_welcome_embed_has_commands_and_channels():
     assert "Channels" in fields
 
 
-def test_project_notes_embed_lists_architecture_tools_scenarios():
+def test_project_notes_embed_lists_architecture_tools_tasks():
     embed = build_project_notes_embed()
     fields = {f.name: f.value for f in embed.fields}
     assert "Architecture" in fields
     assert "list_services" in fields["Tools (read-only to the investigator)"]
-    assert "Scenarios" in fields
-    assert "api_down" in fields["Scenarios"]
+    assert "Tasks" in fields
+    assert "api_down" in fields["Tasks"]
     assert "LLM" in fields

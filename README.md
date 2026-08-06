@@ -11,7 +11,7 @@ Built during the Implementation Phase (Weeks 5–8) of the Marconi industrial tr
 ## Features
 
 - **Discord interface** — prefix (`!`) and slash (`/`) commands for status, logs, metrics,
-  health, incident investigation, free-form questions, scenario simulation, and incident
+  health, incident investigation, free-form questions, task simulation, and incident
   acknowledge/resolve; interactive container menu and service panel with action buttons;
   conversational replies when you @mention or DM the bot, with per-channel
   conversation memory (`!ask` / `/ask` and @mention share one per-channel context).
@@ -38,8 +38,11 @@ Built during the Implementation Phase (Weeks 5–8) of the Marconi industrial tr
   an Ask interface that streams the agentic investigation in real time.
 - **Agent self-metrics** — Prometheus counters and histograms exposed at `GET /metrics`
   for tool calls, investigations, LLM calls, monitor cycles, and API requests.
-- **Scenario evaluation** — a YAML-based eval harness (`python -m agent eval`) runs the
-  agent through simulated failures and checks its tool calls against expected actions.
+- **Task evaluation** — a YAML-based eval harness (`python -m agent eval`) runs the
+  agent through simulated failures, grades each trial with multiple code-based
+  graders (tool selection, summary grounding, no false alarms, no leaked markup),
+  and with `--trials N` reports pass@k / pass^k. Full transcripts are saved per
+  trial. See [docs/evals.md](docs/evals.md).
 - **k6 load tests** — `loadtests/agent.js` stress-tests the API health, status, containers,
   incidents, and metrics endpoints with configurable VU ramp-up.
 
@@ -73,7 +76,7 @@ flag/option to skip the LLM summary and show the full output.
 | `!watchlist` / `/watchlist` | List the containers currently being watched |
 | `!ask <question>` / `/ask` | Free-form agentic investigation using read-only tools |
 | `!incident <service>` / `/incident` | Run the incident investigation workflow |
-| `!scenario <name>` / `/scenario` | Run a simulated scenario from `scenarios/<name>.yml` |
+| `!task <name>` / `/task` | Run a simulated task from `tasks/<name>.yml` |
 | `!ack <incident_id>` / `/ack` | Acknowledge a stored incident |
 | `!resolve <incident_id>` / `/resolve` | Resolve a stored incident |
 | `!menu` / `/menu` | Interactive container picker with Status/Logs/Metrics buttons |
@@ -117,7 +120,7 @@ inactive when its channel id is unset). See [docs/discord-channels.md](docs/disc
 | `#status-updates` | Every up/down transition and periodic status snapshot for **watched** containers |
 | `#incidents` | One thread per incident, with ack/resolve updates |
 | `#agent-logs` | WARNING+ bot/backend logs (optional) |
-| `#test-scenarios` | Safe channel to trigger `!scenario` runs |
+| `#test-tasks` | Safe channel to trigger `!task` runs |
 
 ## Project structure
 
@@ -135,11 +138,11 @@ inactive when its channel id is unset). See [docs/discord-channels.md](docs/disc
 │   ├── workflows/           # Incident investigation (agentic loop), remediation, and reporting
 │   ├── storage/             # SQLite repository for incidents, watch list, and approvals
 │   ├── alerting/            # Discord alert + incident-thread helpers
-│   ├── eval/                # Scenario evaluation harness
+│   ├── eval/                # Task evaluation harness
 │   ├── metrics.py            # Prometheus self-metrics for the agent
 │   └── config/              # Environment-based settings
 ├── tests/                   # Test suite
-├── scenarios/               # Simulated infrastructure issues (yml)
+├── tasks/               # Simulated infrastructure issues (yml)
 ├── loadtests/               # k6 load-test scripts
 ├── web/                     # React SPA dashboard (bun build → nginx)
 ├── docs/                    # setup, usage, architecture, workflows, tools, channels
@@ -152,8 +155,9 @@ inactive when its channel id is unset). See [docs/discord-channels.md](docs/disc
 uv run pytest             # unit + smoke tests (no external services needed)
 uv run pytest -m integration   # live checks (needs a real LLM / Discord token)
 
-# Scenario evaluation (requires a running LLM)
-python -m agent eval                # run all scenarios against the live LLM
+# Task evaluation (requires a running LLM)
+python -m agent eval                         # run all tasks against the live LLM
+python -m agent eval --trials 5 --label qwen  # pass@k / pass^k per task
 
 # k6 load test (requires k6 installed separately)
 k6 run loadtests/agent.js
@@ -167,6 +171,7 @@ k6 run loadtests/agent.js
 - [Architecture](docs/architecture.md) — components and data flow
 - [Tools](docs/tools.md) — what each tool does and its data source
 - [Workflows](docs/workflows.md) — incident, monitoring, and reporting flows
+- [Evaluations](docs/evals.md) — task eval harness, graders, pass@k / pass^k, coverage map
 - [Model comparison](docs/model-comparison.md) — effect of model size on tool selection, with measured results
 - [Discord channels](docs/discord-channels.md) — channel-to-feature mapping
 
@@ -201,4 +206,4 @@ This is an MVP built for a controlled environment. Known limitations:
 - Role-based command permissions and an allowlist for SSH/Docker actions.
 - Human-in-the-loop approval before any Docker/SSH write action is executed.
 - Prometheus recording rules and Grafana dashboards for the agent's own operational metrics.
-- Expand the eval harness with additional scenarios and integrate k6 load tests into CI.
+- Expand the eval harness with additional tasks and integrate k6 load tests into CI.

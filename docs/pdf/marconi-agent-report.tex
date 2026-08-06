@@ -133,7 +133,7 @@ selected from Discord commands or a web dashboard, so the operator controls
 which containers generate alerts and status snapshots rather than receiving
 reports on every container on the machine. The agent also instruments itself
 with Prometheus counters and histograms exposed at \pkg{GET /metrics}, and
-includes a scenario-based evaluation harness (\pkg{python -m agent eval}) that
+includes a task-based evaluation harness (\pkg{python -m agent eval}) that
 measures agent behaviour against expected actions.
 
 The report covers the background and motivation, the problem the agent
@@ -454,9 +454,9 @@ shared tool and workflow layer:
     endpoints. The persistent incident-action view (\pkg{IncidentActionView})
     carries Resolve and Fix buttons; the Fix button runs the gated remediation
     agent, whose proposals are posted with their own Approve/Reject view
-    (\pkg{RemediationApprovalView}). A clickable scenario panel
-    (\pkg{ScenarioPanelView}) posts one button per scenario and re-posts on
-    startup or via \pkg{/scenarios}, so an operator triggers a reproducible run
+    (\pkg{RemediationApprovalView}). A clickable task panel
+    (\pkg{TaskPanelView}) posts one button per task and re-posts on
+    startup or via \pkg{/tasks}, so an operator triggers a reproducible run
     with a single click.
 \end{itemize}
 
@@ -484,8 +484,8 @@ chat.
 \pkg{/watchlist} & List the containers currently being watched \\
 \pkg{/ask <question>} & Free-form agentic investigation using read-only tools \\
 \pkg{/incident <service>} & Run the incident workflow, open a thread, alert \\
-\pkg{/scenario <name>} & Run a simulated scenario from a YAML file \\
-\pkg{/scenarios} & Re-post the clickable scenario runner panel \\
+\pkg{/task <name>} & Run a simulated task from a YAML file \\
+\pkg{/tasks} & Re-post the clickable task runner panel \\
 \pkg{/ack <id>} & Acknowledge a stored incident \\
 \pkg{/resolve <id>} & Resolve a stored incident \\
 \pkg{/remediate <id>} & Run the gated remediation agent against an incident's diagnosis \\
@@ -519,12 +519,12 @@ The function guards against failure at every step:
     \pkg{health}, \pkg{watching}) skip the summariser entirely and return raw
     output for low latency.
   \item A post-processor, \pkg{\_discordify}, normalises Markdown that Discord
-    renders poorly: ATX headings (\pkg{## Foo}) become \pkg{**bold**}, and
+    renders poorly: ATX headings (\pkg{\#\# Foo}) become \pkg{**bold**}, and
     Markdown tables become \pkg{- **Label:** value} bullets (wider tables join
     extra columns with a middle dot). It is applied to all agentic narrative
     sent to Discord---the verbose commands, slash commands, the \pkg{@mention}
     reply, and incident thread bodies---while content inside code fences is
-    left untouched so a pasted \pkg{#} comment or \pkg{|} log line is not
+    left untouched so a pasted \pkg{\#} comment or \pkg{|} log line is not
     mangled. A public alias \pkg{discordify} is used by the command handlers,
     and \pkg{clean} applies it to its own LLM output.
   \item A custom logging handler, \pkg{agent.bot.client.DiscordLogHandler},
@@ -1112,7 +1112,7 @@ few properties worth noting:
     purpose-specific channels, all optional. A feature is simply inactive when
     its channel id is unset, so a deployment can adopt channels incrementally.
     The two highest-value channels for a demo are the alerts channel (so
-    incidents surface) and the test-scenarios channel (to trigger reproducible
+    incidents surface) and the test-tasks channel (to trigger reproducible
     runs).
 \end{itemize}
 
@@ -1207,7 +1207,7 @@ storage tests are isolated. The suite covers five areas:
     \pkg{tests.test\_alerting}, \pkg{tests.test\_reporting}): command routing,
     API responses, embed colouring, and report formatting.
   \item \textbf{Evaluation} (\pkg{tests.test\_eval}): a parametrised test
-    loading every scenario YAML and verifying that observed tool calls satisfy
+    loading every task YAML and verifying that observed tool calls satisfy
     the expected actions declared in the file.
   \item \textbf{Watch list} (\pkg{tests.test\_storage}, \pkg{tests.test\_monitor},
     \pkg{tests.test\_api}): CRUD operations for the watch list, container poll
@@ -1439,9 +1439,9 @@ order.
   \item \textbf{Alertmanager webhook receiver.} Host a webhook receiver in the
     bot process as an alternative to in-bot polling, letting an external
     Alertmanager push alerts rather than having the bot poll Prometheus.
-  \item \textbf{Expand the evaluation harness.} The scenario evaluation
+  \item \textbf{Expand the evaluation harness.} The task evaluation
     framework (\pkg{agent.eval}) and its 100-test pytest suite are delivered;
-    extend them with additional scenarios, integrate k6 load tests into CI,
+    extend them with additional tasks, integrate k6 load tests into CI,
     and build Prometheus recording rules and Grafana dashboards for the
     agent's own operational metrics exposed at \pkg{GET /metrics}.
 \end{enumerate}
@@ -1546,24 +1546,24 @@ is unset, so a deployment can adopt channels incrementally.
 \pkg{\#status-updates} & \pkg{DISCORD\_STATUS\_CHANNEL\_ID} & Every up/down transition the monitor observes, plus the periodic container-status snapshot \\
 \pkg{\#incidents} & \pkg{DISCORD\_INCIDENT\_CHANNEL\_ID} & One thread per incident with resolve/fix updates and approval views \\
 \pkg{\#agent-logs} & \pkg{DISCORD\_LOG\_CHANNEL\_ID} & INFO and above bot and backend log records (agent activity; HTTP transport loggers silenced) \\
-\pkg{\#test-scenarios} & \pkg{DISCORD\_TEST\_SCENARIOS\_CHANNEL\_ID} & \pkg{/scenario} runs, restricted to this channel when set \\
+\pkg{\#test-tasks} & \pkg{DISCORD\_TEST\_TASKS\_CHANNEL\_ID} & \pkg{/task} runs, restricted to this channel when set \\
 \pkg{\#welcome} & \pkg{DISCORD\_WELCOME\_CHANNEL\_ID} & Pinned onboarding embed (commands, channels, how to try the agent); refreshed on startup \\
-\pkg{\#project-notes} & \pkg{DISCORD\_PROJECT\_NOTES\_CHANNEL\_ID} & Pinned project-notes embed (architecture, tools, channels, scenarios, LLM); refreshed on startup \\
+\pkg{\#project-notes} & \pkg{DISCORD\_PROJECT\_NOTES\_CHANNEL\_ID} & Pinned project-notes embed (architecture, tools, channels, tasks, LLM); refreshed on startup \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-\section{Scenario file format}
-\label{app:scenario}
+\section{Task file format}
+\label{app:task}
 
-Scenarios are YAML files in the \pkg{scenarios} directory. The
-\pkg{/scenario <name>} command loads \pkg{scenarios/<name>.yml} and runs the
+Tasks are YAML files in the \pkg{tasks} directory. The
+\pkg{/task <name>} command loads \pkg{tasks/<name>.yml} and runs the
 incident workflow for the named service. The name is resolved through
-\pkg{agent.bot.utils.scenario\_path}, which rejects path separators and
+\pkg{agent.bot.utils.task\_path}, which rejects path separators and
 \pkg{..} segments and confirms the resolved path stays under the
-\pkg{scenarios/} directory, so a name like \pkg{../../etc/passwd} cannot read
+\pkg{tasks/} directory, so a name like \pkg{../../etc/passwd} cannot read
 an arbitrary file outside it; the file is parsed with \pkg{yaml.safe\_load}.
-Six scenarios are included, each mapped to a real service in the deployment
+Six tasks are included, each mapped to a real service in the deployment
 stack rather than a generic external system: the agent's own \pkg{api}
 container stopping, a Prometheus scrape target going \pkg{up=0} with zero
 samples (the \pkg{node-exporter}/\pkg{cadvisor} case), \pkg{n8n} under high
@@ -1573,7 +1573,7 @@ becoming unreachable. The sample below shows the format; the
 \pkg{expected\_agent\_actions} list doubles as documentation of the tools the
 operator expects a capable model to call, which the evaluation harness checks:
 
-\begin{lstlisting}[caption={Scenario file format (YAML).}]
+\begin{lstlisting}[caption={Task file format (YAML).}]
 name: Prometheus scrape target down
 service: node-exporter
 symptom: >
@@ -1617,7 +1617,7 @@ import path, the canonical way to locate code in this project.
 \pkg{agent.bot.summarize} & LLM reply summarisation with \pkg{raw} opt-out \\
 \pkg{agent.bot.monitor} & Background endpoint, rule, and container monitor \\
 \pkg{agent.bot.utils} & Discord text splitting and Prometheus/Loki formatting \\
-\pkg{agent.bot.scenarios} & Clickable scenario panel (persistent buttons, auto-posted on startup) \\
+\pkg{agent.bot.tasks} & Clickable task panel (persistent buttons, auto-posted on startup) \\
 \pkg{agent.bot.onboarding} & Pinned welcome and project-notes embeds, refreshed on startup \\
 \pkg{agent.api.server} & FastAPI app and shared-secret dependency \\
 \pkg{agent.api.routes} & HTTP API routes \\
@@ -1639,7 +1639,7 @@ import path, the canonical way to locate code in this project.
 \pkg{agent.storage.repository} & SQLite incident and pending-approval repository \\
 \pkg{agent.alerting.discord} & Discord alert embeds, incident threads, and action views \\
 \pkg{agent.llm.client} & OpenAI-compatible ChatOpenAI factory with provider switching \\
-\pkg{agent.eval} & Scenario evaluation harness, action-to-tool mapping, CLI eval \\
+\pkg{agent.eval} & Task evaluation harness, action-to-tool mapping, CLI eval \\
 \pkg{agent.metrics} & Prometheus self-metrics for tool calls, investigations, LLM, monitor, API \\
 \bottomrule
 \end{longtable}

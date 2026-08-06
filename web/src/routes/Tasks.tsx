@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { FlaskConicalIcon, PlayIcon, SquareIcon } from "lucide-react";
 
-import { api, type Scenario, streamAgent, type AgentEvent } from "../api";
+import { api, type Task, streamAgent, type AgentEvent } from "../api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -20,13 +20,13 @@ type RunState = {
   error?: string;
 };
 
-export function Scenarios() {
-  const scenarios = useQuery({ queryKey: ["scenarios"], queryFn: api.scenarios });
+export function Tasks() {
+  const tasks = useQuery({ queryKey: ["tasks"], queryFn: api.tasks });
   const [active, setActive] = useState<string | null>(null);
   const [run, setRun] = useState<RunState | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const runScenario = async (s: Scenario) => {
+  const runTask = async (s: Task) => {
     abortRef.current?.abort();
     setActive(s.name);
     setRun({ status: "running", tools: [] });
@@ -36,7 +36,7 @@ export function Scenarios() {
     const apply = (fn: (r: RunState) => RunState) => setRun((r) => (r ? fn(r) : r));
     try {
       await streamAgent(
-        `/scenarios/${encodeURIComponent(s.name)}/stream`,
+        `/tasks/${encodeURIComponent(s.name)}/stream`,
         {},
         (e: AgentEvent) => {
           switch (e.type) {
@@ -79,34 +79,34 @@ export function Scenarios() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
-        <h1 className="font-heading text-xl font-semibold tracking-tight">Scenarios</h1>
+        <h1 className="font-heading text-xl font-semibold tracking-tight">Tasks</h1>
         <p className="text-sm text-muted-foreground">
           Reproducible incident simulations mapped to real services in this stack. A run streams the
           agentic investigation live and persists an incident.
         </p>
       </div>
 
-      {scenarios.isLoading && (
+      {tasks.isLoading && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} className="h-40 w-full" />
           ))}
         </div>
       )}
-      {scenarios.isError && (
+      {tasks.isError && (
         <Empty className="min-h-48">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <FlaskConicalIcon />
             </EmptyMedia>
-            <EmptyTitle>Failed to load scenarios</EmptyTitle>
+            <EmptyTitle>Failed to load tasks</EmptyTitle>
             <EmptyDescription>Check that the API is reachable.</EmptyDescription>
           </EmptyHeader>
         </Empty>
       )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {scenarios.data?.map((s) => (
+        {tasks.data?.map((s) => (
           <Card key={s.name} className={active === s.name ? "ring-2 ring-primary" : ""}>
             <CardHeader>
               <div className="flex items-start justify-between gap-2">
@@ -127,12 +127,12 @@ export function Scenarios() {
                     <SquareIcon /> Stop
                   </Button>
                 ) : (
-                  <Button variant="secondary" size="sm" onClick={() => runScenario(s)}>
+                  <Button variant="secondary" size="sm" onClick={() => runTask(s)}>
                     <PlayIcon /> Run again
                   </Button>
                 )
               ) : (
-                <Button size="sm" onClick={() => runScenario(s)}>
+                <Button size="sm" onClick={() => runTask(s)}>
                   <PlayIcon /> Run
                 </Button>
               )}

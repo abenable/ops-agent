@@ -248,7 +248,7 @@ async def run_agentic_investigation(
 async def run_incident_workflow(service: str, hint: str | None = None) -> dict:
     """Collect signals for a service and return an incident id and summary.
 
-    ``hint`` is optional operator-supplied context (e.g. a scenario's reported
+    ``hint`` is optional operator-supplied context (e.g. a task's reported
     symptom) appended to the investigation prompt so the agent investigates
     with the reported problem in mind, not just the bare service name.
     """

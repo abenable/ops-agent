@@ -5,7 +5,7 @@ from pathlib import Path
 import discord
 
 from agent.config.settings import settings
-from agent.scenarios import scenario_path  # re-exported for existing callers
+from agent.tasks import task_path  # operator-facing alias; the on-disk unit is a task
 from agent.tools import docker
 
 

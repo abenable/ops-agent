@@ -11,7 +11,7 @@ from agent.bot.monitor import get_monitored_endpoints
 from agent.bot.menu import MenuView
 from agent.bot.onboarding import post_project_notes
 from agent.bot.summarize import clean, discordify
-from agent.bot.utils import build_info_embed, format_container_list, format_status, scenario_path, split_discord_text
+from agent.bot.utils import build_info_embed, format_container_list, format_status, task_path, split_discord_text
 from agent.bot.views import LLMProviderView, ServicePanelView
 from agent.config.settings import settings
 from agent.storage.repository import (
@@ -171,18 +171,18 @@ def setup_commands(bot: commands.Bot) -> None:
             if thread:
                 await thread.send("Incident resolved.")
 
-    @bot.command(name="scenario")
-    async def scenario(ctx: commands.Context, name: str):
+    @bot.command(name="task")
+    async def task(ctx: commands.Context, name: str):
         if (
-            settings.discord_test_scenarios_channel_id is not None
-            and ctx.channel.id != settings.discord_test_scenarios_channel_id
+            settings.discord_test_tasks_channel_id is not None
+            and ctx.channel.id != settings.discord_test_tasks_channel_id
         ):
-            await ctx.send("This command only works in the test-scenarios channel.")
+            await ctx.send("This command only works in the test-tasks channel.")
             return
 
-        path = scenario_path(name)
+        path = task_path(name)
         if path is None:
-            await ctx.send(f"No scenario named '{name}'.")
+            await ctx.send(f"No task named '{name}'.")
             return
 
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
