@@ -1253,6 +1253,44 @@ Prometheus, Loki, or the LLM is absent. The integration path is exercised
 manually against the Docker Compose stack, where the monitor detects the
 n8n service going down and opens a threaded incident with an LLM summary.
 
+\subsection{Model size and tool-selection reliability}
+\label{sec:model-size}
+
+Because the investigation loop is fixed, the model determines whether a tool
+is called for a given prompt. Two configurations were measured against an
+identical request: the agent's investigator system prompt (which instructs the
+model to call \pkg{list\_services} first), the vague user question
+``what containers are up?'', the \pkg{list\_services} tool, and
+\pkg{tool\_choice=auto}.
+
+\begin{itemize}[leftmargin=1.4em,itemsep=0.2em]
+  \item \pkg{Qwen/Qwen2.5-1.5B-Instruct} (self-hosted on vLLM, $\sim$1.5B
+    parameters) returned \pkg{finish\_reason=stop} with \emph{no} tool call:
+    it narrated intent (``I will use the \pkg{list\_services} tool\ldots'') and
+    hallucinated a reference to ``Oracle Cloud Infrastructure'', confusing the
+    ``Oracle'' bot persona with the cloud provider. When the user message
+    \emph{explicitly} requested the tool, the same model emitted the call and
+    returned the correct list---so the failure is tool \emph{selection} on
+    vague input, not tool-calling capability. It also emitted Markdown
+    \pkg{\#\#\#\#} headings in summaries despite being told to use bold,
+    which required a post-processor (\pkg{\_discordify}) to normalise.
+  \item \pkg{deepseek-v4-pro} (DeepSeek official API, larger) returned
+    \pkg{finish\_reason=tool\_calls} and called \pkg{list\_services(\{\})}
+    immediately, grounded its answer in the nine real containers, and passed
+    the startup tool-support probe on the first attempt with no retries.
+\end{itemize}
+
+The conclusion is that model size is the dominant factor in instruction
+following and tool selection, not the mechanism: the bounded ReAct loop,
+\pkg{bind\_tools}, and \pkg{ToolMessage} feedback are correct and standard.
+Stepping up within the self-hosted vLLM stack to a 7B--14B instruct model
+(e.g.\ \pkg{Qwen2.5-7B-Instruct}) preserves the self-hosted/compliance design
+principle while fixing the tool-selection failure; a hosted API
+(\pkg{deepseek-v4-pro} or the LiteLLM/Kimi gateway) works out of the box at the
+cost of sending operational data off-prem. The tradeoff between capability and
+self-hosting is a deliberate deployment decision; a fuller treatment is in
+\texttt{docs/model-comparison.md}.
+
 % ============================================================
 \section{Challenges}
 % ============================================================

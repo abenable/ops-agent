@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.28 (TeX Live 2025/Debian) (preloaded format=pdflatex 2026.5.13)  6 AUG 2026 00:24
+This is pdfTeX, Version 3.141592653-2.6-1.40.28 (TeX Live 2025/Debian) (preloaded format=pdflatex 2026.5.13)  6 AUG 2026 09:51
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -1301,12 +1301,12 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 [22
 
 ]
-Underfull \hbox (badness 10000) in paragraph at lines 1464--1464
+Underfull \hbox (badness 10000) in paragraph at lines 1502--1502
 []|\T1/lmr/m/n/10 (+20) One thread per in-ci-dent with
  []
 
 
-Underfull \hbox (badness 1509) in paragraph at lines 1464--1464
+Underfull \hbox (badness 1509) in paragraph at lines 1502--1502
 \T1/lmr/m/n/10 (+20) ack/resolve/remediate up-dates and
  []
 
@@ -1342,14 +1342,14 @@ LaTeX2e <2025-11-01>
 L3 programming layer <2026-01-19>
  ***********
 Package rerunfilecheck Info: File `marconi-agent-report.out' has not changed.
-(rerunfilecheck)             Checksum: 6C813B2226EC7FEDC0D36715E7237A71;6732.
+(rerunfilecheck)             Checksum: 4DFC57CE8644182E7D6C9978E711535A;7007.
  ) 
 Here is how much of TeX's memory you used:
- 32477 strings out of 469438
- 644009 string characters out of 5468410
- 1678224 words of memory out of 5000000
- 60206 multiletter control sequences out of 15000+600000
- 722494 words of font info for 209 fonts, out of 8000000 for 9000
+ 32485 strings out of 469438
+ 644116 string characters out of 5468410
+ 1678226 words of memory out of 5000000
+ 60209 multiletter control sequences out of 15000+600000
+ 722754 words of font info for 211 fonts, out of 8000000 for 9000
  59 hyphenation exceptions out of 8191
  98i,12n,108p,1017b,1357s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/share/texmf/fonts/type1/public/lm/lmbx10.pfb></usr/share/texmf/fonts/ty
@@ -1363,10 +1363,10 @@ r8.pfb></usr/share/texmf/fonts/type1/public/lm/lmr9.pfb></usr/share/texmf/fonts
 /public/lm/lmtk10.pfb></usr/share/texmf/fonts/type1/public/lm/lmtt10.pfb></usr/
 share/texmf/fonts/type1/public/lm/lmtt8.pfb></usr/share/texmf/fonts/type1/publi
 c/lm/lmtt9.pfb></usr/share/texmf/fonts/type1/public/lm/lmtti10.pfb>
-Output written on marconi-agent-report.pdf (25 pages, 494418 bytes).
+Output written on marconi-agent-report.pdf (25 pages, 497132 bytes).
 PDF statistics:
- 636 PDF objects out of 1000 (max. 8388607)
- 544 compressed objects within 6 object streams
- 169 named destinations out of 1000 (max. 500000)
- 55285 words of extra memory for PDF output out of 61914 (max. 10000000)
+ 641 PDF objects out of 1000 (max. 8388607)
+ 549 compressed objects within 6 object streams
+ 170 named destinations out of 1000 (max. 500000)
+ 55293 words of extra memory for PDF output out of 61914 (max. 10000000)
 

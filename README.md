@@ -167,6 +167,7 @@ k6 run loadtests/agent.js
 - [Architecture](docs/architecture.md) — components and data flow
 - [Tools](docs/tools.md) — what each tool does and its data source
 - [Workflows](docs/workflows.md) — incident, monitoring, and reporting flows
+- [Model comparison](docs/model-comparison.md) — effect of model size on tool selection, with measured results
 - [Discord channels](docs/discord-channels.md) — channel-to-feature mapping
 
 ## Limitations
