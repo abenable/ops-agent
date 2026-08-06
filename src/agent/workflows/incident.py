@@ -1,6 +1,7 @@
 """Incident investigation workflow."""
 
 import logging
+import re
 import time
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -24,6 +25,44 @@ from agent.tools.query_tools import (
 from agent.tools.services import get_service_status
 
 logger = logging.getLogger(__name__)
+
+# DeepSeek sometimes emits tool calls inline in ``content`` using its native
+# ``<｜｜DSML｜｜>`` XML instead of the OpenAI ``tool_calls`` field the loop reads.
+# When that happens the calls are never executed and the raw XML leaks into the
+# summary (and the Discord incident thread). We parse those inline calls back
+# into the structured shape the loop already handles, and strip any residual
+# markup from final prose. ``｜`` is U+FF5C (fullwidth vertical line).
+_PIPE = "\uFF5C"
+_TOK = _PIPE + _PIPE + "DSML" + _PIPE + _PIPE  # ｜｜DSML｜｜
+_DSML_BLOCK_RE = re.compile(r"<" + re.escape(_TOK) + r"tool_calls>.*?</" + re.escape(_TOK) + r"tool_calls>", re.DOTALL)
+_DSML_TAG_RE = re.compile(r"</?" + re.escape(_TOK) + r"[^>]*>")
+_INVOKE_RE = re.compile(r"<" + re.escape(_TOK) + r"invoke name=\"([^\"]+)\">(.*?)</" + re.escape(_TOK) + r"invoke>", re.DOTALL)
+_PARAM_RE = re.compile(r"<" + re.escape(_TOK) + r"parameter name=\"([^\"]+)\" string=\"(true|false)\">(.*?)</" + re.escape(_TOK) + r"parameter>", re.DOTALL)
+
+
+def _parse_dsml_calls(content: str) -> list[dict]:
+    """Extract inline ``<｜｜DSML｜｜invoke>`` tool calls from model content."""
+    calls: list[dict] = []
+    for m in _INVOKE_RE.finditer(content):
+        name, body = m.group(1), m.group(2)
+        args: dict = {}
+        for p in _PARAM_RE.finditer(body):
+            pname, is_str, pval = p.group(1), p.group(2), p.group(3).strip()
+            if is_str == "false":
+                try:
+                    pval = int(pval)
+                except ValueError:
+                    pass
+            args[pname] = pval
+        calls.append({"name": name, "args": args, "id": f"dsml-{len(calls)}", "type": "tool_call"})
+    return calls
+
+
+def _strip_dsml(text: str) -> str:
+    """Remove any ``<｜｜DSML｜｜>`` tool-call markup, leaving surrounding prose."""
+    text = _DSML_BLOCK_RE.sub("", text)
+    return _DSML_TAG_RE.sub("", text).strip()
+
 
 TOOLS = [
     list_services,
@@ -117,6 +156,7 @@ async def run_agentic_investigation_stream(
 
     ai = None
     total_steps = 0
+    pending: list[dict] | None = None  # tool calls carried over from the previous turn
     t0 = time.monotonic()
     for step in range(settings.max_tool_steps):
         total_steps = step + 1
@@ -125,13 +165,20 @@ async def run_agentic_investigation_stream(
         LLM_CALL_DURATION.labels(kind="agentic").observe(time.monotonic() - llm_start)
         LLM_CALL_TOTAL.labels(kind="agentic").inc()
         messages.append(ai)
-        if not ai.tool_calls:
+        # DeepSeek occasionally emits tool calls inline as <｜｜DSML｜｜> XML in
+        # ``content`` instead of the structured ``tool_calls`` field. Fall back to
+        # parsing them so the calls still execute and the loop doesn't end early
+        # with raw XML as the "summary".
+        pending = ai.tool_calls or _parse_dsml_calls(ai.content or "")
+        if not pending:
             break
 
-        for call in ai.tool_calls:
+        for call in pending:
             name = call.get("name")
             args = call.get("args") or {}
             tool_id = call.get("id", "call")
+            if name not in by_name:
+                continue
             logger.info("Tool call: %s(%s)", name, args)
             yield {"type": "tool_call", "step": step, "name": name, "args": args}
             try:
@@ -146,15 +193,25 @@ async def run_agentic_investigation_stream(
             messages.append(ToolMessage(str(out)[:4000], tool_call_id=tool_id))
             yield {"type": "tool_result", "step": step, "name": name, "result": str(out)[:2000]}
 
-    # If we exited because of the step cap with pending tool calls, ask for a final summary
-    # using a tool-less LLM so it returns prose instead of issuing more tool calls.
-    if ai and ai.tool_calls:
+    # Step cap reached with pending tool calls: ask the tool-less LLM to
+    # synthesize the evidence gathered so far into prose. Without this nudge the
+    # model keeps trying to call tools and emits raw <｜｜DSML｜｜> XML (no tools are
+    # bound, so it can't use the structured field), which would leak into the
+    # summary. The explicit instruction makes it produce ranked hypotheses.
+    if ai and pending:
+        messages.append(HumanMessage(
+            "You have used your tool budget. Using only the evidence gathered above, "
+            "write your ranked root-cause hypotheses as concise prose. Do not call "
+            "tools and do not emit any XML or tool-call markup."
+        ))
         llm_start = time.monotonic()
         ai = await get_llm().ainvoke(messages)
         LLM_CALL_DURATION.labels(kind="fallback").observe(time.monotonic() - llm_start)
         LLM_CALL_TOTAL.labels(kind="fallback").inc()
 
-    content = (ai.content if ai else "") or "No summary produced."
+    content = _strip_dsml((ai.content if ai else "") or "")
+    if not content:
+        content = "No summary produced."
     INVESTIGATION_DURATION.labels(kind=kind).observe(time.monotonic() - t0)
     TOOL_STEPS.labels(kind=kind).observe(total_steps)
     INVESTIGATION_TOTAL.labels(kind=kind, status="ok").inc()

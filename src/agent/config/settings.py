@@ -69,8 +69,10 @@ class Settings(BaseSettings):
     prometheus_token: str = ""
     loki_token: str = ""
 
-    # Agentic investigation loop
-    max_tool_steps: int = 6
+    # Agentic investigation loop. 10 turns lets a non-trivial diagnosis (e.g.
+    # "0 samples scraped") complete within the loop; the guided prose fallback
+    # handles anything that still hits the cap.
+    max_tool_steps: int = 10
     loki_max_limit: int = 500
     range_max_hours: int = 6
 

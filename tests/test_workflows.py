@@ -15,6 +15,8 @@ from agent.workflows.incident import (
     run_ask_workflow,
     run_incident_workflow,
     run_scoped_investigation,
+    _parse_dsml_calls,
+    _strip_dsml,
 )
 
 
@@ -244,3 +246,39 @@ def test_scoped_investigation_returns_summary_and_raw(tmp_database, patched_tool
     assert summary == "n8n is up with 9 containers reporting."
     assert "query_prometheus" in raw
     patched_tool_sources["query_prometheus"].assert_awaited_once_with("up{job='n8n'}")
+
+
+def test_parse_dsml_calls_extracts_inline_tool_calls():
+    # DeepSeek emits tool calls inline as <｜｜DSML｜｜> XML in content when it
+    # doesn't use the structured tool_calls field. The loop must recover them.
+    content = (
+        "Scrape returns 0 samples. Let me check.\n"
+        "<\uFF5C\uFF5CDSML\uFF5C\uFF5Ctool_calls>\n"
+        "<\uFF5C\uFF5CDSML\uFF5C\uFF5Cinvoke name=\"query_prometheus\">\n"
+        "<\uFF5C\uFF5CDSML\uFF5C\uFF5Cparameter name=\"promql\" string=\"true\">up{job=\"node-exporter\"}</\uFF5C\uFF5CDSML\uFF5C\uFF5Cparameter>\n"
+        "</\uFF5C\uFF5CDSML\uFF5C\uFF5Cinvoke>\n"
+        "<\uFF5C\uFF5CDSML\uFF5C\uFF5Cinvoke name=\"query_loki_range\">\n"
+        "<\uFF5C\uFF5CDSML\uFF5C\uFF5Cparameter name=\"limit\" string=\"false\">50</\uFF5C\uFF5CDSML\uFF5C\uFF5Cparameter>\n"
+        "<\uFF5C\uFF5CDSML\uFF5C\uFF5Cparameter name=\"logql\" string=\"true\">{job=\"prometheus\"}</\uFF5C\uFF5CDSML\uFF5C\uFF5Cparameter>\n"
+        "<\uFF5C\uFF5CDSML\uFF5C\uFF5Cparameter name=\"minutes\" string=\"false\">30</\uFF5C\uFF5CDSML\uFF5C\uFF5Cparameter>\n"
+        "</\uFF5C\uFF5CDSML\uFF5C\uFF5Cinvoke>\n"
+        "</\uFF5C\uFF5CDSML\uFF5C\uFF5Ctool_calls>"
+    )
+    calls = _parse_dsml_calls(content)
+    assert [c["name"] for c in calls] == ["query_prometheus", "query_loki_range"]
+    assert calls[0]["args"] == {"promql": 'up{job="node-exporter"}'}
+    assert calls[1]["args"] == {"limit": 50, "logql": '{job="prometheus"}', "minutes": 30}
+
+
+def test_strip_dsml_leaves_prose_and_removes_markup():
+    content = (
+        "Diagnosis prose here.\n"
+        "<\uFF5C\uFF5CDSML\uFF5C\uFF5Ctool_calls>\n"
+        "<\uFF5C\uFF5CDSML\uFF5C\uFF5Cinvoke name=\"query_prometheus\">\n"
+        "<\uFF5C\uFF5CDSML\uFF5C\uFF5Cparameter name=\"promql\" string=\"true\">up</\uFF5C\uFF5CDSML\uFF5C\uFF5Cparameter>\n"
+        "</\uFF5C\uFF5CDSML\uFF5C\uFF5Cinvoke>\n"
+        "</\uFF5C\uFF5CDSML\uFF5C\uFF5Ctool_calls>"
+    )
+    out = _strip_dsml(content)
+    assert "DSML" not in out
+    assert "Diagnosis prose here." in out

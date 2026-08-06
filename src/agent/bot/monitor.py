@@ -74,21 +74,30 @@ async def _evaluate_rules(bot) -> None:
     for rule_name, expr in _alert_rules().items():
         try:
             result = await query_prometheus(expr)
-            firing = bool(result.get("data", {}).get("result"))
+            series = result.get("data", {}).get("result") or []
+            firing = bool(series)
         except Exception:
             # ponytail: skip a rule when Prometheus is unreachable; endpoint poll still covers liveness
             continue
 
         prev = _rule_state.get(rule_name, False)
         if firing and not prev and settings.discord_alert_channel_id:
+            # Name the affected targets so the incident thread title tells the
+            # operator what's down without opening it (e.g. "target_down:
+            # node-exporter, cadvisor") rather than an opaque rule name + id.
+            targets = sorted({
+                s.get("metric", {}).get("job") or s.get("metric", {}).get("instance") or "unknown"
+                for s in series
+            })
+            label = f"{rule_name}: {', '.join(targets)}" if targets else rule_name
             await discord_alert.send_alert(
                 settings.discord_alert_channel_id,
                 f"PromQL alert `{rule_name}` firing: {expr}",
                 bot,
                 severity="critical",
-                title=f"Alert: {rule_name}",
+                title=f"Alert: {label}",
             )
-            asyncio.create_task(_open_incident(bot, rule_name))
+            asyncio.create_task(_open_incident(bot, label))
 
         if prev and not firing and settings.discord_status_channel_id:
             await discord_alert.send_alert(

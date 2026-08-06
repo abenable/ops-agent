@@ -4,6 +4,7 @@ import logging
 
 import discord
 
+from agent.bot.summarize import discordify
 from agent.config.settings import settings
 from agent.storage.repository import get_incident, update_incident_status, update_incident_thread_id
 from agent.workflows.remediation import execute_approval, reject_approval, run_remediation_workflow
@@ -175,8 +176,9 @@ async def open_incident_thread(
         type=discord.ChannelType.public_thread,
     )
     # Discord caps message content at 2000 chars — split oversized summaries
-    # at newline boundaries so the thread is readable.
-    for i, chunk in enumerate(_chunk(summary)):
+    # at newline boundaries so the thread is readable. Discordify first so any
+    # markdown tables/# headings in the diagnosis render as bold+bullets.
+    for i, chunk in enumerate(_chunk(discordify(summary))):
         if i == 0:
             await thread.send(chunk)
         else:
