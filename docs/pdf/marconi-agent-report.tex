@@ -451,11 +451,11 @@ shared tool and workflow layer:
     and, once a container is chosen, offers ephemeral Watch/Unwatch, Status,
     Logs, and Metrics buttons. \pkg{agent.bot.views.ServicePanelView} offers a
     service picker with Status, Health, Logs, Metrics, and Incident buttons
-    for the monitored endpoints. The persistent incident-action view
-    (\pkg{agent.alerting.discord.IncidentActionView}) carries Acknowledge,
-    Resolve, and Remediate buttons; the Remediate button runs the gated
-    remediation agent, whose proposals are posted with their own Approve/Reject
-    view (\pkg{RemediationApprovalView}).
+     for the monitored endpoints. The persistent incident-action view
+     (\pkg{agent.alerting.discord.IncidentActionView}) carries Resolve and Fix
+     buttons; the Fix button runs the gated remediation agent, whose proposals
+     are posted with their own Approve/Reject view
+     (\pkg{RemediationApprovalView}).
 \end{itemize}
 
 Table~\ref{tab:cmds} summarises the slash commands. Each has a prefix
@@ -515,12 +515,25 @@ The function guards against failure at every step:
     bypass the LLM pass. Short, already-clean commands (\pkg{status},
     \pkg{health}, \pkg{watching}) skip the summariser entirely and return raw
     output for low latency.
+  \item A post-processor, \pkg{\_discordify}, normalises Markdown that Discord
+    renders poorly: ATX headings (\pkg{## Foo}) become \pkg{**bold**}, and
+    Markdown tables become \pkg{- **Label:** value} bullets (wider tables join
+    extra columns with a middle dot). It is applied to all agentic narrative
+    sent to Discord---the verbose commands, slash commands, the \pkg{@mention}
+    reply, and incident thread bodies---while content inside code fences is
+    left untouched so a pasted \pkg{#} comment or \pkg{|} log line is not
+    mangled. A public alias \pkg{discordify} is used by the command handlers,
+    and \pkg{clean} applies it to its own LLM output.
   \item A custom logging handler, \pkg{agent.bot.client.DiscordLogHandler},
-    forwards \pkg{WARNING} and above log records to a configured Discord channel.
-    To avoid a feedback loop, it skips any record whose logger name starts with
-    \pkg{discord}. It uses an asynchronous queue and a pump task so that
-    \pkg{emit()} never blocks the calling thread, and it writes send failures
-    to \pkg{stderr} rather than re-entering the logging system.
+    forwards \pkg{INFO} and above log records to a configured Discord channel so
+    the channel streams live agent activity (tool calls, workflow steps,
+    connect and sync events). To avoid a feedback loop it skips any record whose
+    logger name starts with \pkg{discord}, and the chatty HTTP transport loggers
+    (\pkg{httpx}, \pkg{httpx2}) are silenced to \pkg{WARNING} so the channel
+    carries activity rather than one line per request. It uses an asynchronous
+    queue and a pump task so that \pkg{emit()} never blocks the calling thread,
+    and it writes send failures to \pkg{stderr} rather than re-entering the
+    logging system.
 \end{itemize}
 \end{sloppypar}
 
@@ -596,13 +609,28 @@ image, backed by live Docker container discovery.
 
 \subsubsection{Metrics and logs}
 
-\pkg{agent.tools.metrics.get\_service\_metrics} constructs a PromQL instant
-query for the service and delegates to the Prometheus source helper. A small
+The Discord \pkg{!metrics} and \pkg{!logs} commands (and their slash forms) do
+not run a fixed query; they route through the same agentic loop as \pkg{!ask}
+via a \pkg{run\_scoped\_investigation} helper with a scoped prompt. The model
+calls \pkg{list\_services} to resolve the name the operator typed (handling
+typos and differing separators), discovers the available metric names and label
+values with \pkg{list\_metric\_names} and \pkg{get\_label\_values}, and writes
+its own PromQL or LogQL against the names it discovered. The \pkg{raw} opt-out
+returns the concatenated tool results instead of the narrative. This keeps the
+agent's core property---that it picks the user's intent and writes the right
+query---in the metrics and logs surfaces, rather than hardcoding a single
+metric name and label.
+
+The deterministic helpers \pkg{agent.tools.metrics.get\_service\_metrics} and
+\pkg{agent.tools.logs.get\_recent\_logs} are retained for the callers that need
+deterministic output: the REST API endpoints
+(\pkg{GET /services/\{service\}/metrics}, \pkg{/logs}), the offline
+\pkg{\_static\_summary} fallback, and the Discord button views. A small
 \pkg{\_escape\_label\_value} function escapes backslashes and quotes in the
 service name before interpolation into the query string, preventing a naive
-injection. On any exception it falls back to a zeroed stub dict. Similarly,
-\pkg{agent.tools.logs.get\_recent\_logs} runs a LogQL instant query against Loki
-and falls back to a stub log line when Loki is unreachable.
+injection. On any exception the metrics helper falls back to a zeroed stub dict
+and the logs helper falls back to Docker container logs, so a missing source
+never surfaces as a crash.
 
 \subsubsection{HTTP health}
 
@@ -725,11 +753,14 @@ The loop is a standard ReAct-style cycle~\cite{react} with explicit bounds:
     discovers (not the user's spelling), to use the read-only Docker tools for
     containers Prometheus and Loki do not cover, and to summarise in one
     paragraph. Incident investigations use an extended prompt,
-    \pkg{INCIDENT\_SYSTEM\_PROMPT}, that asks for two to three ranked root-cause
-    hypotheses, each with the specific evidence (metric value, log line, or
-    container state) that supports it, rather than a single narrative, so an
-    operator can verify a ranked list quickly. Free-form \pkg{/ask} questions
-    keep the general prompt, since they are questions rather than incidents.
+    \pkg{INCIDENT\_SYSTEM\_PROMPT}, that asks for a concise, scannable report:
+    it leads with the affected container(s) and a one-sentence root cause, then
+    two to three ranked hypotheses, each carrying a one-line claim, the single
+    strongest piece of evidence (a specific metric value, log line, or container
+    state), and a one-line concrete fix an operator could apply. The report is
+    informational; actual remediation stays human-gated. Free-form \pkg{/ask}
+    questions keep the general prompt, since they are questions rather than
+    incidents.
   \item A human message carries the prompt (the service name or the user's
     question).
   \item The model is invoked with the tools bound. If it returns tool calls,
@@ -831,7 +862,7 @@ distinct parts:
     LLM and makes \pkg{execute\_approval} refuse to run, so the entire
     remediation path can be disabled with one setting.
   \item \textbf{Human surface.} The persistent \pkg{IncidentActionView} carries
-    a Remediate button that runs \pkg{run\_remediation\_workflow} against the
+    a \textbf{Fix} button that runs \pkg{run\_remediation\_workflow} against the
     incident's stored diagnosis and posts one \pkg{RemediationApprovalView}
     (Approve/Reject, persistent) per proposal. Approve calls
     \pkg{execute\_approval}; Reject calls \pkg{reject\_approval}. The
@@ -1047,18 +1078,22 @@ few properties worth noting:
     with a title, a description, and a colour chosen by severity: blue for
     info, orange for warning, red for critical.
   \item \textbf{Incident threads.} \pkg{open\_incident\_thread} creates a public
-    thread in the incidents channel, posts the summary into it, and records the
-    thread id back into the SQLite row via \pkg{update\_incident\_thread\_id},
-    so later ack/resolve updates can find the thread.
+    thread in the incidents channel, posts the summary into it (Discordified so
+    any Markdown tables render as bullets), and records the thread id back into
+    the SQLite row via \pkg{update\_incident\_thread\_id}, so later resolve
+    updates can find the thread. The thread is named after the affected targets
+    rather than a bare rule name: the monitor extracts the \pkg{job} or
+    \pkg{instance} labels from the firing alert's result series, so the title
+    reads ``\pkg{target\_down: node-exporter, cadvisor -- <id>}'' and the
+    operator can tell what is down without opening the thread.
   \item \textbf{Persistent action views.} The thread message carries an
-    \pkg{IncidentActionView} with Acknowledge, Resolve, and Remediate buttons;
-    the view uses \pkg{timeout=None} so the buttons never expire while the bot
-    is running, since incidents are often handled long after the thread opens.
-    The Remediate button runs the gated remediation agent, which posts each
-    proposal with its own \pkg{RemediationApprovalView} (Approve/Reject, likewise
-    persistent). After a bot restart the buttons stop listening;
-    \pkg{/ack}, \pkg{/resolve}, and \pkg{/remediate}/\pkg{/approve}/\pkg{/reject}
-    remain as fallbacks.
+    \pkg{IncidentActionView} with \textbf{Resolve} and \textbf{Fix} buttons; the
+    view uses \pkg{timeout=None} so the buttons never expire while the bot is
+    running, since incidents are often handled long after the thread opens. The
+    Fix button runs the gated remediation agent, which posts each proposal with
+    its own \pkg{RemediationApprovalView} (Approve/Reject, likewise persistent).
+    After a bot restart the buttons stop listening; \pkg{/resolve} and
+    \pkg{/remediate}/\pkg{/approve}/\pkg{/reject} remain as fallbacks.
   \item \textbf{Channel mapping.} The bot maps its output to six
     purpose-specific channels, all optional. A feature is simply inactive when
     its channel id is unset, so a deployment can adopt channels incrementally.
@@ -1495,8 +1530,8 @@ is unset, so a deployment can adopt channels incrementally.
 \pkg{\#agent-commands} & (none) & Operators run \pkg{!} commands; the bot replies inline \\
 \pkg{\#alerts} & \pkg{DISCORD\_ALERT\_CHANNEL\_ID} & Severity-coloured embeds for down-alerts and incidents \\
 \pkg{\#status-updates} & \pkg{DISCORD\_STATUS\_CHANNEL\_ID} & Every up/down transition the monitor observes, plus the periodic container-status snapshot \\
-\pkg{\#incidents} & \pkg{DISCORD\_INCIDENT\_CHANNEL\_ID} & One thread per incident with ack/resolve/remediate updates and approval views \\
-\pkg{\#agent-logs} & \pkg{DISCORD\_LOG\_CHANNEL\_ID} & WARNING and above bot and backend log records \\
+\pkg{\#incidents} & \pkg{DISCORD\_INCIDENT\_CHANNEL\_ID} & One thread per incident with resolve/fix updates and approval views \\
+\pkg{\#agent-logs} & \pkg{DISCORD\_LOG\_CHANNEL\_ID} & INFO and above bot and backend log records (agent activity; HTTP transport loggers silenced) \\
 \pkg{\#test-scenarios} & \pkg{DISCORD\_TEST\_SCENARIOS\_CHANNEL\_ID} & \pkg{/scenario} runs, restricted to this channel when set \\
 \bottomrule
 \end{tabularx}
