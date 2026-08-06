@@ -65,26 +65,18 @@ async def send_dm(
 
 
 class IncidentActionView(discord.ui.View):
-    """Acknowledge / Resolve buttons attached to an incident thread message.
+    """Resolve / Fix buttons attached to an incident thread message.
 
     ``timeout=None`` makes the buttons persistent: they never expire while the
     bot is running, which matters because incidents are often handled long after
-    the thread opens. ``!ack`` / ``!resolve`` / ``/ack`` / ``/resolve`` remain as
-    fallbacks after a bot restart.
+    the thread opens. ``!resolve`` / ``/resolve`` remain as fallbacks after a bot
+    restart. **Fix** launches the remediation agent, which proposes a restart and
+    posts an Approve/Reject view — a human must approve before anything executes.
     """
 
     def __init__(self, incident_id: str):
         super().__init__(timeout=None)
         self.incident_id = incident_id
-
-    @discord.ui.button(label="Acknowledge", style=discord.ButtonStyle.primary, emoji="✋")
-    async def ack(self, interaction: discord.Interaction, _button: discord.ui.Button):
-        if update_incident_status(self.incident_id, "acknowledged") is None:
-            await interaction.response.send_message("Incident not found.", ephemeral=True)
-            return
-        await interaction.response.send_message(
-            f"Incident `{self.incident_id}` acknowledged.", ephemeral=True
-        )
 
     @discord.ui.button(label="Resolve", style=discord.ButtonStyle.success, emoji="✅")
     async def resolve(self, interaction: discord.Interaction, _button: discord.ui.Button):
@@ -95,9 +87,9 @@ class IncidentActionView(discord.ui.View):
             f"Incident `{self.incident_id}` resolved.", ephemeral=True
         )
 
-    @discord.ui.button(label="Remediate", style=discord.ButtonStyle.danger, emoji="🔧")
-    async def remediate(self, interaction: discord.Interaction, _button: discord.ui.Button):
-        """Run the remediation agent against this incident's diagnosis.
+    @discord.ui.button(label="Fix", style=discord.ButtonStyle.danger, emoji="🔧")
+    async def fix(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        """Launch the remediation agent against this incident's diagnosis.
 
         The remediator only *proposes* a restart; each proposal is posted with its own
         Approve/Reject view so a human gates execution.
