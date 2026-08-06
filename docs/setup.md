@@ -33,7 +33,7 @@ cp .env.example .env
 | `DISCORD_INCIDENT_CHANNEL_ID` | no | — | Channel where per-incident threads are opened |
 | `DISCORD_STATUS_CHANNEL_ID` | no | — | Channel for status transitions + periodic snapshots of watched containers |
 | `DISCORD_LOG_CHANNEL_ID` | no | — | Channel for WARNING+ bot/backend logs |
-| `DISCORD_TEST_TASKS_CHANNEL_ID` | no | — | Restricts `!task` to this channel |
+| `DISCORD_TEST_TASKS_CHANNEL_ID` | no | — | Restricts `/task` to this channel |
 | `MONITORED_ENDPOINTS` | no | *(empty)* | Comma-separated `name=url` pairs the monitor polls; empty disables the monitor |
 | `MONITOR_INTERVAL_SECONDS` | no | `60` | Poll interval (floored at 10s) |
 | `STATUS_SNAPSHOT_INTERVAL_SECONDS` | no | `3600` | Cadence for periodic watched-container status snapshot in `#status-updates` |
@@ -66,12 +66,13 @@ cp .env.example .env
 Example `MONITORED_ENDPOINTS`: `api=http://localhost:8000/health, site=https://example.com`
 
 To get a Discord channel id: enable **Developer Mode** (User Settings → Advanced), then
-right-click a channel → **Copy ID**. Enable the **Message Content Intent** for your bot in the
-Developer Portal — the prefix commands depend on it.
+right-click a channel → **Copy ID**. The slash commands register via the application-command
+tree; enable the **Message Content Intent** for your bot in the Developer Portal if you use
+the @mention/DM conversational path.
 
 ## Model requirements
 
-The agentic investigation loop (`!incident`, `!ask`) requires a model that supports
+The agentic investigation loop (`/incident`, `/ask`) requires a model that supports
 OpenAI-style tool calling. If the configured model does not, the workflow degrades to a
 static status+metrics+logs summary. You can verify support by checking whether
 `llm_supports_tool_calls()` returns `true` at runtime.
@@ -79,7 +80,7 @@ static status+metrics+logs summary. You can verify support by checking whether
 ## Conversation memory
 
 The bot keeps a short per-channel conversation history in the same SQLite database
-(`conversation_history` table, created lazily on first use). The `!ask` / `/ask` commands
+(`conversation_history` table, created lazily on first use). The `/ask` command
 and the @mention/DM conversational path all route through `ask_with_memory`, which:
 
 1. fetches the prior turns for the channel as structured `{"role", "content"}` records,

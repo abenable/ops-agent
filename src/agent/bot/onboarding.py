@@ -51,7 +51,7 @@ def build_welcome_embed(bot_user: discord.ClientUser | None) -> discord.Embed:
         color=0x3498DB,
     )
     embed.add_field(
-        name="Commands (prefix `!` or slash `/`)",
+        name="Commands (slash `/`)",
         inline=False,
         value=(
             "`status <svc>` `containers` `logs <svc>` `metrics <svc>` "
@@ -65,7 +65,7 @@ def build_welcome_embed(bot_user: discord.ClientUser | None) -> discord.Embed:
         inline=False,
         value=(
             "In `#test-tasks` click a task button, or ask me a question "
-            "with `!ask` / `/ask`. Watch `#agent-logs` to see the tools I call."
+            "with `/ask`. Watch `#agent-logs` to see the tools I call."
         ),
     )
     return embed

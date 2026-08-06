@@ -7,7 +7,6 @@ import sys
 import discord
 from discord.ext import commands
 
-from agent.bot.commands import setup_commands
 from agent.bot.monitor import get_alert_rules, get_monitored_endpoints, start_monitor
 from agent.bot.onboarding import post_project_notes, post_welcome
 from agent.bot.tasks import ensure_task_panel
@@ -134,7 +133,7 @@ def run_bot():
     intents = discord.Intents.default()
     intents.message_content = True
 
-    bot = commands.Bot(command_prefix="!", intents=intents)
+    bot = commands.Bot(command_prefix="", intents=intents)
 
     @bot.event
     async def on_ready():
@@ -177,34 +176,9 @@ def run_bot():
         asyncio.create_task(_check_tools())
 
     @bot.event
-    async def on_command_error(ctx: commands.Context, error: commands.CommandError):
-        """Surface common command failures to the user instead of crashing silently."""
-        if isinstance(error, commands.CommandNotFound):
-            return
-        if isinstance(error, commands.MissingPermissions):
-            await ctx.send(f"You need permission: `{', '.join(error.missing_permissions)}`")
-            return
-        if isinstance(error, commands.BotMissingPermissions):
-            await ctx.send(f"I need permission: `{', '.join(error.missing_permissions)}`")
-            return
-        if isinstance(error, commands.CommandOnCooldown):
-            await ctx.send(f"Cooldown: try again in {error.retry_after:.1f}s.")
-            return
-        if isinstance(error, commands.MissingRequiredArgument):
-            await ctx.send(f"Missing argument: `{error.param.name}`. Check `!help {ctx.command}`.")
-            return
-        logger.exception("Command error: %s", error)
-        await ctx.send(f"Command failed: `{error}`")
-
-    @bot.event
     async def on_message(message: discord.Message):
         # Ignore own messages and other bots.
         if message.author == bot.user or message.author.bot:
-            return
-
-        # Let prefix commands through as usual (works in DMs and guilds).
-        if message.content.strip().startswith("!"):
-            await bot.process_commands(message)
             return
 
         # Respond to DMs and @mentions via the agentic loop.
@@ -217,7 +191,7 @@ def run_bot():
             )
             if not cleaned:
                 await message.reply(
-                    "Hey! Ask me anything about the infrastructure, or type `!info` for commands."
+                    "Hey! Ask me anything about the infrastructure, or type `/info` for commands."
                 )
                 return
 
@@ -240,7 +214,7 @@ def run_bot():
                 answer = await ask_with_memory(channel_id, cleaned, prompt=prompt)
             except Exception as exc:  # pragma: no cover
                 logger.warning("Mention response failed: %s", exc)
-                answer = "My agent is unreachable right now — try a `!` command instead."
+                answer = "My agent is unreachable right now — try a `/` command instead."
 
             chunks = split_discord_text(discordify(answer))
             if not chunks:
@@ -250,7 +224,6 @@ def run_bot():
             for chunk in chunks[1:]:
                 await message.channel.send(chunk)
 
-    setup_commands(bot)
     setup_slash_commands(bot)
     _setup_logging()
 

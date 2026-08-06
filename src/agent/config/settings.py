@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     # User ID to DM when incidents are created (optional).
     discord_dm_user_id: int | None = None
 
-    # Bot info / support links shown by !info (all optional)
+    # Bot info / support links shown by /info (all optional)
     bot_creators: str = ""
     bot_support_server: str = ""
     bot_website: str = ""

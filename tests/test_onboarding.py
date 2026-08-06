@@ -7,8 +7,8 @@ def test_welcome_embed_has_commands_and_channels():
     embed = build_welcome_embed(None)
     assert "Infrastructure Ops Agent" in embed.title
     fields = {f.name: f.value for f in embed.fields}
-    assert "Commands (prefix `!` or slash `/`)" in fields
-    assert "ask <question>" in fields["Commands (prefix `!` or slash `/`)"]
+    assert "Commands (slash `/`)" in fields
+    assert "ask <question>" in fields["Commands (slash `/`)"]
     assert "Channels" in fields
 
 

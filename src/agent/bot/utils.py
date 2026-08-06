@@ -10,14 +10,14 @@ from agent.tools import docker
 
 
 def build_info_embed(bot_user: discord.ClientUser | None) -> discord.Embed:
-    """Build the standard info embed used by !info and /info."""
+    """Build the standard info embed used by /info."""
     display_name = bot_user.display_name if bot_user else "Oracle"
     embed = discord.Embed(
         title=f"{display_name} — Infrastructure Ops Agent",
         color=0x3498DB,
     )
     embed.add_field(name="Library", value=f"discord.py {discord.__version__}", inline=False)
-    embed.add_field(name="Prefix", value="`!`", inline=False)
+    embed.add_field(name="Commands", value="`/` slash commands", inline=False)
     if settings.bot_creators:
         embed.add_field(name="Creators", value=settings.bot_creators, inline=False)
     if settings.bot_support_server:

@@ -174,7 +174,7 @@ def test_ask_workflow_does_not_store_incident(tmp_database, patched_tool_sources
 
 def test_incident_workflow_uses_ranked_hypothesis_prompt(tmp_database):
     """The incident workflow must use INCIDENT_SYSTEM_PROMPT (ranked hypotheses),
-    while !ask keeps the general SYSTEM_PROMPT."""
+    while /ask keeps the general SYSTEM_PROMPT."""
     captured = {}
 
     async def fake_run(prompt, *, system_prompt=incident_module.SYSTEM_PROMPT, tools=None, kind="ask"):
@@ -196,7 +196,7 @@ def test_incident_workflow_uses_ranked_hypothesis_prompt(tmp_database):
 
 
 def test_ask_workflow_uses_general_prompt(tmp_database, patched_tool_sources, monkeypatch):
-    """!ask must NOT use the incident ranked-hypothesis prompt."""
+    """/ask must NOT use the incident ranked-hypothesis prompt."""
     captured = {}
     original = run_agentic_investigation
 
@@ -227,7 +227,7 @@ def test_llm_supports_tool_calls_probe(tmp_database):
 
 
 def test_scoped_investigation_returns_summary_and_raw(tmp_database, patched_tool_sources, monkeypatch):
-    """!metrics/!logs run the agentic loop and return (summary, concatenated raw tool output)."""
+    """/metrics //logs run the agentic loop and return (summary, concatenated raw tool output)."""
     monkeypatch.setattr(incident_module.settings, "max_tool_steps", 6)
 
     responses = [

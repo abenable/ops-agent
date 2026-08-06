@@ -1,7 +1,7 @@
 """Discord slash (application) commands for the agent.
 
-These are registered through discord.py's CommandTree so the bot exposes both
-prefix commands (`!`) and slash commands (`/`) for the same operations.
+These are registered through discord.py's CommandTree so the bot exposes its
+operations as slash commands (`/`).
 """
 
 import yaml

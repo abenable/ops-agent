@@ -38,7 +38,7 @@ returns real data or a placeholder in the current MVP.
 
 ## Agentic query tools
 
-During an investigation (`!incident`, `!ask`, `POST /incidents`) the LLM is given
+During an investigation (`/incident`, `/ask`, `POST /incidents`) the LLM is given
 read-only LangChain tools from `tools.query_tools`. The model is told to call
 `list_services` first to learn the real container and endpoint names, then
 discovers metric names and label values, writes its own PromQL/LogQL, and can

@@ -3,7 +3,7 @@ and the API.
 
 A *task* is a YAML file under ``tasks/`` that describes a simulated
 infrastructure failure: a service, a symptom, and the agent actions the eval
-expects. The operator-facing Discord command ``!task`` and the
+expects. The operator-facing Discord command ``/task`` and the
 ``/api/tasks`` endpoint load these same files and present them to operators
 as "tasks" — the on-disk unit is a task, the operator verb is a task.
 
@@ -23,7 +23,7 @@ TASKS_DIR = Path("tasks")
 def task_path(name: str) -> Path | None:
     """Resolve a task name to its file under ``tasks/``, rejecting path
     traversal. Returns the path if it is a safe name with a ``.yml`` file, else
-    None. Guards ``!task`` / ``/task`` / the API runner against
+    None. Guards ``/task`` / the API runner against
     ``../../etc/passwd``-style reads of arbitrary files outside tasks/."""
     if not name or "/" in name or "\\" in name:
         return None

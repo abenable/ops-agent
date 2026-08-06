@@ -219,7 +219,7 @@ def claim_pending_approval(approval_id: str) -> bool:
     Returns True iff this caller won the claim. A conditional UPDATE is the
     check-and-set: under concurrent approvals only one connection transitions
     the row, so the loser sees ``rowcount == 0`` and refuses before touching
-    Docker. Guards against double-execution when a button click and ``!approve``
+    Docker. Guards against double-execution when a button click and ``/approve``
     (or a double-click) race.
     """
     init_db()

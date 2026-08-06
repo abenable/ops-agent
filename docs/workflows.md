@@ -22,7 +22,7 @@
 `run_ask_workflow(question)` uses the same loop for free-form questions without
 storing an incident.
 
-Triggers: `!incident <service>` / `/incident`, `!ask <question>` / `/ask`,
+Triggers: `/incident <service>`, `/ask <question>`,
 `POST /incidents/{service}`, `python -m agent incident`, or the background
 monitor. For Discord triggers the bot also opens an incident thread (with
 persistent Acknowledge/Resolve buttons) and posts an alert (see below).
@@ -67,19 +67,19 @@ When `DOCKER_MONITOR=true`, the poll loop also inspects every container in the
    state of all watched containers to `#status-updates`.
 
 Containers not in the watch list are silently ignored. The watch list is persisted
-in SQLite and can be edited via `!watch`/`!unwatch`/`!watchlist`, the web
-dashboard toggle, or the Watch button in `!menu`.
+in SQLite and can be edited via `/watch`/`/unwatch`/`/watchlist`, the web
+dashboard toggle, or the Watch button in `/menu`.
 
 ## Remediation workflow
 
 When the agentic investigation produces a diagnosis, a human can invoke the
-remediation workflow with `!remediate <incident_id>`:
+remediation workflow with `/remediate <incident_id>`:
 
 1. `run_remediation_workflow(incident_id, service, diagnosis)` runs its own
    tool-calling loop that can propose restarts.
 2. Each proposal is persisted as a `pending_approvals` row and displayed in
    Discord with Approve/Reject buttons (`RemediationApprovalView`).
-3. `!approve <approval_id>` / `!reject <approval_id>` (or the buttons) resolve
+3. `/approve <approval_id>` / `/reject <approval_id>` (or the buttons) resolve
    the proposal.
 4. Stale proposals auto-expire after `REMEDIATION_APPROVAL_TTL_SECONDS` (default
    300 s).  Set `REMEDIATION_ENABLED=false` as a global kill switch.
@@ -109,8 +109,8 @@ the action-to-tool mapping defined in the `agent.eval` module.
 ## Incident lifecycle
 
 1. Incident created (`open`) by the incident workflow.
-2. `!ack <id>` / `/ack <id>` → status `acknowledged`; a note is posted to the incident thread if present.
-3. `!resolve <id>` / `/resolve <id>` → status `resolved`; a note is posted to the incident thread if present.
+2. `/ack <id>` → status `acknowledged`; a note is posted to the incident thread if present.
+3. `/resolve <id>` → status `resolved`; a note is posted to the incident thread if present.
 
 The incident thread message also carries Acknowledge/Resolve buttons
 (`IncidentActionView`, `timeout=None`) so they never expire while the bot is

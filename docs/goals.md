@@ -36,7 +36,7 @@ Implemented:
 - Docker and SSH mutation tools as library-only utilities for future workflows
 - Human-in-the-loop remediation: the remediation agent proposes restart actions, which
   sit in a pending-approval queue until a human approves or rejects them via Discord
-  buttons or `!approve`/`!reject` commands.
+  buttons or the `/approve`/`/reject` commands.
 
 By design, actions that can mutate infrastructure (Docker restart, SSH systemctl restart) are **not** exposed to the agent loop, chat, or HTTP. The current tools are read-only; future write actions will require explicit human approval.
 
@@ -46,7 +46,7 @@ By design, actions that can mutate infrastructure (Docker restart, SSH systemctl
 
 The bot handles:
 
-- Prefix commands (`!`) and slash commands (`/`) sharing one tool layer, for `status`, `containers`, `logs`, `metrics`, `health`, `ask`, `incident`, `task`, `ack`, `resolve`, `watching`, `watch`, `unwatch`, `watchlist`, `menu`, `panel`, `info`
+- Slash commands (`/`) sharing one tool layer, for `status`, `containers`, `logs`, `metrics`, `health`, `ask`, `incident`, `task`, `ack`, `resolve`, `watching`, `watch`, `unwatch`, `watchlist`, `menu`, `panel`, `info`
 - Reply summarisation of verbose output through the LLM, with a `raw` opt-out
 - Conversational replies via @mention or DM using the same agentic loop
 - Interactive container menu and service panel with action buttons
@@ -66,7 +66,7 @@ The bot handles:
 | Deliverable | Status | Notes |
 | --- | --- | --- |
 | Working MVP integrated with Discord | Delivered | Bot + API + SQLite + LLM toolchain running together |
-| Discord bot interface | Delivered | Prefix + slash commands, @mention/DM replies, interactive menus, reply summarisation, channel-specific outputs |
+| Discord bot interface | Delivered | Slash commands, @mention/DM replies, interactive menus, reply summarisation, channel-specific outputs |
 | Agent backend and tooling | Delivered | Read-only Prometheus/Loki/Docker tools + service discovery; read/write Docker/SSH tools library-only |
 | Self-hosted LLM integration | Delivered | OpenAI-compatible endpoint; tool-calling models preferred, graceful fallback otherwise |
 | Monitoring and logging integration | Delivered | Prometheus + Loki sources with fallback stubs; Prometheus self-metrics endpoint for the agent itself |
@@ -80,9 +80,9 @@ The bot handles:
 ## What Changed Since the Original Charter
 
 - **Read-only MVP first.** Mutation actions (restart services, change configurations) were deferred to a later phase with human approval rather than being built into the MVP.
-- **Service status via Docker discovery.** `!status` now reports real container state through Docker container discovery with separator-agnostic name matching, instead of the original `unknown` stub.
+- **Service status via Docker discovery.** `/status` now reports real container state through Docker container discovery with separator-agnostic name matching, instead of the original `unknown` stub.
 - **Agentic loop over static reports.** The LLM now writes its own PromQL/LogQL during investigations, discovers real service names first, and can inspect containers with read-only Docker tools.
-- **Slash commands.** A slash (`/`) command surface with autocomplete now runs alongside the prefix (`!`) commands, sharing one tool layer.
+- **Slash commands.** Operations are exposed as slash (`/`) commands with autocomplete, sharing one tool layer.
 - **Background monitoring inside the bot.** HTTP and Docker endpoint polling plus PromQL alert evaluation run in the Discord bot process rather than requiring a separate monitor.
 - **SQLite over a larger database.** Single-node SQLite is sufficient for the MVP and reduces deployment surface.
 - **Eval harness and agent self-metrics.** Programmatic task evaluation and Prometheus self-instrumentation were added for ongoing quality assessment.

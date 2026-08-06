@@ -114,7 +114,7 @@ async def _evaluate_rules(bot) -> None:
 async def _poll_containers(bot) -> None:
     """Track watched containers each cycle; alert when one stops running.
 
-    Only containers explicitly selected via the web UI or `!watch` are
+    Only containers explicitly selected via the web UI or `/watch` are
     tracked. New containers are ignored until the operator opts in.
     Also refreshes ``_container_state``, which the periodic status snapshot reads.
     """

@@ -69,7 +69,7 @@ class IncidentActionView(discord.ui.View):
 
     ``timeout=None`` makes the buttons persistent: they never expire while the
     bot is running, which matters because incidents are often handled long after
-    the thread opens. ``!resolve`` / ``/resolve`` remain as fallbacks after a bot
+    the thread opens. ``/resolve`` remain as fallbacks after a bot
     restart. **Fix** launches the remediation agent, which proposes a restart and
     posts an Approve/Reject view — a human must approve before anything executes.
     """
@@ -116,8 +116,8 @@ class IncidentActionView(discord.ui.View):
 class RemediationApprovalView(discord.ui.View):
     """Approve / Reject buttons for a proposed remediation action.
 
-    Persistent (``timeout=None``) while the bot runs; ``!approve`` / ``!reject`` (and
-    their slash forms) remain as fallback after a redeploy, mirroring the ack/resolve
+    Persistent (``timeout=None``) while the bot runs; ``/approve`` / ``/reject``
+    remain as fallback after a redeploy, mirroring the ack/resolve
     pattern. Approve is the only path that triggers the real Docker restart.
     """
 

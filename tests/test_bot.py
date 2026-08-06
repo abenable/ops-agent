@@ -11,7 +11,7 @@ from agent.bot.utils import (
 
 def test_task_path_rejects_traversal():
     """task_path must refuse names that escape the tasks/ directory,
-    so !task ../../etc/passwd cannot read arbitrary files."""
+    so /task ../../etc/passwd cannot read arbitrary files."""
     assert task_path("../../etc/passwd") is None
     assert task_path("foo/bar") is None
     assert task_path("foo\\bar") is None
@@ -71,27 +71,28 @@ def test_format_status_running_and_missing():
     assert format_status({"service": "ghost", "status": "not found"}) == "No container matching 'ghost'."
 
 
-def test_commands_registered():
-    from agent.bot.commands import setup_commands
+def test_slash_commands_registered():
+    from agent.bot.slash import setup_slash_commands
 
-    class FakeBot:
+    class FakeTree:
         def __init__(self):
             self.commands = {}
 
-        def command(self, *, name: str):
+        def command(self, *, name: str, description: str):
             def decorator(func):
                 self.commands[name] = func
                 return func
 
             return decorator
 
+    class FakeBot:
+        def __init__(self):
+            self.tree = FakeTree()
+
     bot = FakeBot()
-    setup_commands(bot)
-    assert "status" in bot.commands
-    assert "logs" in bot.commands
-    assert "metrics" in bot.commands
-    assert "incident" in bot.commands
-    assert "project-notes" in bot.commands
+    setup_slash_commands(bot)
+    for name in ("status", "logs", "metrics", "incident", "ask", "info", "watch", "remediate"):
+        assert name in bot.tree.commands
 
 
 def test_discord_log_handler_forwards_info_and_quiets_httpx():

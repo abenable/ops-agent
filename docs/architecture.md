@@ -6,7 +6,7 @@
         ▼                                          ▼
 ┌───────────────┐   ┌──────────────┐      ┌──────────────────┐
 │ Bot commands  │   │   Monitor    │      │   FastAPI routes │
-│(!/ / status…) │   │  (poll loop) │      │  (+ API key dep) │
+│(/ status…)    │   │  (poll loop) │      │  (+ API key dep) │
 └───────┬───────┘   └──────┬───────┘      └────────┬─────────┘
         │                  │                       │
         └──────────────────┼───────────────────────┘
@@ -35,7 +35,6 @@
 
 - `agent.bot.client` — Discord client bootstrap; on ready it starts the monitor, syncs the
   slash-command tree, and, if configured, a Discord log handler.
-- `agent.bot.commands` — prefix (`!`) command handlers.
 - `agent.bot.slash` — slash (`/`) command handlers via the `CommandTree`.
 - `agent.bot.menu` — interactive container picker and action buttons.
 - `agent.bot.views` — service panel view and persistent incident action buttons.
@@ -44,7 +43,7 @@
   table stores the last 20 turns per channel; the 10 most recent are passed as structured
   `HumanMessage`/`AIMessage` turns into the agentic loop so the agent resolves vague references
   (`logs`, `the web container`, `that one`) from prior context. `ask_with_memory` wraps the
-  fetch-record-run-store cycle for the @mention, `!ask`, and `/ask` paths.
+  fetch-record-run-store cycle for the @mention and `/ask` paths.
 - `agent.bot.monitor` — background poll loop; each cycle checks HTTP endpoint liveness
   (`MONITORED_ENDPOINTS`), evaluates PromQL alert rules (`PROMETHEUS_ALERT_RULES`), and
   inspects watched Docker containers when `DOCKER_MONITOR` is enabled — driving alerts,
@@ -72,7 +71,7 @@
 
 ## Data flow (incident)
 
-1. A trigger arrives — `!incident <service>` / `/incident`, `POST /incidents/{service}`, the
+1. A trigger arrives — `/incident <service>`, `POST /incidents/{service}`, the
    CLI, or the monitor escalating a down endpoint / firing PromQL rule.
 2. The workflow runs a bounded agentic loop: the LLM calls `list_services` to learn the real
    names, discovers metrics/labels, writes its own PromQL/LogQL through the read-only query
@@ -119,7 +118,7 @@
 
 A pending approval transitions to `running` via an atomic conditional UPDATE
 (`claim_pending_approval`) when a human approves, so a concurrent approval
-(button + `!approve`, or a double-click) cannot double-execute the restart —
+(button + `/approve`, or a double-click) cannot double-execute the restart —
 only the first caller wins the row. On restart success it becomes `approved`;
 on restart error, `failed`.
 

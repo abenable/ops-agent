@@ -10,11 +10,11 @@ Built during the Implementation Phase (Weeks 5–8) of the Marconi industrial tr
 
 ## Features
 
-- **Discord interface** — prefix (`!`) and slash (`/`) commands for status, logs, metrics,
+- **Discord interface** — slash (`/`) commands for status, logs, metrics,
   health, incident investigation, free-form questions, task simulation, and incident
   acknowledge/resolve; interactive container menu and service panel with action buttons;
   conversational replies when you @mention or DM the bot, with per-channel
-  conversation memory (`!ask` / `/ask` and @mention share one per-channel context).
+  conversation memory (`/ask` and @mention share one per-channel context).
   Verbose output is summarised by the LLM for clean replies, with a `raw` opt-out.
 - **Agentic investigation** — the LLM discovers real service names, writes its own PromQL/LogQL
   through read-only Prometheus and Loki tools (metric/label discovery, instant + range queries),
@@ -23,7 +23,7 @@ Built during the Implementation Phase (Weeks 5–8) of the Marconi industrial tr
 - **Background monitoring** — a poll loop runs two complementary checks each cycle: HTTP
   endpoint liveness, and PromQL alert-rule evaluation. It posts status changes and down-alerts
   to Discord and auto-opens a threaded incident on escalation. Container status is only reported
-  for containers explicitly selected via `!watch`/`!unwatch` or the web dashboard's watch toggle.
+  for containers explicitly selected via `/watch`/`/unwatch` or the web dashboard's watch toggle.
 - **Incident tracking** — SQLite-backed incidents with acknowledge / resolve lifecycle, an
   optional Discord thread per incident, and persistent Acknowledge/Resolve buttons on the
   incident thread message.
@@ -60,28 +60,28 @@ See [docs/setup.md](docs/setup.md) for the full configuration reference and Dock
 
 ## Discord commands
 
-Each command has both a prefix (`!`) and a slash (`/`) form. Verbose commands accept a `raw`
-flag/option to skip the LLM summary and show the full output.
+Commands are exposed as slash (`/`) commands. Verbose commands accept a `raw`
+option to skip the LLM summary and show the full output.
 
 | Command | Description |
 | --- | --- |
-| `!status <service>` / `/status` | Current status of a service via Docker container discovery |
-| `!containers [raw]` / `/containers [raw]` | List Docker containers grouped by state |
-| `!logs <service> [n] [raw]` / `/logs ...` | Last `n` log lines (default 10) from Loki |
-| `!metrics <service> [raw]` / `/metrics ...` | Current metrics for a service from Prometheus |
-| `!health <url>` / `/health` | Reachability + latency of an HTTP endpoint |
-| `!watching` / `/watching` | List endpoints configured for background monitoring |
-| `!watch <container>` / `/watch` | Add a container to the watch list (status updates + down-alerts) |
-| `!unwatch <container>` / `/unwatch` | Remove a container from the watch list |
-| `!watchlist` / `/watchlist` | List the containers currently being watched |
-| `!ask <question>` / `/ask` | Free-form agentic investigation using read-only tools |
-| `!incident <service>` / `/incident` | Run the incident investigation workflow |
-| `!task <name>` / `/task` | Run a simulated task from `tasks/<name>.yml` |
-| `!ack <incident_id>` / `/ack` | Acknowledge a stored incident |
-| `!resolve <incident_id>` / `/resolve` | Resolve a stored incident |
-| `!menu` / `/menu` | Interactive container picker with Status/Logs/Metrics buttons |
-| `!panel` / `/panel` | Service picker with Status/Health/Logs/Metrics/Incident buttons |
-| `!info` / `/info` | Bot info and support links |
+| `/status <service>` | Current status of a service via Docker container discovery |
+| `/containers [raw]` | List Docker containers grouped by state |
+| `/logs <service> [n] [raw]` | Last `n` log lines (default 10) from Loki |
+| `/metrics <service> [raw]` | Current metrics for a service from Prometheus |
+| `/health <url>` | Reachability + latency of an HTTP endpoint |
+| `/watching` | List endpoints configured for background monitoring |
+| `/watch <container>` | Add a container to the watch list (status updates + down-alerts) |
+| `/unwatch <container>` | Remove a container from the watch list |
+| `/watchlist` | List the containers currently being watched |
+| `/ask <question>` | Free-form agentic investigation using read-only tools |
+| `/incident <service>` | Run the incident investigation workflow |
+| `/task <name>` | Run a simulated task from `tasks/<name>.yml` |
+| `/ack <incident_id>` | Acknowledge a stored incident |
+| `/resolve <incident_id>` | Resolve a stored incident |
+| `/menu` | Interactive container picker with Status/Logs/Metrics buttons |
+| `/panel` | Service picker with Status/Health/Logs/Metrics/Incident buttons |
+| `/info` | Bot info and support links |
 
 You can also **@mention** or DM the bot with a question; it answers through the same agentic loop.
 
@@ -120,7 +120,7 @@ inactive when its channel id is unset). See [docs/discord-channels.md](docs/disc
 | `#status-updates` | Every up/down transition and periodic status snapshot for **watched** containers |
 | `#incidents` | One thread per incident, with ack/resolve updates |
 | `#agent-logs` | WARNING+ bot/backend logs (optional) |
-| `#test-tasks` | Safe channel to trigger `!task` runs |
+| `#test-tasks` | Safe channel to trigger `/task` runs |
 
 ## Project structure
 
@@ -128,7 +128,7 @@ inactive when its channel id is unset). See [docs/discord-channels.md](docs/disc
 .
 ├── main.py                  # Backwards-compatible launcher
 ├── src/agent/
-│   ├── bot/                 # Discord client, prefix + slash commands, menus, summarize, monitor, per-channel history
+│   ├── bot/                 # Discord client, slash commands, menus, summarize, monitor, per-channel history
 │   ├── api/                 # FastAPI server and routes
 │   ├── llm/                 # Self-hosted LLM client
 │   ├── tools/               # Controlled tools (status/logs/metrics/health/docker/ssh)
@@ -190,7 +190,7 @@ This is an MVP built for a controlled environment. Known limitations:
   monitor loop is (re)started from `on_ready`.
 - **Incident action buttons do not survive restarts** — the Acknowledge/Resolve buttons on an
   incident thread use `timeout=None` so they never expire while the bot runs, but stop listening
-  after a redeploy. The `!ack`/`!resolve` (and `/ack`/`/resolve`) commands remain as fallbacks.
+  after a redeploy. The `/ack`/`/resolve` commands remain as fallbacks.
 - **No RBAC** — any member who can see `#agent-commands` can run any command; SSH/Docker
   mutation tools are library-only and not exposed to chat or the LLM.
 - **Single-node SQLite** — stores incidents, watched containers, and pending remediation

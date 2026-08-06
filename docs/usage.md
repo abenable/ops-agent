@@ -2,45 +2,43 @@
 
 ## Discord commands
 
-Commands run in `#agent-commands` (or wherever the bot can read) and have both a prefix (`!`)
-and a slash (`/`) form. Verbose commands accept a `raw` flag/option to skip the LLM summary and
-show the full output.
+Commands run in `#agent-commands` (or wherever the bot can read) as slash (`/`) commands.
+Verbose commands accept a `raw` option to skip the LLM summary and show the full output.
 
 | Command | Description |
 | --- | --- |
-| `!status <service>` / `/status` | Current status of a service via Docker container discovery |
-| `!containers [raw]` / `/containers [raw]` | List Docker containers grouped by state |
-| `!logs <service> [n] [raw]` / `/logs ...` | Last `n` log lines (default 10) from Loki |
-| `!metrics <service> [raw]` / `/metrics ...` | Current metrics for a service from Prometheus |
-| `!health <url>` / `/health` | Reachability and latency of an HTTP endpoint |
-| `!watching` / `/watching` | List endpoints configured for background monitoring |
-| `!watch <container>` / `/watch` | Add a container to the watch list (status updates + down-alerts) |
-| `!unwatch <container>` / `/unwatch` | Remove a container from the watch list |
-| `!watchlist` / `/watchlist` | List the containers currently being watched |
-| `!ask <question>` / `/ask` | Free-form agentic investigation using read-only tools |
-| `!incident <service>` / `/incident` | Run the incident investigation workflow; posts summary + incident id, opens an incident thread, and alerts the alert channel |
-| `!task <name>` / `/task` | Run a simulated task from `tasks/<name>.yml` (restricted to the test-tasks channel if configured) |
-| `!ack <incident_id>` / `/ack` | Acknowledge a stored incident (and post to its thread) |
-| `!resolve <incident_id>` / `/resolve` | Resolve a stored incident (and post to its thread) |
-| `!menu` / `/menu` | Interactive container picker with Status/Logs/Metrics buttons |
-| `!panel` / `/panel` | Service picker with Status/Health/Logs/Metrics/Incident buttons |
-| `!info` / `/info` | Bot info and support links |
+| `/status <service>` | Current status of a service via Docker container discovery |
+| `/containers [raw]` | List Docker containers grouped by state |
+| `/logs <service> [n] [raw]` | Last `n` log lines (default 10) from Loki |
+| `/metrics <service> [raw]` | Current metrics for a service from Prometheus |
+| `/health <url>` | Reachability and latency of an HTTP endpoint |
+| `/watching` | List endpoints configured for background monitoring |
+| `/watch <container>` | Add a container to the watch list (status updates + down-alerts) |
+| `/unwatch <container>` | Remove a container from the watch list |
+| `/watchlist` | List the containers currently being watched |
+| `/ask <question>` | Free-form agentic investigation using read-only tools |
+| `/incident <service>` | Run the incident investigation workflow; posts summary + incident id, opens an incident thread, and alerts the alert channel |
+| `/task <name>` | Run a simulated task from `tasks/<name>.yml` (restricted to the test-tasks channel if configured) |
+| `/ack <incident_id>` | Acknowledge a stored incident (and post to its thread) |
+| `/resolve <incident_id>` | Resolve a stored incident (and post to its thread) |
+| `/menu` | Interactive container picker with Status/Logs/Metrics buttons |
+| `/panel` | Service picker with Status/Health/Logs/Metrics/Incident buttons |
+| `/info` | Bot info and support links |
 
 ## Reply summarisation
 
 Verbose commands (`containers`, `logs`, `metrics`) route their output through the LLM to
-produce a short, scannable Discord summary. Pass `raw` (a flag for prefix commands, an option
-for slash commands) to bypass the summary and see the complete output. Short commands
-(`status`, `health`, `watching`) return raw output for low latency.
+produce a short, scannable Discord summary. Pass the `raw` option to bypass the summary
+and see the complete output. Short commands (`status`, `health`, `watching`) return raw
+output for low latency.
 
 ## Conversational replies
 
 Tag the bot in a message or DM it (e.g. `@Oracle why is web slow?`) and it answers through
-the same agentic loop as `!ask` — it can call the read-only Prometheus/Loki and Docker tools
+the same agentic loop as `/ask` — it can call the read-only Prometheus/Loki and Docker tools
 to investigate. The prompt also includes environment context (monitored endpoints, configured
 channels, Prometheus/Loki URLs, and the available tool list) so answers are grounded in this
-deployment. Long replies are split across multiple messages. Prefix commands (`!status`,
-`!incident`, etc.) still work as usual.
+deployment. Long replies are split across multiple messages.
 
 ## HTTP API
 
@@ -107,12 +105,12 @@ Disabled when `PROMETHEUS_ALERT_RULES` is empty. See
 
 By default the monitor ignores containers. To get status snapshots in `#status-updates` and
 down-alerts in `#alerts` for a container, add it to the **watch list** — from Discord with
-`!watch <container>` / `/watch <container>` (or the Watch button in `!menu`), or from the web
-dashboard's container cards (`＋ watch` toggle). Names match separator-agnostically
+`/watch <container>` (or the Watch button in `/menu`), or from the web dashboard's container cards
+(`＋ watch` toggle). Names match separator-agnostically
 (`agent_api` finds `marconi-agent-api`).
 
-- `!watchlist` / `/watchlist` lists the current selection.
-- `!unwatch <container>` / `/unwatch <container>` (or the toggle again) stops reporting it.
+- `/watchlist` lists the current selection.
+- `/unwatch <container>` (or the toggle again) stops reporting it.
 - The periodic snapshot (`STATUS_SNAPSHOT_INTERVAL_SECONDS`) and container down-alerts only
   cover watched containers; everything else stays silent.
 - The watch list is persisted in SQLite, so it survives bot restarts.

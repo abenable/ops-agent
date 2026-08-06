@@ -5,7 +5,7 @@ tool-calling loop (``run_agentic_investigation``) with its own system prompt and
 tool subset. Its only write tool, ``propose_restart``, does NOT execute a restart —
 it records a pending approval in storage and returns the approval id to the LLM.
 The actual restart only runs through ``execute_approval``, which a human triggers
-via Discord buttons (``RemediationApprovalView``) or ``!approve`` / ``!reject``.
+via Discord buttons (``RemediationApprovalView``) or ``/approve`` / ``/reject``.
 """
 
 import logging
@@ -108,7 +108,7 @@ async def execute_approval(approval_id: str) -> dict:
     Refuses to run if the kill switch is off, the approval is missing, already
     resolved, or older than the configured TTL (in which case it is marked expired).
     The pending -> running claim is an atomic conditional UPDATE, so a concurrent
-    approval (button + ``!approve``, or a double-click) cannot double-execute: the
+    approval (button + ``/approve``, or a double-click) cannot double-execute: the
     first caller wins the row, the second sees it taken and refuses before restart.
     """
     if not settings.remediation_enabled:

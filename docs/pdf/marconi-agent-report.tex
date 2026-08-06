@@ -276,7 +276,7 @@ under \pkg{agent}:
 
 \begin{enumerate}[leftmargin=1.4em,itemsep=0.2em]
   \item \textbf{Interface layer} (\pkg{agent.bot}, \pkg{agent.api}): Discord
-    client, prefix and slash commands, the @mention conversational handler,
+    client, slash commands, the @mention conversational handler,
     the background monitor, interactive menus, a reply-summarisation layer,
     and the FastAPI routes.
   \item \textbf{Workflow layer} (\pkg{agent.workflows}): the incident
@@ -320,7 +320,7 @@ store.
 \node[input, left=1.2cm of discord] (monitor) {Background\\\scriptsize monitor};
 
 % --- Interface row
-\node[layer, below=1.1cm of discord] (bot) {Bot commands\\\scriptsize \pkg{agent.bot.commands}, \pkg{agent.bot.slash}, \pkg{agent.bot.menu}, \pkg{agent.bot.views}};
+\node[layer, below=1.1cm of discord] (bot) {Bot commands\\\scriptsize \pkg{agent.bot.slash}, \pkg{agent.bot.menu}, \pkg{agent.bot.views}};
 \node[layer, below=1.1cm of http] (api) {API routes\\\scriptsize \pkg{agent.api.routes}};
 \node[layer, below=1.1cm of monitor] (monloop) {Poll loop\\\scriptsize \pkg{agent.bot.monitor}};
 
@@ -416,15 +416,14 @@ optional \pkg{.env} file:
 
 The Discord client is implemented in \pkg{agent.bot.client} and built on the
 \pkg{discord.py}~\cite{discordpy} library with the \pkg{commands.Bot} extension.
-The bot enables the Message Content privileged intent (which prefix commands
-depend on) and exits with a clear diagnostic if the intent is not granted or
-the token is invalid. Its behaviour splits across four areas, all over a
-shared tool and workflow layer:
+The bot enables the Message Content privileged intent (which the @mention/DM
+conversational path depends on) and exits with a clear diagnostic if the intent
+is not granted or the token is invalid. Its behaviour splits across four
+areas, all over a shared tool and workflow layer:
 
 \begin{itemize}[leftmargin=1.4em,itemsep=0.2em]
-  \item \textbf{Command surfaces.} Two parallel surfaces share one tool and
-    workflow layer: prefix commands (\pkg{!}) in \pkg{agent.bot.commands} and
-    slash commands (\pkg{/}) in \pkg{agent.bot.slash} through the
+  \item \textbf{Command surfaces.} A single slash-command surface
+    (\pkg{agent.bot.slash}) exposes every operation through the
     \pkg{CommandTree}. Slash commands give operators autocomplete and a
     structured parameter UI; on startup the bot syncs them to the configured
     guild (fast, for testing) or globally.
@@ -433,12 +432,12 @@ shared tool and workflow layer:
     flag, so the monitor and the log handler start only once. On first ready it
     starts the background monitor, optionally attaches a Discord log handler,
     syncs the slash-command tree, and probes the LLM for tool-calling support.
-    The \pkg{on\_message} handler dispatches \pkg{!} messages to the command
-    processor and routes direct messages and @mentions through the agentic
-    investigation loop (\pkg{run\_ask\_workflow} via \pkg{ask\_with\_memory}),
-    injecting an environment context string (monitored endpoints, alert rules,
-    channel identifiers, source URLs, and the available tool list) so answers
-    are grounded in the actual deployment, and feeding the channel's prior
+    The \pkg{on\_message} handler routes direct messages and @mentions
+    through the agentic investigation loop
+    (\pkg{run\_ask\_workflow} via \pkg{ask\_with\_memory}), injecting an
+    environment context string (monitored endpoints, alert rules, channel
+    identifiers, source URLs, and the available tool list) so answers are
+    grounded in the actual deployment, and feeding the channel's prior
     conversational turns as structured history so the agent can resolve vague
     references from earlier context.
   \item \textbf{Reply handling.} Long replies are split by
@@ -460,13 +459,11 @@ shared tool and workflow layer:
     with a single click.
 \end{itemize}
 
-Table~\ref{tab:cmds} summarises the slash commands. Each has a prefix
-equivalent (e.g.\ \pkg{/status} and \cmd{!status}) for operators who type in
-chat.
+Table~\ref{tab:cmds} summarises the slash commands available to operators.
 
 \begin{table}[h]
 \centering
-\caption{Discord slash commands (modules \pkg{agent.bot.slash} and \pkg{agent.bot.commands}).}
+\caption{Discord slash commands (module \pkg{agent.bot.slash}).}
 \label{tab:cmds}
 \small
 \begin{tabularx}{\textwidth}{lX}
@@ -513,11 +510,11 @@ The function guards against failure at every step:
     to a Discord-safe length.
   \item The service argument is sanitised (newlines collapsed, length capped)
     before it enters the prompt, closing a prompt-injection surface.
-  \item Each verbose command accepts a \pkg{raw} opt-out (a prefix flag or a
-    slash option) so an operator who needs the complete, unsummarised output can
-    bypass the LLM pass. Short, already-clean commands (\pkg{status},
-    \pkg{health}, \pkg{watching}) skip the summariser entirely and return raw
-    output for low latency.
+  \item Each verbose command accepts a \pkg{raw} opt-out (a slash option) so
+    an operator who needs the complete, unsummarised output can bypass the LLM
+    pass. Short, already-clean commands (\pkg{status}, \pkg{health},
+    \pkg{watching}) skip the summariser entirely and return raw output for low
+    latency.
   \item A post-processor, \pkg{\_discordify}, normalises Markdown that Discord
     renders poorly: ATX headings (\pkg{\#\# Foo}) become \pkg{**bold**}, and
     Markdown tables become \pkg{- **Label:** value} bullets (wider tables join
@@ -613,8 +610,8 @@ image, backed by live Docker container discovery.
 \subsubsection{Metrics and logs}
 
 \begin{sloppypar}
-The Discord \pkg{!metrics} and \pkg{!logs} commands (and their slash forms) do
-not run a fixed query; they route through the same agentic loop as \pkg{!ask}
+The Discord \pkg{/metrics} and \pkg{/logs} commands do
+not run a fixed query; they route through the same agentic loop as \pkg{/ask}
 via a \pkg{run\_scoped\_investigation} helper with a scoped prompt. The model
 calls \pkg{list\_services} to resolve the name the operator typed (handling
 typos and differing separators), discovers the available metric names and
@@ -868,7 +865,7 @@ distinct parts:
     (default 300), and marks it \pkg{failed} if the restart raises. The pending
     $\to$ \pkg{running} transition is an atomic conditional UPDATE
     (\pkg{claim\_pending\_approval}) so that a concurrent approval---a button
-    click racing \pkg{!approve}, or a double-click---cannot double-execute the
+    click racing \pkg{/approve}, or a double-click---cannot double-execute the
     restart: only the first caller wins the row, the second sees it taken and
     refuses before touching Docker. \pkg{reject\_approval} marks a pending
     approval \pkg{rejected}. A global kill switch, \pkg{REMEDIATION\_ENABLED},
@@ -880,9 +877,8 @@ distinct parts:
     incident's stored diagnosis and posts one \pkg{RemediationApprovalView}
     (Approve/Reject, persistent) per proposal. Approve calls
     \pkg{execute\_approval}; Reject calls \pkg{reject\_approval}. The
-    \pkg{/remediate}, \pkg{/approve}, and \pkg{/reject} commands (and their
-    prefix equivalents) are fallbacks for when the buttons are not listening,
-    such as after a bot redeploy.
+    \pkg{/remediate}, \pkg{/approve}, and \pkg{/reject} commands are fallbacks
+    for when the buttons are not listening, such as after a bot redeploy.
 \end{itemize}
 
 The \pkg{pending\_approvals} table schema is:
@@ -1061,7 +1057,7 @@ context only, not log shipping. The wrapper \pkg{ask\_with\_memory} fetches
 prior turns, stores the user's raw question, runs the workflow with that
 history, and stores the answer; the current question is appended as the final
 \pkg{HumanMessage} and is never duplicated into the history block. The same
-wrapper serves the \pkg{@mention}/DM path, \pkg{!ask}, and \pkg{/ask}, so all
+wrapper serves the \pkg{@mention}/DM path and \pkg{/ask}, so all
 three conversational entry points share one memory representation and one
 per-channel context.
 
@@ -1250,7 +1246,7 @@ functional against a live deployment. The measured outcomes are as follows.
     buttons or commands, and executed only on approval, with a time-to-live
     expiry and a global kill switch. The structural gate keeps the write path
     out of the autonomous loop.
-  \item \textbf{Discord integration.} Prefix and slash command surfaces share
+  \item \textbf{Discord integration.} A single slash-command surface shares
     one tool layer; the @mention conversational handler, the background
     monitor with its periodic container-status snapshot, the interactive
     container menu and service panel, the persistent incident action and
@@ -1610,7 +1606,6 @@ import path, the canonical way to locate code in this project.
 \pkg{agent.config.settings} & Pydantic settings loaded from env and \pkg{.env} \\
 \pkg{agent.config.dotenv\_loader} & Explicit \pkg{.env} loading before settings \\
 \pkg{agent.bot.client} & Discord client, on\_ready, on\_message, log handler \\
-\pkg{agent.bot.commands} & Prefix command handlers \\
 \pkg{agent.bot.slash} & Slash command handlers (CommandTree) \\
 \pkg{agent.bot.menu} & Interactive container picker and action buttons \\
 \pkg{agent.bot.views} & Service panel view and persistent incident action buttons \\
