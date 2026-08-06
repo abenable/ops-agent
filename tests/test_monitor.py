@@ -146,6 +146,38 @@ def test_evaluate_rules_fires_once_on_edge_and_skips_empty(monkeypatch):
     assert run_workflow.await_count == 1
 
 
+def test_evaluate_rules_dispatches_investigation_with_detected_target_label(monkeypatch):
+    """The monitor must pass the *detected* service/target label (not the opaque
+    rule name) to run_incident_workflow, so the investigation targets the right
+    container. This is the 'identify incidents' dispatch contract; the LLM
+    investigation it triggers is graded by the api_down/root-cause evals.
+    """
+    settings = Settings(
+        prometheus_alert_rules="target_down=up == 0",
+        discord_alert_channel_id=1,
+        _env_file=None,
+    )
+    monkeypatch.setattr(monitor, "settings", settings)
+    monitor._rule_state.clear()
+
+    bot = MagicMock()
+    # Firing series carries job=node-exporter -> label "target_down: node-exporter"
+    query_mock = AsyncMock(
+        side_effect=[{"data": {"result": [{"metric": {"job": "node-exporter"}}]}}]
+    )
+    monkeypatch.setattr(monitor, "query_prometheus", query_mock)
+    monkeypatch.setattr(monitor.discord_alert, "send_alert", AsyncMock())
+    run_workflow = AsyncMock(return_value={"incident_id": "xyz", "summary": "bad"})
+    monkeypatch.setattr(monitor, "run_incident_workflow", run_workflow)
+    monkeypatch.setattr(monitor.discord_alert, "open_incident_thread", AsyncMock())
+
+    asyncio.run(monitor._evaluate_rules(bot))
+    # The dispatched investigation must target the detected service, not "target_down".
+    run_workflow.assert_awaited_once()
+    dispatched_label = run_workflow.await_args.args[0]
+    assert "node-exporter" in dispatched_label, f"dispatched label was {dispatched_label!r}"
+
+
 def _assert_source_client_headers(module, token_setting, monkeypatch):
     """Helper: assert the source client sends Bearer <token> when configured."""
     monkeypatch.setattr(module.settings, token_setting, "secret")

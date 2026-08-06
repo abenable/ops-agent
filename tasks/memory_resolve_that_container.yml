@@ -1,0 +1,19 @@
+name: Resolve "that container" from conversation history
+service: n8n
+symptom: >
+  The operator previously asked about the web thing and you confirmed n8n.
+  Now they say: "investigate that one's memory pressure". Resolve "that one"
+  from the prior turn to n8n and investigate it.
+expected_agent_actions:
+  - list_services
+  - query docker for container state
+  - query prometheus for memory usage
+history:
+  - role: user
+    content: "is the web thing up?"
+  - role: assistant
+    content: "Checked list_services: the n8n container is running."
+expected_evidence:
+  - n8n
+reference_summary: "n8n memory is climbing toward OOM."
+reference_tool_calls: [list_services, docker_status, list_metric_names, query_prometheus]

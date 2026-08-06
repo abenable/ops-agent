@@ -11,3 +11,8 @@ expected_agent_actions:
   - list_metric_names
   - get_label_values
   - query_prometheus
+expected_evidence:
+  - node-exporter
+  - up
+reference_summary: "Prometheus cannot reach node-exporter; up=0, 0 samples."
+reference_tool_calls: [list_services, docker_status, list_metric_names, get_label_values, query_prometheus]

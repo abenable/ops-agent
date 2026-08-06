@@ -1,0 +1,13 @@
+name: Report container running
+service: api
+symptom: >
+  An operator asks whether the api container is up. Confirm its current state
+  from Docker and report it.
+expected_agent_actions:
+  - list_services
+  - query docker for container state
+expected_evidence:
+  - api
+  - running
+reference_summary: "The api container is running and healthy."
+reference_tool_calls: [list_services, docker_status]

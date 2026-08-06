@@ -9,3 +9,8 @@ expected_agent_actions:
   - docker_status
   - query_loki
   - docker_logs
+expected_evidence:
+  - n8n
+  - promtail
+reference_summary: "Promtail stopped shipping n8n logs into Loki."
+reference_tool_calls: [list_services, docker_status, query_loki, docker_logs]

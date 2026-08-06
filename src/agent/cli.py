@@ -91,6 +91,7 @@ def _run_eval(args):
         INCIDENT_SYSTEM_PROMPT,
         run_agentic_investigation_stream,
     )
+    from agent.workflows.remediation import run_remediation_workflow
     from agent.llm.client import _resolve
     from agent.config.settings import settings
 
@@ -116,12 +117,33 @@ def _run_eval(args):
         calls: list[str] = []
         summary = ""
         error: str | None = None
+        proposals: list[dict] | None = None
         t0 = time.monotonic()
+        if harness.kind == "remediation":
+            try:
+                incident_id = f"eval-{ts}"
+                res = await run_remediation_workflow(
+                    incident_id=incident_id, service=harness.service, diagnosis=harness.diagnosis()
+                )
+                summary = res.get("summary", "")
+                proposals = res.get("proposals", [])
+                transcript.append({"type": "remediation", "incident_id": incident_id, "proposals": proposals})
+                if proposals:
+                    calls.append("propose_restart")
+            except Exception as exc:
+                error = str(exc)
+            duration = time.monotonic() - t0
+            result = harness.evaluate(tool_calls=calls, summary=summary, error=error, transcript=transcript, proposals=proposals)
+            return result, transcript, duration
+        prompt = f"Investigate service {harness.service}."
+        if harness.symptom:
+            prompt += f" Reported symptom: {harness.symptom}"
         try:
             async for event in run_agentic_investigation_stream(
-                f"Investigate service {harness.service}.",
+                prompt,
                 system_prompt=INCIDENT_SYSTEM_PROMPT,
                 kind="incident",
+                history=harness.history() or None,
             ):
                 ev = {
                     k: v
@@ -138,7 +160,7 @@ def _run_eval(args):
         except Exception as exc:
             error = str(exc)
         duration = time.monotonic() - t0
-        result = harness.evaluate(tool_calls=calls, summary=summary, error=error)
+        result = harness.evaluate(tool_calls=calls, summary=summary, error=error, transcript=transcript)
         return result, transcript, duration
 
     def _trial_json_obj(h, result, transcript, duration, trial_idx):

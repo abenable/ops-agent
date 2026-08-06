@@ -11,3 +11,5 @@ expected_agent_actions:
 expected_evidence:
   - vllm
   - unreachable
+reference_summary: "The local vLLM endpoint is unreachable."
+reference_tool_calls: [list_services, docker_status, docker_logs]

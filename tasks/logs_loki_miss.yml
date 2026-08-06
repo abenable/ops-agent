@@ -1,0 +1,16 @@
+name: Read logs from docker (Loki miss)
+kind: logs
+service: n8n
+symptom: >
+  query_loki returns zero log lines for n8n even though the container is
+  running and producing logs. Promtail may have stopped shipping. The operator
+  wants the recent logs straight from the container.
+expected_agent_actions:
+  - list_services
+  - query loki for recent error logs
+  - query docker for container state
+expected_source: docker_logs
+expected_evidence:
+  - n8n
+reference_summary: "Loki has no n8n logs; pulled logs from docker instead."
+reference_tool_calls: [list_services, query_loki, docker_status, docker_logs]

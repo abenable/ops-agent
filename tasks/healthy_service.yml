@@ -11,3 +11,5 @@ expected_agent_actions:
 expected_evidence:
   - running
   - healthy
+reference_summary: "The api container is running and healthy; no incident."
+reference_tool_calls: [list_services, docker_status]
