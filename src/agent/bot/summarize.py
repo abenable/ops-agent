@@ -1,5 +1,7 @@
 """Send raw tool outputs through the LLM for a cleaned, human-readable summary."""
 
+import re
+
 from agent.llm.client import get_llm
 
 # How much raw output we feed to the LLM for context.
@@ -10,10 +12,28 @@ _MAX_DISPLAY = 1800
 # Hard cap on anything we return, so a caller can always send it in one message.
 _MAX_OUT_LEN = 1900
 
+# Markdown ATX headings (## Foo) — Discord renders these as literal text, so
+# normalize them to **bold**. Small models emit `####` even when asked not to.
+_HEADING_RE = re.compile(r"^[ \t]{0,3}#{1,6}[ \t]+(.+?)[ \t]*#*[ \t]*$", re.MULTILINE)
+
 
 def _sanitize(value: str) -> str:
     """Collapse whitespace and cap length so user input cannot inject prompt lines."""
     return " ".join(str(value).split())[:200]
+
+
+def _discordify(text: str) -> str:
+    """Normalize markdown heading syntax to Discord **bold**.
+
+    Discord does not render ``#``/``##``/``####`` headings — they show as literal
+    text. Small models emit them despite prompt instructions, so we convert
+    ``## Foo`` to ``**Foo**``. Content inside ``` code fences is left untouched
+    so a ``# comment`` inside a pasted log block is not mangled.
+    """
+    parts = text.split("```")
+    for i in range(0, len(parts), 2):  # even indices are outside code fences
+        parts[i] = _HEADING_RE.sub(r"**\1**", parts[i])
+    return "```".join(parts)
 
 
 def _fit(text: str) -> str:
@@ -37,7 +57,8 @@ async def clean(raw: str, *, service: str, action: str) -> str:
         f"You are Oracle, a terse infrastructure-operations assistant.\n"
         f"The user asked you to {action} for `{svc}`.\n"
         f"Summarize the raw output below using Discord markdown formatting:\n"
-        f"- Use **bold** section headers for each group or category.\n"
+        f"- Use **bold** for each section header (e.g. **Build Workflow Index**).\n"
+        f"- Do NOT use `#`/`##`/`####` heading syntax — Discord renders it as literal text.\n"
         f"- Use bullet lists (`-`) for items.\n"
         f"- Wrap container names, IDs, and URLs in backticks.\n"
         f"- Keep each paragraph short and scannable; avoid one huge wall of text.\n"
@@ -57,4 +78,4 @@ async def clean(raw: str, *, service: str, action: str) -> str:
     if not result:
         # LLM returned nothing usable; show the raw output instead of an empty message.
         return _fit(f"```\n{raw[:_MAX_DISPLAY]}\n```")
-    return _fit(result)
+    return _fit(_discordify(result))

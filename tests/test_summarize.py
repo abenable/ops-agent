@@ -65,3 +65,34 @@ def test_fit_caps_long_output_with_ellipsis():
     out = summarize._fit(long)
     assert len(out) <= summarize._MAX_OUT_LEN
     assert out.endswith("\u2026")
+
+
+def test_discordify_converts_markdown_headings_to_bold():
+    # Discord renders # headings as literal text; the post-processor must turn
+    # them into **bold** so /logs summaries display as section labels.
+    src = "#### Build Workflow Index\nbody\n## Version\nbody"
+    out = summarize._discordify(src)
+    assert "####" not in out
+    assert "##" not in out
+    assert "**Build Workflow Index**" in out
+    assert "**Version**" in out
+
+
+def test_discordify_leaves_code_block_headings_untouched():
+    # A `# comment` inside a pasted log block must not be mangled.
+    src = "## Section\n```\n# this is a comment\nbash -c 'echo hi'\n```\n## Next"
+    out = summarize._discordify(src)
+    assert "# this is a comment" in out
+    assert "**Section**" in out
+    assert "**Next**" in out
+
+
+def test_clean_runs_discordify_on_llm_output():
+    # End-to-end: an LLM that emits `####` still yields bold sections.
+    with patch(
+        "agent.bot.summarize.get_llm",
+        return_value=FakeLLM("#### Build Workflow Index\nFinished processing 0 workflows."),
+    ):
+        out = asyncio.run(summarize.clean("raw", service="n8n", action="show logs"))
+    assert "####" not in out
+    assert "**Build Workflow Index**" in out
