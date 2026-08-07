@@ -56,6 +56,10 @@ class Settings(BaseSettings):
     ollama_model: str = "gemma4:e4b"
     vllm_base_url: str = "http://localhost:8001/v1"
     vllm_model: str = "Qwen/Qwen2.5-1.5B-Instruct"
+    # Disable the reasoning/thinking trace for Qwen3-style models served by vLLM
+    # (passes chat_template_kwargs.enable_thinking=false). An alert bot should be
+    # fast, not spend minutes thinking per call. No-op for non-reasoning models.
+    llm_disable_thinking: bool = False
 
     # API server
     api_key: str = Field(default="", validation_alias="API_KEY")

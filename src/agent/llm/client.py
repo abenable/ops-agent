@@ -27,12 +27,13 @@ def get_llm(temperature: float = 0.0) -> ChatOpenAI:
     base_url, model = _resolve(settings.llm_provider)
     # Local providers don't need a key, but ChatOpenAI requires a non-empty one.
     api_key = settings.llm_api_key or "local-no-key"
-    return ChatOpenAI(
-        model=model,
-        api_key=api_key,
-        base_url=base_url,
-        temperature=temperature,
-    )
+    kwargs: dict = dict(model=model, api_key=api_key, base_url=base_url, temperature=temperature)
+    if settings.llm_disable_thinking:
+        # Qwen3-style reasoning models: turn the thinking trace off so the bot
+        # answers in seconds, not minutes. vLLM reads chat_template_kwargs from
+        # the request body; extra_body is the OpenAI SDK's route into that body.
+        kwargs["model_kwargs"] = {"extra_body": {"chat_template_kwargs": {"enable_thinking": False}}}
+    return ChatOpenAI(**kwargs)
 
 
 def set_llm_provider(provider: str) -> str:
