@@ -32,7 +32,7 @@ def get_llm(temperature: float = 0.0) -> ChatOpenAI:
         # Qwen3-style reasoning models: turn the thinking trace off so the bot
         # answers in seconds, not minutes. vLLM reads chat_template_kwargs from
         # the request body; extra_body is the OpenAI SDK's route into that body.
-        kwargs["model_kwargs"] = {"extra_body": {"chat_template_kwargs": {"enable_thinking": False}}}
+        kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
     return ChatOpenAI(**kwargs)
 
 
