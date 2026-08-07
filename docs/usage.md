@@ -87,27 +87,30 @@ polls each endpoint and:
 
 Disabled when `MONITORED_ENDPOINTS` is empty.
 
-### PromQL alert rules
+### Container-down alerting (Docker)
 
-Set `PROMETHEUS_ALERT_RULES` to comma-separated `name=<PromQL>` pairs. Each cycle
-the bot evaluates every rule against `PROMETHEUS_URL`. A rule fires when the query
-returns one or more series, and the bot alerts only on the first
-not-firing → firing transition.
+With `DOCKER_MONITOR=true` the bot alerts on container status changes observed
+straight from the Docker socket — **Prometheus is kept for metrics, not
+alerting.** A container is in scope when it matches `DOCKER_NAME_FILTER` (empty
+filter = every container) or is explicitly watched (see below).
 
-- firing → posts a critical alert to `#alerts` and opens an incident thread.
-- recovering → posts an info note to `#status-updates`.
-- `PROMETHEUS_TOKEN` is sent as a bearer token when set.
+- `running` → not-running → posts a critical alert to `#alerts` and opens an
+  incident thread.
+- not-running → `running` → posts a recovery note to `#status-updates`.
+- The first poll after the bot (monitor) restarts baselines the current state
+  without alerting, so restarting the bot never produces a false edge — the bug
+  that previously caused a false "node-exporter/cadvisor down" alert on a
+  Prometheus restart.
 
-Disabled when `PROMETHEUS_ALERT_RULES` is empty. See
-[workflows.md](workflows.md) for the full flow.
+See [workflows.md](workflows.md) for the full flow.
 
 ### Container watch list
 
-By default the monitor ignores containers. To get status snapshots in `#status-updates` and
-down-alerts in `#alerts` for a container, add it to the **watch list** — from Discord with
-`/watch <container>` (or the Watch button in `/menu`), or from the web dashboard's container cards
-(`＋ watch` toggle). Names match separator-agnostically
-(`agent_api` finds `marconi-agent-api`).
+`/watch <container>` adds an out-of-filter container to the tracked set (the
+`DOCKER_NAME_FILTER` is the default scope, so watching is only needed for
+containers that don't match it). From Discord use `/watch` (or the Watch button
+in `/menu`), or the web dashboard's container cards (`＋ watch` toggle). Names
+match separator-agnostically (`agent_api` finds `marconi-agent-api`).
 
 - `/watchlist` lists the current selection.
 - `/unwatch <container>` (or the toggle again) stops reporting it.

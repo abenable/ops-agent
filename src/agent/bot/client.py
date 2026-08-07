@@ -7,7 +7,7 @@ import sys
 import discord
 from discord.ext import commands
 
-from agent.bot.monitor import get_alert_rules, get_monitored_endpoints, start_monitor
+from agent.bot.monitor import get_monitored_endpoints, start_monitor
 from agent.bot.onboarding import post_project_notes, post_welcome
 from agent.bot.tasks import ensure_task_panel
 from agent.bot.summarize import discordify
@@ -98,8 +98,6 @@ def _attach_discord_log_handler(bot: discord.Client) -> None:
 async def _environment_context() -> str:
     endpoints = get_monitored_endpoints()
     endpoint_lines = [f"- {name}: {url}" for name, url in endpoints.items()]
-    rules = get_alert_rules()
-    rule_lines = [f"- {name}: {expr}" for name, expr in rules.items()]
     base_url, model = _resolve(settings.llm_provider)
     # Ground the agent in the live container list so it answers questions about
     # containers from real data, not memory. The agent still decides whether to
@@ -118,7 +116,7 @@ async def _environment_context() -> str:
         "Environment context:\n"
         f"Running containers: {container_line}\n"
         f"Monitored endpoints:\n{'\n'.join(endpoint_lines) if endpoint_lines else '- none configured'}\n"
-        f"PromQL alert rules:\n{'\n'.join(rule_lines) if rule_lines else '- none configured'}\n"
+        f"Container-down alerting: docker_name_filter={settings.docker_name_filter or '(all containers)'}\n"
         f"Alert channel: {settings.discord_alert_channel_id or 'not set'}\n"
         f"Status channel: {settings.discord_status_channel_id or 'not set'}\n"
         f"Incident channel: {settings.discord_incident_channel_id or 'not set'}\n"

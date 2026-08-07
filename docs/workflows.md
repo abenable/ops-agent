@@ -41,34 +41,38 @@ For each `MONITORED_ENDPOINTS` entry:
    - healthy→down → post a critical alert **and** run the incident workflow, opening a thread.
 3. Store the new state.
 
-### PromQL alert rules
+### Container-down alerting (Docker)
 
-For each `PROMETHEUS_ALERT_RULES` entry:
+When `DOCKER_MONITOR=true`, the poll loop inspects containers each cycle and
+alerts on status changes. **Alerting is Docker-only — Prometheus is kept for
+metrics, not alerting** — so a container stopping is observed straight from the
+Docker socket: there is no scrape gap and no PromQL edge to mis-fire on a
+Prometheus restart.
 
-1. `query_prometheus(expr)` — a rule is **firing** when the result set is non-empty.
-2. Compare to the previous state (kept in memory):
-   - not-firing→firing → post a critical alert **and** run the incident workflow, opening a thread;
-   - firing→not-firing → post a recovery note to the status channel.
-3. Store the new state.
+A container is **in scope** if it matches `DOCKER_NAME_FILTER` (empty filter =
+every container) or is explicitly watched via `/watch`. For each in-scope
+container:
 
-Prometheus/Loki queries use a 10s timeout and optional bearer tokens from
-`PROMETHEUS_TOKEN` / `LOKI_TOKEN`.
+1. `docker.list_containers(all_containers=True)` returns the full list.
+2. A `running` → non-running transition posts a critical alert **and** runs the
+   incident workflow, opening a thread (just like the endpoint path above).
+3. A non-running → `running` transition posts a recovery note to the status
+   channel.
+4. The first poll after a monitor restart baselines the current state without
+   alerting (`prev` is None), so restarting the monitor never produces a false
+   edge — the bug that previously caused a false "node-exporter/cadvisor down"
+   alert on a Prometheus restart.
+5. The periodic status snapshot (`STATUS_SNAPSHOT_INTERVAL_SECONDS`) writes the
+   state of all tracked containers to `#status-updates`.
 
-### Container watch-list monitoring
+`/watch` adds an out-of-filter container to the tracked set; the filter is the
+default scope. The watch list is persisted in SQLite and can be edited via
+`/watch`/`/unwatch`/`/watchlist`, the web dashboard toggle, or the Watch button
+in `/menu`.
 
-When `DOCKER_MONITOR=true`, the poll loop also inspects every container in the
-**watch list** each cycle:
-
-1. `docker.list_containers(all_containers=True)` returns the full container list.
-2. Only containers whose name appears in the watch list are considered.
-3. A container that transitions from `running` to a non-running state triggers a
-   critical alert to `#alerts`.
-4. The periodic status snapshot (`STATUS_SNAPSHOT_INTERVAL_SECONDS`) writes the
-   state of all watched containers to `#status-updates`.
-
-Containers not in the watch list are silently ignored. The watch list is persisted
-in SQLite and can be edited via `/watch`/`/unwatch`/`/watchlist`, the web
-dashboard toggle, or the Watch button in `/menu`.
+Prometheus/Loki queries (for the metrics/report-performance capability, not
+alerting) use a 10s timeout and optional bearer tokens from `PROMETHEUS_TOKEN`
+/ `LOKI_TOKEN`.
 
 ## Remediation workflow
 

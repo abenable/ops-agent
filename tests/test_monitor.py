@@ -49,10 +49,9 @@ def test_poll_once_escalates_on_healthy_to_down(monkeypatch):
         monitored_endpoints="web=http://localhost:8000",
         discord_status_channel_id=1,
         discord_alert_channel_id=2,
-        # Neutralize the other two poll phases so only endpoint logic is exercised.
+        # Neutralize the container poll phase so only endpoint logic is exercised.
         # Explicit kwargs override os.environ, which load_env() pollutes from .env.
         docker_monitor=False,
-        prometheus_alert_rules="",
         _env_file=None,
     )
     monkeypatch.setattr(monitor, "settings", settings)
@@ -86,96 +85,82 @@ def test_poll_once_escalates_on_healthy_to_down(monkeypatch):
     open_thread.assert_awaited_once()
 
 
-def test_alert_rules_parsing(monkeypatch):
-    monkeypatch.setattr(
-        monitor,
-        "settings",
-        Settings(prometheus_alert_rules="target_down=up == 0, high_load=node_load1 > 4", _env_file=None),
-    )
-    assert monitor._alert_rules() == {
-        "target_down": "up == 0",
-        "high_load": "node_load1 > 4",
-    }
-
-
-def test_alert_rules_empty_by_default(monkeypatch):
-    monkeypatch.delenv("PROMETHEUS_ALERT_RULES", raising=False)
-    monkeypatch.setattr(monitor, "settings", Settings(_env_file=None))
-    assert monitor._alert_rules() == {}
-
-
-def test_evaluate_rules_fires_once_on_edge_and_skips_empty(monkeypatch):
-    settings = Settings(
-        prometheus_alert_rules="target_down=up == 0",
-        discord_alert_channel_id=1,
-        _env_file=None,
-    )
-    monkeypatch.setattr(monitor, "settings", settings)
-    monitor._rule_state.clear()
-
-    bot = MagicMock()
-    query_mock = AsyncMock(
-        side_effect=[
-            {"data": {"result": []}},
-            {"data": {"result": [{"metric": {}}]}},
-            {"data": {"result": [{"metric": {}}]}},
-        ]
-    )
-    monkeypatch.setattr(monitor, "query_prometheus", query_mock)
-    send_alert = AsyncMock()
-    monkeypatch.setattr(monitor.discord_alert, "send_alert", send_alert)
-    run_workflow = AsyncMock(return_value={"incident_id": "xyz", "summary": "bad"})
-    monkeypatch.setattr(monitor, "run_incident_workflow", run_workflow)
-    open_thread = AsyncMock()
-    monkeypatch.setattr(monitor.discord_alert, "open_incident_thread", open_thread)
-
-    # Empty result: no alert.
-    asyncio.run(monitor._evaluate_rules(bot))
-    send_alert.assert_not_awaited()
-    run_workflow.assert_not_awaited()
-
-    # Transition to firing: alert + incident thread exactly once.
-    asyncio.run(monitor._evaluate_rules(bot))
-    send_alert.assert_awaited_once()
-    run_workflow.assert_awaited_once()
-    open_thread.assert_awaited_once()
-
-    # Still firing: no additional alert.
-    asyncio.run(monitor._evaluate_rules(bot))
-    assert send_alert.await_count == 1
-    assert run_workflow.await_count == 1
-
-
-def test_evaluate_rules_dispatches_investigation_with_detected_target_label(monkeypatch):
-    """The monitor must pass the *detected* service/target label (not the opaque
-    rule name) to run_incident_workflow, so the investigation targets the right
-    container. This is the 'identify incidents' dispatch contract; the LLM
-    investigation it triggers is graded by the api_down/root-cause evals.
+def test_poll_containers_alerts_on_filtered_container_stopping(monkeypatch):
+    """A container matching docker_name_filter transitioning running -> stopped
+    sends a critical alert AND opens an incident. This is the 'prometheus went
+    down' case: alerting is Docker-only, so no PromQL scrape gap can mis-fire.
     """
     settings = Settings(
-        prometheus_alert_rules="target_down=up == 0",
+        docker_monitor=True,
+        docker_name_filter="marconi-",
         discord_alert_channel_id=1,
+        discord_status_channel_id=2,
         _env_file=None,
     )
     monkeypatch.setattr(monitor, "settings", settings)
-    monitor._rule_state.clear()
+    monkeypatch.setattr(monitor, "list_watched_containers", lambda: [])
+    monitor._container_state.clear()
 
     bot = MagicMock()
-    # Firing series carries job=node-exporter -> label "target_down: node-exporter"
-    query_mock = AsyncMock(
-        side_effect=[{"data": {"result": [{"metric": {"job": "node-exporter"}}]}}]
-    )
-    monkeypatch.setattr(monitor, "query_prometheus", query_mock)
+    running = [{"Names": ["/marconi-agent-prometheus"], "State": "running", "Status": "Up 1h"}]
+    monkeypatch.setattr(monitor.docker, "list_containers", AsyncMock(return_value=running))
     monkeypatch.setattr(monitor.discord_alert, "send_alert", AsyncMock())
-    run_workflow = AsyncMock(return_value={"incident_id": "xyz", "summary": "bad"})
+    run_workflow = AsyncMock(return_value={"incident_id": "inc1", "summary": "down"})
     monkeypatch.setattr(monitor, "run_incident_workflow", run_workflow)
-    monkeypatch.setattr(monitor.discord_alert, "open_incident_thread", AsyncMock())
 
-    asyncio.run(monitor._evaluate_rules(bot))
-    # The dispatched investigation must target the detected service, not "target_down".
+    asyncio.run(monitor._poll_containers(bot))  # baseline: running, no alert
+    monitor.discord_alert.send_alert.assert_not_awaited()
+    run_workflow.assert_not_awaited()
+
+    stopped = [{"Names": ["/marconi-agent-prometheus"], "State": "exited", "Status": "Exited"}]
+    monkeypatch.setattr(monitor.docker, "list_containers", AsyncMock(return_value=stopped))
+    asyncio.run(monitor._poll_containers(bot))  # running -> stopped: alert + incident
+    monitor.discord_alert.send_alert.assert_awaited_once()
     run_workflow.assert_awaited_once()
-    dispatched_label = run_workflow.await_args.args[0]
-    assert "node-exporter" in dispatched_label, f"dispatched label was {dispatched_label!r}"
+    assert "marconi-agent-prometheus" in run_workflow.await_args.args[0]
+
+
+def test_poll_containers_no_alert_on_first_poll_after_restart(monkeypatch):
+    """The first poll after a monitor restart baselines current state (prev is
+    None), so a container that is ALREADY down when the monitor starts produces
+    no false edge. This is what was broken with the PromQL path on restart.
+    """
+    settings = Settings(docker_monitor=True, discord_alert_channel_id=1, _env_file=None)
+    monkeypatch.setattr(monitor, "settings", settings)
+    monkeypatch.setattr(monitor, "list_watched_containers", lambda: [])
+    monitor._container_state.clear()
+
+    already_down = [{"Names": ["/marconi-agent-prometheus"], "State": "exited", "Status": "Exited"}]
+    monkeypatch.setattr(monitor.docker, "list_containers", AsyncMock(return_value=already_down))
+    monkeypatch.setattr(monitor.discord_alert, "send_alert", AsyncMock())
+    monkeypatch.setattr(monitor, "run_incident_workflow", AsyncMock())
+
+    asyncio.run(monitor._poll_containers(MagicMock()))
+    monitor.discord_alert.send_alert.assert_not_awaited()  # baseline, no false edge
+    monitor.run_incident_workflow.assert_not_awaited()
+
+
+def test_poll_containers_recovery_alert_to_status_channel(monkeypatch):
+    """A not-running -> running transition posts a recovery note to #status-updates."""
+    settings = Settings(
+        docker_monitor=True, docker_name_filter="marconi-",
+        discord_alert_channel_id=1, discord_status_channel_id=2, _env_file=None,
+    )
+    monkeypatch.setattr(monitor, "settings", settings)
+    monkeypatch.setattr(monitor, "list_watched_containers", lambda: [])
+    monitor._container_state.clear()
+    monitor._container_state["marconi-agent-api"] = "exited"
+
+    bot = MagicMock()
+    back_up = [{"Names": ["/marconi-agent-api"], "State": "running", "Status": "Up"}]
+    monkeypatch.setattr(monitor.docker, "list_containers", AsyncMock(return_value=back_up))
+    send_alert = AsyncMock()
+    monkeypatch.setattr(monitor.discord_alert, "send_alert", send_alert)
+
+    asyncio.run(monitor._poll_containers(bot))
+    send_alert.assert_awaited_once()
+    # recovery goes to the status channel (id 2), not the alert channel (id 1)
+    assert send_alert.await_args.args[0] == 2
 
 
 def _assert_source_client_headers(module, token_setting, monkeypatch):
@@ -308,68 +293,85 @@ def test_container_snapshot_quiet_when_no_status_channel(monkeypatch):
     send_alert.assert_not_awaited()
 
 
-def test_poll_containers_tracks_only_watched_containers(monkeypatch):
+def test_poll_containers_tracks_filtered_and_watched(monkeypatch):
+    """Tracked = containers matching docker_name_filter ∪ explicitly watched.
+    With a name_filter set, an out-of-filter container is tracked only if watched.
+    """
     settings = Settings(
         docker_monitor=True,
+        docker_name_filter="marconi-",
         discord_alert_channel_id=2,
+        discord_status_channel_id=3,
         _env_file=None,
     )
     monkeypatch.setattr(monitor, "settings", settings)
-    monkeypatch.setattr(
-        monitor,
-        "list_watched_containers",
-        lambda: ["web", "db"],
-    )
+    monkeypatch.setattr(monitor, "list_watched_containers", lambda: ["extra-app"])
     monitor._container_state.clear()
 
     containers = [
-        {"Names": ["/web"], "State": "running", "Status": "Up 1 hour"},
-        {"Names": ["/db"], "State": "running", "Status": "Up 1 hour"},
-        {"Names": ["/unwatched-sidecar"], "State": "exited", "Status": "Exited (1) 2 hours ago"},
+        {"Names": ["/marconi-agent-api"], "State": "running", "Status": "Up 1 hour"},
+        {"Names": ["/marconi-agent-n8n"], "State": "running", "Status": "Up 1 hour"},
+        {"Names": ["/extra-app"], "State": "running", "Status": "Up 1 hour"},  # watched, not filtered
+        {"Names": ["/untracked-sidecar"], "State": "exited", "Status": "Exited"},  # neither
     ]
     monkeypatch.setattr(monitor.docker, "list_containers", AsyncMock(return_value=containers))
+    monkeypatch.setattr(monitor.discord_alert, "send_alert", AsyncMock())
+
+    asyncio.run(monitor._poll_containers(MagicMock()))
+    assert "untracked-sidecar" not in monitor._container_state
+    assert monitor._container_state == {
+        "marconi-agent-api": "running",
+        "marconi-agent-n8n": "running",
+        "extra-app": "running",
+    }
+
+    # A tracked (filtered) container stops -> alert fires once.
+    stopped = [
+        {"Names": ["/marconi-agent-api"], "State": "exited", "Status": "Exited"},
+        {"Names": ["/marconi-agent-n8n"], "State": "running", "Status": "Up 1 hour"},
+        {"Names": ["/extra-app"], "State": "running", "Status": "Up 1 hour"},
+    ]
+    monkeypatch.setattr(monitor.docker, "list_containers", AsyncMock(return_value=stopped))
     send_alert = AsyncMock()
     monkeypatch.setattr(monitor.discord_alert, "send_alert", send_alert)
-
-    asyncio.run(monitor._poll_containers(MagicMock()))
-    # Unwatched containers are ignored entirely.
-    assert "unwatched-sidecar" not in monitor._container_state
-    assert monitor._container_state == {"web": "running", "db": "running"}
-    send_alert.assert_not_awaited()
-
-    # A watched container stops -> alert fires once.
-    monkeypatch.setattr(
-        monitor.docker,
-        "list_containers",
-        AsyncMock(
-            return_value=[
-                {"Names": ["/web"], "State": "exited", "Status": "Exited (1) 1 min ago"},
-                {"Names": ["/db"], "State": "running", "Status": "Up 1 hour"},
-                {"Names": ["/unwatched-sidecar"], "State": "exited", "Status": "Exited (1) 2 hours ago"},
-            ]
-        ),
-    )
     asyncio.run(monitor._poll_containers(MagicMock()))
     send_alert.assert_awaited_once()
-    assert "web" in send_alert.await_args.args[1]
+    assert "marconi-agent-api" in send_alert.await_args.args[1]
 
 
-def test_poll_containers_prunes_unwatched_state(monkeypatch):
+def test_poll_containers_empty_filter_tracks_all(monkeypatch):
+    """With docker_name_filter empty, every container is in scope (watched is a
+    no-op superset). This is the default deployment shape.
+    """
+    settings = Settings(docker_monitor=True, docker_name_filter="", _env_file=None)
+    monkeypatch.setattr(monitor, "settings", settings)
+    monkeypatch.setattr(monitor, "list_watched_containers", lambda: [])
+    monitor._container_state.clear()
+    containers = [
+        {"Names": ["/vllm"], "State": "running", "Status": "Up"},
+        {"Names": ["/cadvisor"], "State": "running", "Status": "Up"},
+    ]
+    monkeypatch.setattr(monitor.docker, "list_containers", AsyncMock(return_value=containers))
+    asyncio.run(monitor._poll_containers(MagicMock()))
+    assert monitor._container_state == {"vllm": "running", "cadvisor": "running"}
+
+
+def test_poll_containers_prunes_out_of_scope_state(monkeypatch):
     settings = Settings(
         docker_monitor=True,
+        docker_name_filter="marconi-",
         discord_alert_channel_id=2,
         _env_file=None,
     )
     monkeypatch.setattr(monitor, "settings", settings)
-    monkeypatch.setattr(monitor, "list_watched_containers", lambda: ["web"])
+    monkeypatch.setattr(monitor, "list_watched_containers", lambda: [])
     monitor._container_state.clear()
-    monitor._container_state.update({"web": "running", "old": "running"})
+    monitor._container_state.update({"marconi-agent-api": "running", "old": "running"})
 
-    containers = [{"Names": ["/web"], "State": "running", "Status": "Up 1 hour"}]
+    containers = [{"Names": ["/marconi-agent-api"], "State": "running", "Status": "Up 1 hour"}]
     monkeypatch.setattr(monitor.docker, "list_containers", AsyncMock(return_value=containers))
-    send_alert = AsyncMock()
-    monkeypatch.setattr(monitor.discord_alert, "send_alert", send_alert)
+    monkeypatch.setattr(monitor.discord_alert, "send_alert", AsyncMock())
 
     asyncio.run(monitor._poll_containers(MagicMock()))
     assert "old" not in monitor._container_state
-    assert monitor._container_state == {"web": "running"}
+    assert monitor._container_state == {"marconi-agent-api": "running"}

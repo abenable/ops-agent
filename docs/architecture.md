@@ -45,9 +45,10 @@
   (`logs`, `the web container`, `that one`) from prior context. `ask_with_memory` wraps the
   fetch-record-run-store cycle for the @mention and `/ask` paths.
 - `agent.bot.monitor` — background poll loop; each cycle checks HTTP endpoint liveness
-  (`MONITORED_ENDPOINTS`), evaluates PromQL alert rules (`PROMETHEUS_ALERT_RULES`), and
-  inspects watched Docker containers when `DOCKER_MONITOR` is enabled — driving alerts,
-  status updates, and escalation to threaded incidents.
+  (`MONITORED_ENDPOINTS`) and inspects Docker containers when `DOCKER_MONITOR` is
+  enabled, alerting on a running→stopped transition (Docker-only alerting —
+  Prometheus is kept for metrics, not alerting) — driving alerts, status updates,
+  and escalation to threaded incidents.
 - `agent.api` — FastAPI app and routes, with an optional `X-API-Key` dependency.
   Exposes `GET /metrics` (Prometheus self-metrics) and SSE streaming for the agentic loop.
 - `agent.workflows` — incident investigation (agentic tool-calling loop), remediation
@@ -72,7 +73,7 @@
 ## Data flow (incident)
 
 1. A trigger arrives — `/incident <service>`, `POST /incidents/{service}`, the
-   CLI, or the monitor escalating a down endpoint / firing PromQL rule.
+   CLI, or the monitor escalating a down endpoint / stopped container.
 2. The workflow runs a bounded agentic loop: the LLM calls `list_services` to learn the real
    names, discovers metrics/labels, writes its own PromQL/LogQL through the read-only query
    tools, and can inspect containers with `docker_status`/`docker_logs`, up to `MAX_TOOL_STEPS`

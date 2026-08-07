@@ -51,14 +51,13 @@ cp .env.example .env
 | `WEB_ORIGIN` | no | `http://localhost:5173` | CORS-allowed origin for the web UI |
 | `PROMETHEUS_URL` | no | `http://localhost:9090` | Prometheus base URL for metrics |
 | `PROMETHEUS_TOKEN` | no | *(empty)* | Optional bearer token for Prometheus |
-| `PROMETHEUS_ALERT_RULES` | no | *(empty)* | Comma-separated `name=<PromQL>` pairs; rule fires when query returns ≥1 series |
 | `LOKI_URL` | no | `http://localhost:3100` | Loki base URL for logs |
 | `LOKI_TOKEN` | no | *(empty)* | Optional bearer token for Loki |
 | `MAX_TOOL_STEPS` | no | `6` | Bound on the number of LLM tool calls per investigation |
 | `LOKI_MAX_LIMIT` | no | `500` | Maximum Loki log lines a single tool call may request |
 | `RANGE_MAX_HOURS` | no | `6` | Maximum Prometheus range-query window in hours |
-| `DOCKER_MONITOR` | no | `false` | Poll containers each cycle and alert when a watched one stops |
-| `DOCKER_NAME_FILTER` | no | *(empty)* | Only watch containers whose name contains this substring |
+| `DOCKER_MONITOR` | no | `false` | Poll containers each cycle and alert on a running→stopped transition (Docker-only alerting) |
+| `DOCKER_NAME_FILTER` | no | *(empty)* | Alert on containers whose name contains this substring; empty = every container. `/watch` adds out-of-filter containers |
 | `REMEDIATION_ENABLED` | no | `true` | Global kill switch for the remediation agent |
 | `REMEDIATION_APPROVAL_TTL_SECONDS` | no | `300` | Seconds a proposed action stays approvable before auto-expiry |
 | `DATABASE_URL` | no | `sqlite:///data/agent.db` | SQLite database location |

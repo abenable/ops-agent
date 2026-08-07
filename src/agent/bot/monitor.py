@@ -9,7 +9,6 @@ from agent.config.settings import settings
 from agent.storage.repository import list_watched_containers
 from agent.tools import docker
 from agent.tools.health import check_endpoint
-from agent.tools.sources.prometheus import query_prometheus
 from agent.workflows.incident import run_incident_workflow
 
 
@@ -27,9 +26,6 @@ async def _open_incident(bot, name: str):
 
 # url -> reachable (in-memory; fine for an MVP)
 _last_state: dict[str, bool] = {}
-
-# rule_name -> firing (in-memory; fine for an MVP)
-_rule_state: dict[str, bool] = {}
 
 # container name -> last state (in-memory; fine for an MVP)
 _container_state: dict[str, str] = {}
@@ -52,71 +48,18 @@ def get_monitored_endpoints() -> dict[str, str]:
     return _endpoints()
 
 
-def _alert_rules() -> dict[str, str]:
-    out: dict[str, str] = {}
-    for pair in settings.prometheus_alert_rules.split(","):
-        if "=" in pair:
-            name, expr = pair.split("=", 1)
-            name = name.strip()
-            expr = expr.strip()
-            if name and expr:
-                out[name] = expr
-    return out
-
-
-def get_alert_rules() -> dict[str, str]:
-    """Public accessor used by the mention handler."""
-    return _alert_rules()
-
-
-async def _evaluate_rules(bot) -> None:
-    """Evaluate PromQL alert rules and alert only on False -> True edges."""
-    for rule_name, expr in _alert_rules().items():
-        try:
-            result = await query_prometheus(expr)
-            series = result.get("data", {}).get("result") or []
-            firing = bool(series)
-        except Exception:
-            # ponytail: skip a rule when Prometheus is unreachable; endpoint poll still covers liveness
-            continue
-
-        prev = _rule_state.get(rule_name, False)
-        if firing and not prev and settings.discord_alert_channel_id:
-            # Name the affected targets so the incident thread title tells the
-            # operator what's down without opening it (e.g. "target_down:
-            # node-exporter, cadvisor") rather than an opaque rule name + id.
-            targets = sorted({
-                s.get("metric", {}).get("job") or s.get("metric", {}).get("instance") or "unknown"
-                for s in series
-            })
-            label = f"{rule_name}: {', '.join(targets)}" if targets else rule_name
-            await discord_alert.send_alert(
-                settings.discord_alert_channel_id,
-                f"PromQL alert `{rule_name}` firing: {expr}",
-                bot,
-                severity="critical",
-                title=f"Alert: {label}",
-            )
-            asyncio.create_task(_open_incident(bot, label))
-
-        if prev and not firing and settings.discord_status_channel_id:
-            await discord_alert.send_alert(
-                settings.discord_status_channel_id,
-                f"`{rule_name}` recovered",
-                bot,
-                severity="info",
-                title="Recovered",
-            )
-
-        _rule_state[rule_name] = firing
-
-
 async def _poll_containers(bot) -> None:
-    """Track watched containers each cycle; alert when one stops running.
+    """Track containers each cycle and alert when one stops running.
 
-    Only containers explicitly selected via the web UI or `/watch` are
-    tracked. New containers are ignored until the operator opts in.
-    Also refreshes ``_container_state``, which the periodic status snapshot reads.
+    Alerting is Docker-only — Prometheus is kept for metrics, not alerting — so a
+    container stopping is observed straight from the Docker socket: no scrape gap
+    and no PromQL edge to mis-fire on a Prometheus restart. A container is in
+    scope if it matches ``docker_name_filter`` (empty filter = every container)
+    or is explicitly watched via ``/watch``. A running -> not-running transition
+    sends a critical alert and opens an incident; not-running -> running sends
+    a recovery note to the status channel. The first poll after a monitor
+    restart baselines the current state without alerting (``prev`` is None), so
+    restarting the monitor never produces a false edge.
     """
     if not settings.docker_monitor:
         return
@@ -128,12 +71,13 @@ async def _poll_containers(bot) -> None:
         return
 
     name_filter = settings.docker_name_filter.lower()
+    seen: set[str] = set()
     for c in containers:
         name = docker.container_name(c)
-        if name_filter and name_filter not in name.lower():
+        in_scope = (not name_filter) or (name_filter in name.lower()) or (name in watched)
+        if not in_scope:
             continue
-        if name not in watched:
-            continue
+        seen.add(name)
         state = c.get("State", "unknown")
         prev = _container_state.get(name)
         if prev == "running" and state != "running" and settings.discord_alert_channel_id:
@@ -144,26 +88,34 @@ async def _poll_containers(bot) -> None:
                 severity="critical",
                 title="Container down",
             )
+            asyncio.create_task(_open_incident(bot, name))
+        elif prev is not None and prev != "running" and state == "running" and settings.discord_status_channel_id:
+            await discord_alert.send_alert(
+                settings.discord_status_channel_id,
+                f"Container `{name}` is back running (was {prev})",
+                bot,
+                severity="info",
+                title="Container up",
+            )
         _container_state[name] = state
 
-    # Forget containers the operator has stopped watching.
+    # Forget containers no longer present or out of scope.
     for name in list(_container_state):
-        if name not in watched:
+        if name not in seen:
             del _container_state[name]
 
 
 async def _post_container_snapshot(bot) -> None:
-    """Post a compact status snapshot of watched containers to #status-updates.
+    """Post a compact status snapshot of tracked containers to #status-updates.
 
     Reuses ``_container_state`` (refreshed every monitor cycle, so at most ~60s
-    stale) rather than re-querying Docker. Quiet when no containers are watched
-    or no status channel is configured — an empty channel means "nothing watched",
-    not "broken".
+    stale) rather than re-querying Docker. Quiet when no containers are tracked
+    or no status channel is configured.
     """
     if not settings.discord_status_channel_id or not _container_state:
         return
     lines = [f"- `{name}`: {state}" for name, state in sorted(_container_state.items())]
-    body = "Watched container status:\n" + "\n".join(lines)
+    body = "Container status:\n" + "\n".join(lines)
     await discord_alert.send_alert(
         settings.discord_status_channel_id,
         body[:4000],
@@ -209,7 +161,6 @@ async def _poll_once(bot) -> None:
         _last_state[url] = up
 
     MONITOR_CYCLES_TOTAL.labels(kind="endpoint").inc()
-    await _evaluate_rules(bot)
     await _poll_containers(bot)
 
 

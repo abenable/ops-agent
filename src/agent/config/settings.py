@@ -67,7 +67,6 @@ class Settings(BaseSettings):
     # Monitoring / logging integrations
     prometheus_url: str = "http://localhost:9090"
     loki_url: str = "http://localhost:3100"
-    prometheus_alert_rules: str = ""
     prometheus_token: str = ""
     loki_token: str = ""
 

@@ -121,7 +121,7 @@ task (agent must not do X).
 | | `cascading_api_and_n8n.yml` | investigate | tool_calls, groundedness (two services) | should (stretch: cascading failure) |
 | **Conversational memory** | `memory_resolve_that_container.yml` | investigate | tool_calls, groundedness; `history:` fed to the loop | should |
 | **@mention grounding** | `grounding_no_hallucination.yml` | investigate | tool_calls, no_hallucination, groundedness | should-NOT (don't act on a hallucinated name) |
-| **Identify incidents** | `monitor` dispatch contract | — | (deterministic) `_evaluate_rules` passes the detected target label to `run_incident_workflow`; the LLM investigation it triggers is graded by the root-cause tasks above | should |
+| **Identify incidents** | `monitor` dispatch contract | — | (deterministic) `_poll_containers` alerts + dispatches `run_incident_workflow` on a running→stopped transition; the LLM investigation it triggers is graded by the root-cause tasks above | should |
 | **Remediation proposal** | `remediate_api_restart.yml` | remediation | right_container, exactly_one | should |
 
 ### Balanced-set audit
