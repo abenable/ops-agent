@@ -118,6 +118,7 @@ def _run_eval(args):
         summary = ""
         error: str | None = None
         proposals: list[dict] | None = None
+        usage: dict = {}
         t0 = time.monotonic()
         if harness.kind == "remediation":
             try:
@@ -134,7 +135,7 @@ def _run_eval(args):
                 error = str(exc)
             duration = time.monotonic() - t0
             result = harness.evaluate(tool_calls=calls, summary=summary, error=error, transcript=transcript, proposals=proposals)
-            return result, transcript, duration
+            return result, transcript, duration, usage
         prompt = f"Investigate service {harness.service}."
         if harness.symptom:
             prompt += f" Reported symptom: {harness.symptom}"
@@ -155,15 +156,16 @@ def _run_eval(args):
                     calls.append(event["name"])
                 elif event["type"] == "done":
                     summary = event.get("content", "")
+                    usage = event.get("usage", {}) or {}
                 elif event["type"] == "error":
                     error = event.get("message", "")
         except Exception as exc:
             error = str(exc)
         duration = time.monotonic() - t0
         result = harness.evaluate(tool_calls=calls, summary=summary, error=error, transcript=transcript)
-        return result, transcript, duration
+        return result, transcript, duration, usage
 
-    def _trial_json_obj(h, result, transcript, duration, trial_idx):
+    def _trial_json_obj(h, result, transcript, duration, trial_idx, usage):
         return {
             "timestamp": ts,
             "label": label,
@@ -192,9 +194,15 @@ def _run_eval(args):
             "error": result.error,
             "final_summary": result.final_summary,
             "transcript": transcript,
+            "usage": usage,
         }
 
-    def _trial_row(h, result, duration, trial_idx, transcript_file):
+    def _trial_row(h, result, duration, trial_idx, transcript_file, usage):
+        # Derived efficiency metrics kept in the row so the plot script can
+        # graph them without re-reading every transcript.
+        llm_time = float(usage.get("llm_time_s") or 0.0)
+        out_tok = int(usage.get("completion_tokens") or 0)
+        tot_tok = int(usage.get("total_tokens") or 0)
         return {
             "timestamp": ts,
             "label": label,
@@ -216,6 +224,16 @@ def _run_eval(args):
             "error": result.error,
             "summary": result.final_summary,
             "transcript_file": transcript_file,
+            "prompt_tokens": int(usage.get("prompt_tokens") or 0),
+            "completion_tokens": out_tok,
+            "total_tokens": tot_tok,
+            "n_llm_calls": int(usage.get("n_llm_calls") or 0),
+            "n_turns": int(usage.get("n_turns") or 0),
+            "llm_time_s": round(llm_time, 3),
+            "time_to_first_token_s": round(float(usage.get("time_to_first_token_s") or 0.0), 3),
+            "time_to_last_token_s": round(float(usage.get("time_to_last_token_s") or 0.0), 3),
+            "output_tokens_per_sec": round(out_tok / llm_time, 2) if llm_time else 0.0,
+            "tokens_per_sec": round(tot_tok / llm_time, 2) if llm_time else 0.0,
         }
 
     if args.task:
@@ -234,26 +252,27 @@ def _run_eval(args):
     for h in harnesses:
         trial_results: list = []
         for i in range(n_trials):
-            result, transcript, duration = asyncio.run(_run_one_trial(h))
+            result, transcript, duration, usage = asyncio.run(_run_one_trial(h))
             trial_file = run_dir / f"{h.stem}__trial{i}.json"
             trial_file.write_text(
-                json.dumps(_trial_json_obj(h, result, transcript, duration, i),
-                           indent=2, default=str),
+                json.dumps(_trial_json_obj(h, result, transcript, duration, i, usage),
+                           default=str),
                 encoding="utf-8",
             )
             rel = str(trial_file.relative_to(out_dir))
             with trials_jsonl.open("a", encoding="utf-8") as f:
-                f.write(json.dumps(_trial_row(h, result, duration, i, rel),
+                f.write(json.dumps(_trial_row(h, result, duration, i, rel, usage),
                                    default=str) + "\n")
             trial_results.append(result)
             total_trials += 1
             if result.passed:
                 passed_trials += 1
             status = "PASS" if result.passed else "FAIL"
+            tok = int(usage.get("total_tokens") or 0)
             print(
                 f"[{status}] {result.task:35s} trial {i+1}/{n_trials} "
                 f"score={result.score:.0%} "
-                f"duration={duration:.1f}s"
+                f"duration={duration:.1f}s tokens={tok}"
             )
             if result.error:
                 print(f"       error: {result.error}")

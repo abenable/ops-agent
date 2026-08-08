@@ -162,12 +162,31 @@ async def run_agentic_investigation_stream(
     total_steps = 0
     pending: list[dict] | None = None  # tool calls carried over from the previous turn
     t0 = time.monotonic()
+    # ponytail: accumulate token usage + LLM latency across every ainvoke so
+    # evals can plot cost / efficiency. Non-streaming ainvoke returns the full
+    # response at once, so "time to first token" == duration of the first call.
+    usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0,
+             "n_llm_calls": 0, "n_tool_calls": 0, "llm_time_s": 0.0,
+             "time_to_first_token_s": 0.0}
+
+    def _acc(ai_msg):
+        um = getattr(ai_msg, "usage_metadata", None) or {}
+        usage["prompt_tokens"] += int(um.get("input_tokens", 0))
+        usage["completion_tokens"] += int(um.get("output_tokens", 0))
+        usage["total_tokens"] += int(um.get("total_tokens", 0))
+        usage["n_llm_calls"] += 1
+
     for step in range(settings.max_tool_steps):
         total_steps = step + 1
         llm_start = time.monotonic()
         ai = await llm.ainvoke(messages)
-        LLM_CALL_DURATION.labels(kind="agentic").observe(time.monotonic() - llm_start)
+        dt = time.monotonic() - llm_start
+        LLM_CALL_DURATION.labels(kind="agentic").observe(dt)
         LLM_CALL_TOTAL.labels(kind="agentic").inc()
+        _acc(ai)
+        usage["llm_time_s"] += dt
+        if usage["n_llm_calls"] == 1:
+            usage["time_to_first_token_s"] = dt
         messages.append(ai)
         # DeepSeek occasionally emits tool calls inline as <｜｜DSML｜｜> XML in
         # ``content`` instead of the structured ``tool_calls`` field. Fall back to
@@ -185,6 +204,7 @@ async def run_agentic_investigation_stream(
                 continue
             logger.info("Tool call: %s(%s)", name, args)
             yield {"type": "tool_call", "step": step, "name": name, "args": args}
+            usage["n_tool_calls"] += 1
             try:
                 tool_start = time.monotonic()
                 out = await by_name[name].ainvoke(args)
@@ -210,8 +230,11 @@ async def run_agentic_investigation_stream(
         ))
         llm_start = time.monotonic()
         ai = await get_llm().ainvoke(messages)
-        LLM_CALL_DURATION.labels(kind="fallback").observe(time.monotonic() - llm_start)
+        dt = time.monotonic() - llm_start
+        LLM_CALL_DURATION.labels(kind="fallback").observe(dt)
         LLM_CALL_TOTAL.labels(kind="fallback").inc()
+        _acc(ai)
+        usage["llm_time_s"] += dt
 
     content = _strip_dsml((ai.content if ai else "") or "")
     if not content:
@@ -219,7 +242,9 @@ async def run_agentic_investigation_stream(
     INVESTIGATION_DURATION.labels(kind=kind).observe(time.monotonic() - t0)
     TOOL_STEPS.labels(kind=kind).observe(total_steps)
     INVESTIGATION_TOTAL.labels(kind=kind, status="ok").inc()
-    yield {"type": "done", "content": content}
+    usage["n_turns"] = total_steps
+    usage["time_to_last_token_s"] = time.monotonic() - t0
+    yield {"type": "done", "content": content, "usage": usage}
 
 
 async def run_agentic_investigation(
