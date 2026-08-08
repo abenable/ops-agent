@@ -185,7 +185,36 @@ def plot_all(rows: list[dict], prices: dict, out_dir: Path) -> list[Path]:
         print(f"{l:28s} {pass_rates[i]:>6.0%} {mean_tokens[i]:>8.0f} "
               f"{mean_dur[i]:>7.1f} {mean_ttft[i]:>7.1f} {mean_tps[i]:>7.1f} "
               f"{mean_turns[i]:>6.1f} {costs[i]:>7.2f}")
+
+    # Per-task breakdown for each label (informative with a single model too).
+    for l in labels:
+        _per_task(grouped[l], out_dir, l)
     return saved
+
+
+def _per_task(rows: list[dict], out_dir: Path, label: str):
+    """Pass rate + mean tokens per task for one label (horizontal bars)."""
+    by_task: dict[str, list[dict]] = defaultdict(list)
+    for r in rows:
+        by_task[r.get("task", "?")].append(r)
+    tasks = sorted(by_task)
+    pr = [sum(1 for r in by_task[t] if r.get("passed")) / len(by_task[t]) for t in tasks]
+    tok = [statistics.mean(float(r.get("total_tokens") or 0) for r in by_task[t]) for t in tasks]
+
+    fig, axes = plt.subplots(1, 2, figsize=(13, max(5, 0.35 * len(tasks))))
+    axes[0].barh(tasks, pr, color="#55A868")
+    axes[0].set_xlim(0, 1.05)
+    axes[0].set_xlabel("pass rate")
+    axes[0].set_title(f"{label}: pass rate per task")
+    axes[1].barh(tasks, tok, color="#4C72B0")
+    axes[1].set_xlabel("mean total tokens")
+    axes[1].set_title(f"{label}: tokens per task")
+    fig.tight_layout()
+    safe = label.replace("/", "_").replace(":", "_").replace(" ", "_")
+    p = out_dir / f"per_task_{safe}.png"
+    fig.savefig(p, dpi=130)
+    plt.close(fig)
+    print(f"wrote {p}")
 
 
 def main():

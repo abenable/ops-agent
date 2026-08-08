@@ -17,7 +17,7 @@ from agent.config.settings import settings
 from agent.storage import repository
 from agent.tools import docker
 from agent.tools.query_tools import docker_status, list_services
-from agent.workflows.incident import run_agentic_investigation
+from agent.workflows.incident import run_agentic_investigation_with_usage
 
 logger = logging.getLogger(__name__)
 
@@ -91,15 +91,16 @@ async def run_remediation_workflow(incident_id: str, service: str, diagnosis: st
         "either propose it (propose_restart) or explain why not."
     )
     try:
-        summary = await run_agentic_investigation(
+        summary, usage = await run_agentic_investigation_with_usage(
             prompt, system_prompt=REMEDIATION_PROMPT, tools=tools
         )
     except Exception as exc:
         logger.warning("Remediation workflow failed for incident %s: %s", incident_id, exc)
         summary = f"Remediation workflow failed ({exc})."
+        usage = {}
 
     proposals = repository.list_pending_approvals(incident_id=incident_id, status="pending")
-    return {"incident_id": incident_id, "summary": summary, "proposals": proposals}
+    return {"incident_id": incident_id, "summary": summary, "proposals": proposals, "usage": usage}
 
 
 async def execute_approval(approval_id: str) -> dict:

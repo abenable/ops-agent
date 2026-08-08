@@ -262,12 +262,31 @@ async def run_agentic_investigation(
     turns (``{"role": "user"|"assistant", "content": ...}``) which the stream
     loop renders as real ``HumanMessage``/``AIMessage`` turns before the prompt.
     """
+    content, _ = await run_agentic_investigation_with_usage(
+        prompt, system_prompt=system_prompt, tools=tools, kind=kind, history=history
+    )
+    return content
+
+
+async def run_agentic_investigation_with_usage(
+    prompt: str,
+    *,
+    system_prompt: str = SYSTEM_PROMPT,
+    tools: list = TOOLS,
+    kind: str = "ask",
+    history: list[dict] | None = None,
+) -> tuple[str, dict]:
+    """Like :func:`run_agentic_investigation` but also returns the accumulated
+    token/latency usage dict from the ``done`` event (for evals/cost)."""
+    usage: dict = {}
+    content = "No summary produced."
     async for event in run_agentic_investigation_stream(
         prompt, system_prompt=system_prompt, tools=tools, kind=kind, history=history
     ):
         if event["type"] == "done":
-            return event["content"]
-    return "No summary produced."
+            content = event["content"]
+            usage = event.get("usage", {}) or {}
+    return content, usage
 
 
 async def run_incident_workflow(service: str, hint: str | None = None) -> dict:

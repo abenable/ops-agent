@@ -128,6 +128,7 @@ def _run_eval(args):
                 )
                 summary = res.get("summary", "")
                 proposals = res.get("proposals", [])
+                usage = res.get("usage", {}) or {}
                 transcript.append({"type": "remediation", "incident_id": incident_id, "proposals": proposals})
                 if proposals:
                     calls.append("propose_restart")
