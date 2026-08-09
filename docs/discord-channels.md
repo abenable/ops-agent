@@ -27,7 +27,7 @@ Set the ids in `.env` (see [setup.md](setup.md) for how to copy a channel id).
   are excluded to avoid feedback loops. Leave `DISCORD_LOG_CHANNEL_ID` unset to keep logs on
   stdout only.
 - **#test-tasks:** if `DISCORD_TEST_TASKS_CHANNEL_ID` is set, `/task` refuses to
-  run elsewhere. Task files live in `tasks/*.yml`.
+  run elsewhere. Task files live in `src/agent/eval/tasks/*.yml`.
 
 ## Minimum useful setup
 

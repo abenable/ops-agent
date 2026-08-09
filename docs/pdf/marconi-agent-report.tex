@@ -1436,9 +1436,10 @@ order.
     bot process as an alternative to in-bot polling, letting an external
     Alertmanager push alerts rather than having the bot poll Prometheus.
   \item \textbf{Expand the evaluation harness.} The task evaluation
-    framework (\pkg{agent.eval}) and its 100-test pytest suite are delivered;
-    extend them with additional tasks, integrate k6 load tests into CI,
-    and build Prometheus recording rules and Grafana dashboards for the
+    framework (\pkg{agent.eval}) and its pytest suite are delivered;
+    extend them with additional tasks, an LLM-judge grader calibrated
+    against hand-read transcripts, and build Prometheus recording rules
+    and Grafana dashboards for the
     agent's own operational metrics exposed at \pkg{GET /metrics}.
 \end{enumerate}
 
@@ -1552,20 +1553,24 @@ is unset, so a deployment can adopt channels incrementally.
 \section{Task file format}
 \label{app:task}
 
-Tasks are YAML files in the \pkg{tasks} directory. The
-\pkg{/task <name>} command loads \pkg{tasks/<name>.yml} and runs the
+Tasks are YAML files in the \pkg{agent/eval/tasks} directory. The
+\pkg{/task <name>} command loads \pkg{agent/eval/tasks/<name>.yml} and runs the
 incident workflow for the named service. The name is resolved through
-\pkg{agent.bot.utils.task\_path}, which rejects path separators and
+\pkg{agent.tasks.task\_path}, which rejects path separators and
 \pkg{..} segments and confirms the resolved path stays under the
-\pkg{tasks/} directory, so a name like \pkg{../../etc/passwd} cannot read
+\pkg{agent/eval/tasks/} directory, so a name like \pkg{../../etc/passwd} cannot read
 an arbitrary file outside it; the file is parsed with \pkg{yaml.safe\_load}.
-Six tasks are included, each mapped to a real service in the deployment
-stack rather than a generic external system: the agent's own \pkg{api}
-container stopping, a Prometheus scrape target going \pkg{up=0} with zero
-samples (the \pkg{node-exporter}/\pkg{cadvisor} case), \pkg{n8n} under high
-CPU load, \pkg{n8n} memory pressure, Loki returning no logs for \pkg{n8n}
-(a \pkg{promtail} shipping failure), and the local \pkg{vllm} LLM endpoint
-becoming unreachable. The sample below shows the format; the
+Seventeen tasks are included, each mapped to a real service in the deployment
+stack. The set spans reading the right logs (Loki hit / miss),
+telling container status (running, stopped-misnamed, a healthy
+negative), reporting performance (latency, request rate), finding root
+cause (\pkg{api} down, \pkg{vllm} unreachable, Loki returning no logs for
+\pkg{n8n} from a \pkg{promtail} shipping failure, \pkg{n8n} under high CPU
+load, \pkg{n8n} memory pressure, a Prometheus scrape target going
+\pkg{up=0} with zero samples as in the \pkg{node-exporter}/\pkg{cadvisor}
+case, and a cascading \pkg{api}+\pkg{n8n} failure), conversational memory,
+@mention grounding (rejecting a hallucinated name), and a human-gated
+remediation proposal. The
 \pkg{expected\_agent\_actions} list doubles as documentation of the tools the
 operator expects a capable model to call, which the evaluation harness checks:
 
@@ -1634,7 +1639,10 @@ import path, the canonical way to locate code in this project.
 \pkg{agent.storage.repository} & SQLite incident and pending-approval repository \\
 \pkg{agent.alerting.discord} & Discord alert embeds, incident threads, and action views \\
 \pkg{agent.llm.client} & OpenAI-compatible ChatOpenAI factory with provider switching \\
-\pkg{agent.eval} & Task evaluation harness, action-to-tool mapping, CLI eval \\
+\pkg{agent.eval.graders} & Code-based graders (tool\_calls, groundedness, right\_metric, \ldots) \\
+\pkg{agent.eval.harness} & EvalHarness: loads a task YAML, grades a trial, aggregates pass@k / pass\^{}k \\
+\pkg{agent.eval.cli} & \pkg{agent eval} subcommand: drives the workflow and writes run output \\
+\pkg{agent.eval.tasks} & Task YAML files (simulated infrastructure issues) \\
 \pkg{agent.metrics} & Prometheus self-metrics for tool calls, investigations, LLM, monitor, API \\
 \bottomrule
 \end{longtable}

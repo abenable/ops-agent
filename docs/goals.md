@@ -71,8 +71,7 @@ The bot handles:
 | Self-hosted LLM integration | Delivered | OpenAI-compatible endpoint; tool-calling models preferred, graceful fallback otherwise |
 | Monitoring and logging integration | Delivered | Prometheus + Loki sources with fallback stubs; Prometheus self-metrics endpoint for the agent itself |
 | Technical documentation | Delivered | Lives in `docs/` and this README |
-| Task evaluation harness | Delivered | `agent/eval` + `tests/test_eval.py` + `python -m agent eval` CLI |
-| k6 load-test scripts | Delivered | `loadtests/agent.js` covers health, status, containers, incidents, and metrics |
+| Task evaluation harness | Delivered | `agent/eval` (graders + harness + CLI + `tasks/`) + `tests/test_eval.py` + `python -m agent eval` |
 | Web dashboard | Delivered | React SPA at `web/`, served via nginx on port 8088 |
 | n8n monitoring integration | Delivered | n8n in compose stack, scraped by Prometheus, logs shipped via promtail to Loki |
 | Final demonstration | Pending | Scheduled end-of-internship demo using real or task-driven cases |
@@ -95,5 +94,5 @@ The bot handles:
 - Implement human-in-the-loop approval before any Docker/SSH write action is executed.
 - Persist monitor/alert state so de-duplication survives restarts.
 - Introduce RBAC for command channels and sensitive tools.
-- Expand the eval harness task coverage and integrate k6 load tests into CI.
+- Expand the eval harness task coverage and add an LLM-judge grader calibrated against hand-read transcripts.
 - Build Prometheus recording rules and Grafana dashboards for agent self-metrics.

@@ -18,14 +18,12 @@ def test_task_path_rejects_traversal():
     assert task_path("") is None
 
 
-def test_task_path_accepts_real_task(tmp_path, monkeypatch):
-    """A real task name resolves to its .yml file under tasks/."""
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "tasks").mkdir()
-    (tmp_path / "tasks" / "disk_full.yml").write_text("name: x\n")
-    resolved = task_path("disk_full")
+def test_task_path_accepts_real_task():
+    """A real task name resolves to its .yml file in the package tasks dir."""
+    resolved = task_path("api_down")
     assert resolved is not None
-    assert resolved.name == "disk_full.yml"
+    assert resolved.name == "api_down.yml"
+    assert resolved.exists()
 
 
 def test_task_path_returns_none_for_missing():

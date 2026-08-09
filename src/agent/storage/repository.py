@@ -33,7 +33,6 @@ def init_db() -> None:
             )
             """
         )
-        # ponytail: lightweight migration for older MVP databases
         try:
             conn.execute("ALTER TABLE incidents ADD COLUMN thread_id INTEGER")
         except sqlite3.OperationalError:

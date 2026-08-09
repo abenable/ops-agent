@@ -102,13 +102,13 @@ each tool call and its result as the investigation progresses.
 
 ## Evaluation
 
-`python -m agent eval` runs all tasks in `tasks/*.yml` through the live LLM,
+`python -m agent eval` runs all tasks in `src/agent/eval/tasks/*.yml` through the live LLM,
 grades each trial with multiple code-based graders, and (with `--trials N`)
 reports pass@k / pass^k. Full transcripts are saved per trial under
-`eval_runs/<run>/`. See [evals.md](evals.md) for the grader list and the
+`src/agent/eval/runs/<run>/`. See [evals.md](evals.md) for the grader list and the
 strength → coverage map. For automated verification without a live LLM,
 `pytest tests/test_eval.py` runs each task with mocked LLM responses against
-the action-to-tool mapping defined in the `agent.eval` module.
+the action-to-tool mapping defined in the `agent.eval` package.
 
 ## Incident lifecycle
 

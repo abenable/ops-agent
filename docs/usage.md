@@ -18,7 +18,7 @@ Verbose commands accept a `raw` option to skip the LLM summary and show the full
 | `/watchlist` | List the containers currently being watched |
 | `/ask <question>` | Free-form agentic investigation using read-only tools |
 | `/incident <service>` | Run the incident investigation workflow; posts summary + incident id, opens an incident thread, and alerts the alert channel |
-| `/task <name>` | Run a simulated task from `tasks/<name>.yml` (restricted to the test-tasks channel if configured) |
+| `/task <name>` | Run a simulated task by name (e.g. `api_down`) (restricted to the test-tasks channel if configured) |
 | `/ack <incident_id>` | Acknowledge a stored incident (and post to its thread) |
 | `/resolve <incident_id>` | Resolve a stored incident (and post to its thread) |
 | `/menu` | Interactive container picker with Status/Logs/Metrics buttons |

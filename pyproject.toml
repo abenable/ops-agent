@@ -35,6 +35,9 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"agent.eval" = ["tasks/*.yml", "tasks/*.md"]
+
 [tool.pytest.ini_options]
 markers = [
     "integration: live external API checks (LLM, Discord, etc.)",

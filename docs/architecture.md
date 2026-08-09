@@ -59,9 +59,14 @@
 - `agent.tools.query_tools` — read-only LangChain tools the LLM calls during an investigation:
   service discovery (`list_services`), Prometheus/Loki metric/label discovery and queries, and
   read-only Docker container status/logs.
-- `agent.eval` — task evaluation harness; loads YAML tasks, runs N trials per task,
-  grades each trial with multiple code-based graders (tool_calls, no_raw_markup,
-  groundedness, no_false_alarm), and aggregates pass@k / pass^k. See [evals.md](evals.md).
+- `agent.eval` — task evaluation harness, split into focused modules:
+  `agent.eval.graders` (code-based graders: tool_calls, no_raw_markup,
+  groundedness, no_false_alarm, no_hallucination, right_source, right_metric,
+  right_container, exactly_one), `agent.eval.harness` (`EvalHarness` loads a
+  task YAML and grades a trial; action-to-tool mapping; `aggregate_trials`),
+  `agent.eval.cli` (the `agent eval` subcommand that drives the workflow and
+  writes run output), and `agent.eval.tasks/` (the task YAMLs). See
+  [evals.md](evals.md).
 - `agent.metrics` — Prometheus counters and histograms for the agent itself (tool calls,
   investigations, LLM calls, monitor cycles, alerts, API requests).
 - `agent.llm` — OpenAI-compatible client wrapper (`ChatOpenAI`) for a self-hosted model.

@@ -130,7 +130,7 @@ async def health_check(url: str):
 
 @router.get("/tasks")
 async def tasks():
-    """List the available tasks under ``tasks/`` with their metadata."""
+    """List the available tasks under ``agent/eval/tasks/`` with their metadata."""
     out = []
     for name in available_tasks():
         data = load_task(name) or {}
@@ -148,7 +148,7 @@ async def tasks():
 
 @router.post("/tasks/{name}/stream")
 async def task_stream(name: str):
-    """SSE stream of a task run. Loads ``tasks/<name>.yml``, runs the
+    """SSE stream of a task run. Loads ``agent/eval/tasks/<name>.yml``, runs the
     incident workflow for its service with the task symptom as a hint, and
     persists the incident at ``done`` — mirrors the Discord task button.
     """

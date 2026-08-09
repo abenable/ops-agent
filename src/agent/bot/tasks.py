@@ -1,6 +1,6 @@
 """Clickable task runner for the #test-tasks channel.
 
-A persistent Discord message carries one button per ``tasks/*.yml`` file;
+A persistent Discord message carries one button per ``agent/eval/tasks/*.yml`` file;
 clicking a button runs that task's incident workflow (with the task's
 symptom as a hint) and posts the diagnosis into the channel, so an operator
 can run a reproducible test with a single click instead of typing
@@ -65,7 +65,7 @@ class TaskButton(discord.ui.Button):
 
 
 class TaskPanelView(discord.ui.View):
-    """A persistent row of task buttons, rebuilt from ``tasks/*.yml``."""
+    """A persistent row of task buttons, rebuilt from ``agent/eval/tasks/*.yml``."""
 
     def __init__(self) -> None:
         super().__init__(timeout=None)

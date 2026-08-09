@@ -267,7 +267,7 @@ def test_validate_reference_all_tasks_pass_their_own_graders():
 def test_api_down_task_calls_docker_status(tmp_database, patched_sources, monkeypatch):
     """Verify the 'api_down' task triggers docker_status specifically."""
     tools = _TASK_TOOL_CALLS["api_down"]
-    answer = EvalHarness("tasks/api_down.yml").reference_summary()
+    answer = EvalHarness("api_down").reference_summary()
     responses = [FakeMessage(content="", tool_calls=tools), FakeMessage(content=answer)]
 
     from agent.config.settings import Settings
@@ -277,7 +277,7 @@ def test_api_down_task_calls_docker_status(tmp_database, patched_sources, monkey
     with patch("agent.workflows.incident.get_llm", return_value=FakeLLM(responses)):
         calls = asyncio.run(_run_task("api", tools, answer))
 
-    harness = EvalHarness("tasks/api_down.yml")
+    harness = EvalHarness("api_down")
     result = harness.evaluate(tool_calls=calls, summary=answer)
 
     assert result.passed
@@ -288,7 +288,7 @@ def test_api_down_task_calls_docker_status(tmp_database, patched_sources, monkey
 def test_scrape_target_down_task_calls_query_prometheus(tmp_database, patched_sources, monkeypatch):
     """The scrape_target_down task should query Prometheus for scrape state."""
     tools = _TASK_TOOL_CALLS["scrape_target_down"]
-    answer = EvalHarness("tasks/scrape_target_down.yml").reference_summary()
+    answer = EvalHarness("scrape_target_down").reference_summary()
     responses = [FakeMessage(content="", tool_calls=tools), FakeMessage(content=answer)]
 
     from agent.config.settings import Settings
@@ -298,7 +298,7 @@ def test_scrape_target_down_task_calls_query_prometheus(tmp_database, patched_so
     with patch("agent.workflows.incident.get_llm", return_value=FakeLLM(responses)):
         calls = asyncio.run(_run_task("node-exporter", tools, answer))
 
-    harness = EvalHarness("tasks/scrape_target_down.yml")
+    harness = EvalHarness("scrape_target_down")
     result = harness.evaluate(tool_calls=calls, summary=answer)
 
     assert result.passed
@@ -322,7 +322,7 @@ def test_eval_cli_writes_transcripts_and_trials_log(tmp_path, monkeypatch):
     monkeypatch.setattr(inc, "run_agentic_investigation_stream", fake_stream)
 
     out_dir = tmp_path / "eval_runs"
-    rc = main(["eval", "--task", "tasks/vllm_down.yml", "--out-dir", str(out_dir)])
+    rc = main(["eval", "--task", "vllm_down", "--out-dir", str(out_dir)])
     assert rc is None  # success
 
     trials_jsonl = out_dir / "trials.jsonl"
@@ -381,7 +381,7 @@ def test_eval_cli_trials_writes_pass_at_k_summary(tmp_path, monkeypatch):
     out_dir = tmp_path / "eval_runs"
     # 2 of 3 trials pass -> pass@k=1, pass^k=0; CLI exits 1 because not all trials passed.
     with pytest.raises(SystemExit) as exc_info:
-        main(["eval", "--task", "tasks/vllm_down.yml", "--trials", "3", "--out-dir", str(out_dir)])
+        main(["eval", "--task", "vllm_down", "--trials", "3", "--out-dir", str(out_dir)])
     assert exc_info.value.code == 1
 
     trials_jsonl = out_dir / "trials.jsonl"
@@ -410,7 +410,7 @@ def _grader_named(result, name):
 
 
 def test_groundedness_grader_passes_when_evidence_in_summary():
-    h = EvalHarness("tasks/api_down.yml")
+    h = EvalHarness("api_down")
     r = h.evaluate(tool_calls=["list_services", "docker_status", "docker_logs", "query_prometheus"],
                    summary="The api container is stopped.")
     g = _grader_named(r, "groundedness")
@@ -418,7 +418,7 @@ def test_groundedness_grader_passes_when_evidence_in_summary():
 
 
 def test_groundedness_grader_fails_when_evidence_missing():
-    h = EvalHarness("tasks/api_down.yml")  # expected_evidence: [api, stopped]
+    h = EvalHarness("api_down")  # expected_evidence: [api, stopped]
     r = h.evaluate(tool_calls=["list_services"], summary="Something is wrong with the web thing.")
     g = _grader_named(r, "groundedness")
     assert not g.passed
@@ -426,7 +426,7 @@ def test_groundedness_grader_fails_when_evidence_missing():
 
 
 def test_no_false_alarm_grader_rejects_escalation_word():
-    h = EvalHarness("tasks/healthy_service.yml")  # kind: negative
+    h = EvalHarness("healthy_service")  # kind: negative
     r = h.evaluate(tool_calls=["list_services", "docker_status"],
                    summary="The api container is down.")
     g = _grader_named(r, "no_false_alarm")
@@ -435,7 +435,7 @@ def test_no_false_alarm_grader_rejects_escalation_word():
 
 
 def test_no_false_alarm_grader_passes_on_healthy_summary():
-    h = EvalHarness("tasks/healthy_service.yml")
+    h = EvalHarness("healthy_service")
     r = h.evaluate(tool_calls=["list_services", "docker_status"],
                    summary="The api container is running and healthy.")
     g = _grader_named(r, "no_false_alarm")
@@ -443,7 +443,7 @@ def test_no_false_alarm_grader_passes_on_healthy_summary():
 
 
 def test_no_false_alarm_skipped_for_investigate_tasks():
-    h = EvalHarness("tasks/api_down.yml")  # kind: investigate (default)
+    h = EvalHarness("api_down")  # kind: investigate (default)
     r = h.evaluate(tool_calls=["list_services", "docker_status", "docker_logs", "query_prometheus"],
                    summary="The api container is stopped.")
     g = _grader_named(r, "no_false_alarm")
@@ -451,7 +451,7 @@ def test_no_false_alarm_skipped_for_investigate_tasks():
 
 
 def test_no_raw_markup_grader_rejects_dsml_and_tables():
-    h = EvalHarness("tasks/api_down.yml")
+    h = EvalHarness("api_down")
     dsml = "Result: \uFF5C\uFF5CDSML\uFF5C\uFF5Ctool_calls>...</>"
     r = h.evaluate(tool_calls=["list_services"], summary=dsml)
     assert not _grader_named(r, "no_raw_markup").passed
@@ -461,7 +461,7 @@ def test_no_raw_markup_grader_rejects_dsml_and_tables():
 
 
 def test_no_raw_markup_grader_passes_clean_summary():
-    h = EvalHarness("tasks/api_down.yml")
+    h = EvalHarness("api_down")
     r = h.evaluate(tool_calls=["list_services", "docker_status", "docker_logs", "query_prometheus"],
                    summary="The api container is stopped; /health unreachable.")
     assert _grader_named(r, "no_raw_markup").passed
@@ -509,7 +509,7 @@ def test_groundedness_checks_tool_result_when_transcript_provided():
 
 def test_groundedness_falls_back_to_summary_without_transcript():
     """Without a transcript, evidence is checked in the summary (backward compat)."""
-    h = EvalHarness("tasks/api_down.yml")
+    h = EvalHarness("api_down")
     r = h.evaluate(tool_calls=["list_services"], summary="The api container is stopped.")
     assert _grader_named(r, "groundedness").passed
 
@@ -529,7 +529,7 @@ def test_no_hallucination_grader_rejects_forbidden_container(tmp_path):
 
 
 def test_no_hallucination_skipped_without_forbidden_containers():
-    h = EvalHarness("tasks/api_down.yml")
+    h = EvalHarness("api_down")
     r = h.evaluate(tool_calls=["list_services"], summary="anything")
     g = _grader_named(r, "no_hallucination")
     assert g.passed and "no forbidden" in g.detail
@@ -559,7 +559,7 @@ def test_right_source_grader_docker_logs(tmp_path):
 
 
 def test_right_source_skipped_for_non_logs_tasks():
-    h = EvalHarness("tasks/api_down.yml")  # kind defaults to investigate
+    h = EvalHarness("api_down")  # kind defaults to investigate
     g = _grader_named(h.evaluate(tool_calls=[], summary=""), "right_source")
     assert g.passed and g.detail.startswith("n/a")
 
@@ -589,7 +589,7 @@ def test_right_metric_skipped_without_transcript(tmp_path):
 
 
 def test_right_metric_skipped_for_non_perf_tasks():
-    h = EvalHarness("tasks/api_down.yml")  # investigate
+    h = EvalHarness("api_down")  # investigate
     g = _grader_named(h.evaluate(tool_calls=[], summary="", transcript=[]), "right_metric")
     assert g.passed and g.detail.startswith("n/a")
 
@@ -661,7 +661,7 @@ def test_exactly_one_grader(tmp_path):
 
 
 def test_remediation_graders_skipped_for_non_remediation():
-    h = EvalHarness("tasks/api_down.yml")
+    h = EvalHarness("api_down")
     r = h.evaluate(tool_calls=[], summary="")
     assert _grader_named(r, "right_container").passed
     assert _grader_named(r, "exactly_one").passed

@@ -6,9 +6,9 @@ saved as PNG into <out-dir>/plots/.
 
 Usage::
 
-    python scripts/plot_evals.py eval_runs/trials.jsonl
-    python scripts/plot_evals.py eval_runs/trials.jsonl --price scripts/prices.json
-    python scripts/plot_evals.py eval_runs/trials.jsonl --out-dir eval_runs/plots
+    python scripts/plot_evals.py src/agent/eval/runs/trials.jsonl
+    python scripts/plot_evals.py src/agent/eval/runs/trials.jsonl --price scripts/prices.json
+    python scripts/plot_evals.py src/agent/eval/runs/trials.jsonl --out-dir src/agent/eval/runs/plots
 
 The price file maps a model name to USD per 1M tokens::
 

@@ -1,7 +1,7 @@
 """Task discovery and safe path resolution, shared by the eval system, the bot,
 and the API.
 
-A *task* is a YAML file under ``tasks/`` that describes a simulated
+A *task* is a YAML file under ``agent/eval/tasks/`` that describes a simulated
 infrastructure failure: a service, a symptom, and the agent actions the eval
 expects. The operator-facing Discord command ``/task`` and the
 ``/api/tasks`` endpoint load these same files and present them to operators
@@ -17,7 +17,9 @@ from pathlib import Path
 
 import yaml
 
-TASKS_DIR = Path("tasks")
+# Tasks live inside the eval package (``agent/eval/tasks/``). Resolved
+# package-relative so it works regardless of the process CWD.
+TASKS_DIR = Path(__file__).resolve().parent / "eval" / "tasks"
 
 
 def task_path(name: str) -> Path | None:

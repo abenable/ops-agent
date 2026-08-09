@@ -30,7 +30,6 @@ class _ActivityHandler(logging.Handler):
             for q in list(_SUBS):
                 q.put_nowait(evt)
         except Exception:
-            # ponytail: a logging handler must never raise
             pass
 
 

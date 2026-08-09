@@ -67,7 +67,6 @@ async def _poll_containers(bot) -> None:
     try:
         containers = await docker.list_containers(all_containers=True)
     except Exception:
-        # ponytail: skip cycle if the Docker socket is unreachable
         return
 
     name_filter = settings.docker_name_filter.lower()
@@ -131,7 +130,6 @@ async def _poll_once(bot) -> None:
 
     for name, url in _endpoints().items():
         res = await check_endpoint(url)
-        # ponytail: treat 5xx as down; anything reachable under 500 is up
         up = res["reachable"] and (res["status_code"] or 599) < 500
         prev = _last_state.get(url)
 

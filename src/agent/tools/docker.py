@@ -49,7 +49,6 @@ async def list_containers(all_containers: bool = True) -> list[dict]:
             response.raise_for_status()
             return response.json()
     except httpx.HTTPError:
-        # ponytail: daemon unreachable or erroring — treat as no containers, like a missing socket
         return []
 
 

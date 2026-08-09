@@ -162,9 +162,6 @@ async def run_agentic_investigation_stream(
     total_steps = 0
     pending: list[dict] | None = None  # tool calls carried over from the previous turn
     t0 = time.monotonic()
-    # ponytail: accumulate token usage + LLM latency across every ainvoke so
-    # evals can plot cost / efficiency. Non-streaming ainvoke returns the full
-    # response at once, so "time to first token" == duration of the first call.
     usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0,
              "n_llm_calls": 0, "n_tool_calls": 0, "llm_time_s": 0.0,
              "time_to_first_token_s": 0.0}

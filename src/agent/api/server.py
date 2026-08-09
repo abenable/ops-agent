@@ -27,7 +27,6 @@ app = FastAPI(
     title="Marconi Ops Agent API",
     dependencies=[Depends(_require_api_key)],
 )
-# ponytail: dev-only CORS for the Vite frontend on :5173; tighten WEB_ORIGIN in prod
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o for o in [settings.web_origin, "http://localhost:5173"] if o],

@@ -7,22 +7,22 @@ Anthropic's ["Demystifying evals for AI agents"](https://www.anthropic.com/engin
 
 | Term | Meaning | Where |
 | --- | --- | --- |
-| **task** | One YAML file under `tasks/` (a problem / test case) | `tasks/*.yml` |
+| **task** | One YAML file under `src/agent/eval/tasks/` (a problem / test case) | `agent/eval/tasks/*.yml` |
 | **trial** | One attempt at a task | one `--trials N` run of one task |
-| **grader** | Scores one aspect of a trial | `agent/eval/__init__.py` |
-| **transcript** | Full event trace of a trial (tool_call / tool_result / done) | `eval_runs/<run>/<task>__trial<i>.json` |
+| **grader** | Scores one aspect of a trial | `agent/eval/graders.py` |
+| **transcript** | Full event trace of a trial (tool_call / tool_result / done) | `src/agent/eval/runs/<run>/<task>__trial<i>.json` |
 | **reference solution** | A known-good answer the graders must accept | `reference_summary` / `reference_tool_calls` in the task YAML |
-| **eval harness** | Loads tasks, runs trials, grades, aggregates | `agent.eval.EvalHarness` + `python -m agent eval` |
+| **eval harness** | Loads tasks, runs trials, grades, aggregates | `agent.eval.harness.EvalHarness` + `python -m agent eval` |
 
 ## Running
 
 ```bash
 python -m agent eval                         # all tasks, 1 trial each
-python -m agent eval --task tasks/api_down.yml
+python -m agent eval --task api_down
 python -m agent eval --trials 5 --label qwen2.5-14b   # pass@k / pass^k
 ```
 
-Each run writes, under `eval_runs/<UTC_ts>_<label>/`:
+Each run writes, under `src/agent/eval/runs/<UTC_ts>_<label>/`:
 - `<task>__trial<i>.json` — full transcript + per-grader breakdown for trial *i*
 - `<task>__summary.json` — pass@k, pass^k, per-grader pass rates (when `--trials > 1`)
 - `../trials.jsonl` — one append-only row per trial (the long-term comparison log)

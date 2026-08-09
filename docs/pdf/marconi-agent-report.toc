@@ -8,8 +8,8 @@
 \contentsline {subsection}{\numberline {4.2}Discord interface}{7}{subsection.4.2}%
 \contentsline {subsubsection}{\numberline {4.2.1}Reply summarisation}{8}{subsubsection.4.2.1}%
 \contentsline {subsection}{\numberline {4.3}HTTP API}{9}{subsection.4.3}%
-\contentsline {subsection}{\numberline {4.4}Agent tools}{9}{subsection.4.4}%
-\contentsline {subsubsection}{\numberline {4.4.1}Service status}{9}{subsubsection.4.4.1}%
+\contentsline {subsection}{\numberline {4.4}Agent tools}{10}{subsection.4.4}%
+\contentsline {subsubsection}{\numberline {4.4.1}Service status}{10}{subsubsection.4.4.1}%
 \contentsline {subsubsection}{\numberline {4.4.2}Metrics and logs}{10}{subsubsection.4.4.2}%
 \contentsline {subsubsection}{\numberline {4.4.3}HTTP health}{10}{subsubsection.4.4.3}%
 \contentsline {subsubsection}{\numberline {4.4.4}Docker and SSH tools}{10}{subsubsection.4.4.4}%

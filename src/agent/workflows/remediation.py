@@ -168,8 +168,6 @@ def _is_expired(approval: dict) -> bool:
 
 
 if __name__ == "__main__":
-    # ponytail: self-check — execute_approval refuses a non-existent id without
-    # touching Docker. Fails loudly if the gate's guard logic regresses.
     import asyncio
 
     out = asyncio.run(execute_approval("does-not-exist"))

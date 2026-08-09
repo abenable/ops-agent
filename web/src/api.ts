@@ -161,7 +161,6 @@ export async function streamAgent(
       try {
         onEvent(JSON.parse(line.slice(6)) as AgentEvent);
       } catch {
-        // ponytail: skip malformed chunk rather than abort the whole stream
       }
     }
   }
@@ -189,7 +188,6 @@ export async function streamActivity(
       try {
         onEvent(JSON.parse(line.slice(6)) as ActivityEvent);
       } catch {
-        // ponytail: skip malformed chunk rather than abort the whole stream
       }
     }
   }

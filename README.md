@@ -43,8 +43,6 @@ Built during the Implementation Phase (Weeks 5–8) of the Marconi industrial tr
   graders (tool selection, summary grounding, no false alarms, no leaked markup),
   and with `--trials N` reports pass@k / pass^k. Full transcripts are saved per
   trial. See [docs/evals.md](docs/evals.md).
-- **k6 load tests** — `loadtests/agent.js` stress-tests the API health, status, containers,
-  incidents, and metrics endpoints with configurable VU ramp-up.
 
 ## Quick start
 
@@ -76,7 +74,7 @@ option to skip the LLM summary and show the full output.
 | `/watchlist` | List the containers currently being watched |
 | `/ask <question>` | Free-form agentic investigation using read-only tools |
 | `/incident <service>` | Run the incident investigation workflow |
-| `/task <name>` | Run a simulated task from `tasks/<name>.yml` |
+| `/task <name>` | Run a simulated task by name (e.g. `api_down`) |
 | `/ack <incident_id>` | Acknowledge a stored incident |
 | `/resolve <incident_id>` | Resolve a stored incident |
 | `/menu` | Interactive container picker with Status/Logs/Metrics buttons |
@@ -138,12 +136,14 @@ inactive when its channel id is unset). See [docs/discord-channels.md](docs/disc
 │   ├── workflows/           # Incident investigation (agentic loop), remediation, and reporting
 │   ├── storage/             # SQLite repository for incidents, watch list, and approvals
 │   ├── alerting/            # Discord alert + incident-thread helpers
-│   ├── eval/                # Task evaluation harness
+│   ├── eval/                # Task evaluation harness (modular)
+│   │   ├── graders.py       # Code-based graders (tool_calls, groundedness, right_metric, ...)
+│   │   ├── harness.py       # EvalHarness: loads task YAML, grades a trial
+│   │   ├── cli.py           # `agent eval` subcommand (drives the workflow, writes runs)
+│   │   └── tasks/           # Simulated infrastructure issues (yml)
 │   ├── metrics.py            # Prometheus self-metrics for the agent
 │   └── config/              # Environment-based settings
 ├── tests/                   # Test suite
-├── tasks/               # Simulated infrastructure issues (yml)
-├── loadtests/               # k6 load-test scripts
 ├── web/                     # React SPA dashboard (bun build → nginx)
 ├── docs/                    # setup, usage, architecture, workflows, tools, channels
 └── data/                    # SQLite database
@@ -158,9 +158,6 @@ uv run pytest -m integration   # live checks (needs a real LLM / Discord token)
 # Task evaluation (requires a running LLM)
 python -m agent eval                         # run all tasks against the live LLM
 python -m agent eval --trials 5 --label qwen  # pass@k / pass^k per task
-
-# k6 load test (requires k6 installed separately)
-k6 run loadtests/agent.js
 ```
 
 ## Documentation
@@ -206,4 +203,4 @@ This is an MVP built for a controlled environment. Known limitations:
 - Role-based command permissions and an allowlist for SSH/Docker actions.
 - Human-in-the-loop approval before any Docker/SSH write action is executed.
 - Prometheus recording rules and Grafana dashboards for the agent's own operational metrics.
-- Expand the eval harness with additional tasks and integrate k6 load tests into CI.
+- Expand the eval harness with additional tasks and graders (e.g. an LLM-judge grader calibrated against hand-read transcripts).
