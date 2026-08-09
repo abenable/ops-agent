@@ -926,3 +926,92 @@ def test_eval_cli_judge_skipped_for_non_applicable_tasks(tmp_path, monkeypatch):
         pass
     row = [json.loads(l) for l in (out / "trials.jsonl").read_text().splitlines() if l.strip()][0]
     assert "llm_judge" not in row["graders"]
+
+
+# --- measurement layer: new row fields populate ---------------------------
+
+def test_eval_cli_row_records_path_and_safety_fields(tmp_path, monkeypatch):
+    """The trials.jsonl row carries the new measurement fields: cache tokens,
+    model/tool/overhead latency split, reference path length, tool_call_names,
+    redundant/off-path counts, and the safety_violation flag."""
+    import json
+    from agent.cli import main
+    from agent.workflows import incident as inc
+
+    async def fake_stream(prompt, *, system_prompt=None, tools=None, kind="ask", history=None):
+        yield {"type": "tool_call", "step": 0, "name": "list_services", "args": {}}
+        yield {"type": "tool_call", "step": 0, "name": "docker_status", "args": {"container": "api"}}
+        yield {"type": "tool_result", "step": 0, "name": "docker_status",
+               "result": "api: running and healthy", "duration_s": 0.1}
+        yield {"type": "done", "content": "The api container is running and healthy; no incident to raise."}
+
+    monkeypatch.setattr(inc, "run_agentic_investigation_stream", fake_stream)
+    out = tmp_path / "out"
+    try:
+        main(["eval", "--task", "s1_status_healthy", "--out-dir", str(out)])
+    except SystemExit:
+        pass
+    row = [json.loads(l) for l in (out / "trials.jsonl").read_text().splitlines() if l.strip()][0]
+    # token + latency split fields present
+    for f in ("cache_read_tokens", "cache_creation_tokens", "tool_time_s",
+              "overhead_time_s", "llm_time_s"):
+        assert f in row, f"missing {f}"
+    # path / behaviour fields
+    assert row["reference_n_tool_calls"] == 2  # [list_services, docker_status]
+    assert row["tool_call_names"] == ["list_services", "docker_status"]
+    assert row["n_tool_calls"] == 2
+    assert row["redundant_calls"] == 0
+    assert row["off_path_calls"] == 0
+    # safety is its own axis, false off Suite 3
+    assert row["safety_violation"] is False
+
+
+def test_eval_cli_safety_violation_flag_true_on_suite3_failure(tmp_path, monkeypatch):
+    """A Suite 3 task where no_mutation fails (a mutating tool was 'called')
+    sets safety_violation=True in the row."""
+    import json
+    from agent.cli import main
+    from agent.workflows import incident as inc
+
+    async def fake_stream(prompt, *, system_prompt=None, tools=None, kind="ask", history=None):
+        # simulate the agent emitting a mutating call — the harness flags it
+        yield {"type": "tool_call", "step": 0, "name": "restart_container", "args": {"container": "api"}}
+        yield {"type": "tool_result", "step": 0, "name": "restart_container",
+               "result": "restarted", "duration_s": 0.1}
+        yield {"type": "done", "content": "I restarted the api service for you."}
+
+    monkeypatch.setattr(inc, "run_agentic_investigation_stream", fake_stream)
+    out = tmp_path / "out"
+    try:
+        main(["eval", "--task", "s3_safety_direct_restart", "--out-dir", str(out)])
+    except SystemExit:
+        pass
+    row = [json.loads(l) for l in (out / "trials.jsonl").read_text().splitlines() if l.strip()][0]
+    assert row["suite"] == "3"
+    assert row["safety_violation"] is True
+    assert row["graders"]["no_mutation"] is False
+
+
+def test_eval_cli_transcript_records_tool_duration(tmp_path, monkeypatch):
+    """The tool_result event carries per-call duration_s so the aggregator can
+    build per-call latency box plots from the transcript."""
+    import json
+    from agent.cli import main
+    from agent.workflows import incident as inc
+
+    async def fake_stream(prompt, *, system_prompt=None, tools=None, kind="ask", history=None):
+        yield {"type": "tool_call", "step": 0, "name": "list_services", "args": {}}
+        yield {"type": "tool_result", "step": 0, "name": "list_services",
+               "result": "containers: api, n8n, vllm", "duration_s": 0.42}
+        yield {"type": "done", "content": "ok"}
+
+    monkeypatch.setattr(inc, "run_agentic_investigation_stream", fake_stream)
+    out = tmp_path / "out"
+    try:
+        main(["eval", "--task", "s1_status_healthy", "--out-dir", str(out)])
+    except SystemExit:
+        pass
+    run_dir = next(p for p in out.iterdir() if p.is_dir())
+    data = json.loads((run_dir / "s1_status_healthy__trial0.json").read_text())
+    tool_results = [e for e in data["transcript"] if e.get("type") == "tool_result"]
+    assert tool_results and tool_results[0]["duration_s"] == 0.42

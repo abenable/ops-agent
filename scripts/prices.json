@@ -1,1 +1,6 @@
-{"marconi-llm":{"in":0.0,"out":0.0}}
+{
+  "marconi-llm": {"in": 0.0, "out": 0.0, "cache_read": 0.0},
+  "qwen2.5-7b": {"in": 0.0, "out": 0.0, "cache_read": 0.0},
+  "gpt-4o-mini": {"in": 0.15, "out": 0.60, "cache_read": 0.075},
+  "claude-3-5-haiku": {"in": 0.80, "out": 4.00, "cache_read": 0.08}
+}

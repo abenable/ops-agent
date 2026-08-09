@@ -210,24 +210,77 @@ highest `--trials`**: a single safety failure outweighs every other suite.
 
 ## Measurement layer (cross-suite)
 
-The CLI records per-trial cost/efficiency metrics in `trials.jsonl` for every
-trial of every suite — they are not a suite of their own:
+The CLI records per-trial metrics in `trials.jsonl` for every trial of every
+suite — they are not a suite of their own:
 
-`duration_s`, `prompt_tokens`, `completion_tokens`, `total_tokens`,
-`n_llm_calls`, `n_turns`, `n_tool_calls`, `llm_time_s`, `time_to_first_token_s`,
-`time_to_last_token_s`, `output_tokens_per_sec`, `tokens_per_sec`.
+- **tokens**: `prompt_tokens`, `completion_tokens`, `total_tokens`,
+  `cache_read_tokens`, `cache_creation_tokens` (cache = 0 on backends without
+  prompt caching, e.g. self-hosted vLLM).
+- **latency**: `duration_s`, `llm_time_s`, `tool_time_s`, `overhead_time_s`
+  (model vs tool vs overhead split, not blended), `time_to_first_token_s`,
+  `time_to_last_token_s`, `output_tokens_per_sec`, `tokens_per_sec`.
+- **path/behaviour**: `n_tool_calls`, `reference_n_tool_calls`,
+  `tool_call_names`, `redundant_calls`, `off_path_calls` → downstream ratios
+  `path_ratio`, `redundant_rate`, `wrong_branch_rate`.
+- **correctness**: `passed`, `score` (step-accuracy), per-grader pass/fail,
+  `safety_violation` (Suite 3 only — its own axis, never averaged).
+- **tags**: `model`, `label`, `task`, `suite`, `kind`, `trial`.
 
 This keeps accuracy (the suites) and cost (the comparison harness) decoupled:
 swapping a model changes the cost numbers without touching the accuracy
 definition, and vice versa.
 
+### Aggregation + dashboard
+
+```bash
+# per model (repeat with --label for each model you want to compare):
+python -m agent eval --judge --trials 5 --label qwen2.5-7b
+python -m agent eval --judge --trials 5 --label gpt-4o-mini
+
+# then aggregate the appended trials.jsonl into metrics + charts:
+python scripts/aggregate_evals.py src/agent/eval/runs/trials.jsonl \
+  --price scripts/prices.json --out-dir src/agent/eval/runs/plots
+```
+
+`aggregate_evals.py` writes `metrics.json` (every metric grouped by
+`(model, task)` and `(model, suite)`) and four dashboard PNGs:
+
+1. **accuracy_vs_cost.png** — `success_rate` vs `cost_per_success`, one point
+   per (model, task). The model-selection chart (bottom-right = best value).
+2. **efficiency_over_tasks** — tokens + latency grouped bars per model, with
+   ±1σ error bars (needs `--trials ≥ 3` to mean anything).
+3. **path_efficiency.png** — `path_ratio` (actual / reference tool calls) box
+   plot per model; 1.0 = optimal, spread = wandering.
+4. **safety_heatmap.png** — Suite 3 pass/fail per (model, task). Binary, never
+   averaged into the other charts.
+
+Self-hosted models cost $0 (compare on `tokens_per_sec` +
+`cost_per_success`-as-tokens); hosted A/B needs real USD-per-1M-token rates in
+`scripts/prices.json` (with an optional `cache_read` rate for prompt-cached
+input). The headline summary table prints per model: success rate,
+step-accuracy, cost-per-success, mean + p95 latency, path_ratio, redundant
+rate, wrong-branch rate, and safety-violation rate.
+
+### Judge calibration (not per-run)
+
+```bash
+# hand-grade a batch (Suite 2 first), one CSV row per trial:
+#   task,trial,model,cause_correct,evidence_cited   (1=pass, 0=fail, blank=skip)
+python scripts/judge_agreement.py --runs src/agent/eval/runs --grades grades.csv
+```
+
+Run once before trusting `--judge` in CI, then on a ~5% sample after a model
+swap. High disagreement ⇒ the rubric is ambiguous; tighten the per-criterion
+question, don't swap the judge.
+
 ## Honest gaps (planned)
 
-- **LLM-judge calibration.** The judge is wired and opt-in (`--judge`) but not
-  yet calibrated against a hand-graded batch. Before trusting it in CI: grade
-  ~20 transcripts by hand, run the judge on the same batch, and check
-  agreement. High disagreement means the rubric is ambiguous, not that the
-  judge is "wrong" — tighten the per-criterion questions until they converge.
+- **LLM-judge calibration.** The judge is wired and opt-in (`--judge`) and the
+  calibration tool (`scripts/judge_agreement.py`) is delivered, but no
+  hand-graded baseline has been recorded yet. Before trusting it in CI: grade
+  ~20 transcripts by hand, run `judge_agreement.py`, and tighten the
+  per-criterion questions until agreement is acceptable. Suite 3 is excluded
+  from this entirely — it never goes through the judge.
   (Suite 3 is excluded from this entirely — it never goes through the judge.)
 - **No pass^k baseline recorded yet** against the rebuilt suite set. Re-run
   `--trials 5` per model and record per-suite pass^k here as the consistency bar.

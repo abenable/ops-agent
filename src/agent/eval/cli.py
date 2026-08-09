@@ -49,6 +49,52 @@ def _default_out_dir() -> "Path":
     return Path(__file__).resolve().parent / "runs"
 
 
+def _sig(args: dict) -> str:
+    """Stable hashable signature for a tool call's args (redundant-call detection)."""
+    import json
+    return json.dumps(args or {}, sort_keys=True, default=str)
+
+
+def _path_stats(harness, calls: list[str], transcript: list[dict]) -> dict:
+    """Raw path/behaviour signals recorded per trial so ratios (path_ratio,
+    redundant_rate, wrong_branch_rate) are pure downstream aggregation.
+
+    - reference_n_tool_calls: len(reference_tool_calls) — the canonical path.
+    - tool_call_names: ordered tool names actually called.
+    - redundant_calls: tool calls whose (name, args) signature repeats a prior call.
+    - off_path_calls: tool calls whose name is not in the reference path
+      (the "checked 4 irrelevant services" signal).
+    """
+    ref = set(harness.reference_tool_calls())
+    sigs: list[tuple] = []
+    for e in transcript:
+        if e.get("type") == "tool_call":
+            sigs.append((e.get("name"), _sig(e.get("args") or {})))
+    seen: set[str] = set()
+    redundant = 0
+    for name, s in sigs:
+        key = f"{name}|{s}"
+        if key in seen:
+            redundant += 1
+        else:
+            seen.add(key)
+    off_path = sum(1 for c in calls if c not in ref)
+    return {
+        "reference_n_tool_calls": len(harness.reference_tool_calls()),
+        "tool_call_names": list(calls),
+        "redundant_calls": redundant,
+        "off_path_calls": off_path,
+    }
+
+
+def _safety_violation(harness, result) -> bool:
+    """True only on Suite 3 when the no_mutation grader failed. Kept as its own
+    flag so safety is a separate axis, never averaged into an overall score."""
+    if harness.suite != "3":
+        return False
+    return not next((g.passed for g in result.graders if g.name == "no_mutation"), True)
+
+
 def run(args) -> None:
     import asyncio
     import json
@@ -124,7 +170,7 @@ def run(args) -> None:
                 ev = {
                     k: v
                     for k, v in event.items()
-                    if k in ("type", "step", "name", "args", "result", "content", "message")
+                    if k in ("type", "step", "name", "args", "result", "content", "message", "duration_s")
                 }
                 transcript.append(ev)
                 if event["type"] == "tool_call":
@@ -176,15 +222,19 @@ def run(args) -> None:
             "final_summary": result.final_summary,
             "transcript": transcript,
             "usage": usage,
+            **_path_stats(h, result.actual_tool_calls, transcript),
+            "safety_violation": _safety_violation(h, result),
         }
 
-    def _trial_row(h, result, duration, trial_idx, transcript_file, usage):
+    def _trial_row(h, result, duration, trial_idx, transcript_file, usage, calls, transcript):
         # Derived efficiency metrics kept in the row so the plot script can
         # graph them without re-reading every transcript.
         llm_time = float(usage.get("llm_time_s") or 0.0)
+        tool_time = float(usage.get("tool_time_s") or 0.0)
         out_tok = int(usage.get("completion_tokens") or 0)
         tot_tok = int(usage.get("total_tokens") or 0)
-        return {
+        ps = _path_stats(h, calls, transcript)
+        row = {
             "timestamp": ts,
             "label": label,
             "model": model_name,
@@ -209,14 +259,21 @@ def run(args) -> None:
             "prompt_tokens": int(usage.get("prompt_tokens") or 0),
             "completion_tokens": out_tok,
             "total_tokens": tot_tok,
+            "cache_read_tokens": int(usage.get("cache_read_tokens") or 0),
+            "cache_creation_tokens": int(usage.get("cache_creation_tokens") or 0),
             "n_llm_calls": int(usage.get("n_llm_calls") or 0),
             "n_turns": int(usage.get("n_turns") or 0),
             "llm_time_s": round(llm_time, 3),
+            "tool_time_s": round(tool_time, 3),
+            "overhead_time_s": round(max(0.0, duration - llm_time - tool_time), 3),
             "time_to_first_token_s": round(float(usage.get("time_to_first_token_s") or 0.0), 3),
             "time_to_last_token_s": round(float(usage.get("time_to_last_token_s") or 0.0), 3),
             "output_tokens_per_sec": round(out_tok / llm_time, 2) if llm_time else 0.0,
             "tokens_per_sec": round(tot_tok / llm_time, 2) if llm_time else 0.0,
+            "safety_violation": _safety_violation(h, result),
         }
+        row.update(ps)
+        return row
 
     if args.task:
         harnesses = [EvalHarness(args.task)]
@@ -241,7 +298,8 @@ def run(args) -> None:
             )
             rel = str(trial_file.relative_to(out_dir))
             with trials_jsonl.open("a", encoding="utf-8") as f:
-                f.write(json.dumps(_trial_row(h, result, duration, i, rel, usage),
+                f.write(json.dumps(_trial_row(h, result, duration, i, rel, usage,
+                                               calls=result.actual_tool_calls, transcript=transcript),
                                    default=str) + "\n")
             trial_results.append(result)
             total_trials += 1

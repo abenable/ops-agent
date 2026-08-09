@@ -164,6 +164,8 @@ async def run_agentic_investigation_stream(
     t0 = time.monotonic()
     usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0,
              "n_llm_calls": 0, "n_tool_calls": 0, "llm_time_s": 0.0,
+             "tool_time_s": 0.0,
+             "cache_read_tokens": 0, "cache_creation_tokens": 0,
              "time_to_first_token_s": 0.0}
 
     def _acc(ai_msg):
@@ -171,6 +173,13 @@ async def run_agentic_investigation_stream(
         usage["prompt_tokens"] += int(um.get("input_tokens", 0))
         usage["completion_tokens"] += int(um.get("output_tokens", 0))
         usage["total_tokens"] += int(um.get("total_tokens", 0))
+        # OpenAI prompt-caching detail (langchain-openai surfaces it as
+        # input_token_details / output_token_details). 0 when the backend has
+        # no caching (self-hosted vLLM) — the aggregator treats 0 as n/a.
+        din = um.get("input_token_details") or {}
+        dout = um.get("output_token_details") or {}
+        usage["cache_read_tokens"] += int(din.get("cache_read", 0))
+        usage["cache_creation_tokens"] += int(din.get("cache_creation", 0))
         usage["n_llm_calls"] += 1
 
     for step in range(settings.max_tool_steps):
@@ -206,13 +215,16 @@ async def run_agentic_investigation_stream(
                 tool_start = time.monotonic()
                 out = await by_name[name].ainvoke(args)
                 _tool_duration = time.monotonic() - tool_start
+                usage["tool_time_s"] += _tool_duration
                 TOOL_CALL_TOTAL.labels(tool=name, status="ok").inc()
                 TOOL_CALL_DURATION.labels(tool=name).observe(_tool_duration)
             except Exception as exc:
                 out = f"tool error: {exc}"
+                _tool_duration = 0.0
                 TOOL_CALL_TOTAL.labels(tool=name, status="error").inc()
             messages.append(ToolMessage(str(out)[:4000], tool_call_id=tool_id))
-            yield {"type": "tool_result", "step": step, "name": name, "result": str(out)[:2000]}
+            yield {"type": "tool_result", "step": step, "name": name,
+                   "result": str(out)[:2000], "duration_s": round(_tool_duration, 3)}
 
     # Step cap reached with pending tool calls: ask the tool-less LLM to
     # synthesize the evidence gathered so far into prose. Without this nudge the
