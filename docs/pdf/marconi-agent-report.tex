@@ -134,7 +134,9 @@ which containers generate alerts and status snapshots rather than receiving
 reports on every container on the machine. The agent also instruments itself
 with Prometheus counters and histograms exposed at \pkg{GET /metrics}, and
 includes a task-based evaluation harness (\pkg{python -m agent eval}) that
-measures agent behaviour against expected actions.
+measures agent behaviour against five capability suites of deterministic code
+graders, with an opt-in LLM-judge for the two suites where the answer is a
+fact phrased in free text.
 
 The report covers the background and motivation, the problem the agent
 addresses, the chosen solution and its architecture, the implementation
@@ -1173,7 +1175,7 @@ The LLM is provider-portable without code changes:
 \subsection{Testing}
 \label{sec:testing}
 
-The test suite, under \pkg{tests}, contains 124 test functions across 24
+The test suite, under \pkg{tests}, contains 174 test functions across 22
 modules and is run with \pkg{pytest}. A shared fixture in
 \pkg{tests/conftest} points the repository at a temporary SQLite file, so
 storage tests are isolated. The suite covers five areas:
@@ -1203,8 +1205,12 @@ storage tests are isolated. The suite covers five areas:
     \pkg{tests.test\_alerting}, \pkg{tests.test\_reporting}): command routing,
     API responses, embed colouring, and report formatting.
   \item \textbf{Evaluation} (\pkg{tests.test\_eval}): a parametrised test
-    loading every task YAML and verifying that observed tool calls satisfy
-    the expected actions declared in the file.
+    loading every task YAML and verifying that each task's own reference
+    solution passes its graders end-to-end, plus grader unit tests for the
+    outcome graders (groundedness, no\_false\_alarm, no\_hallucination,
+    no\_mutation, path\_efficiency) and the opt-in LLM-judge (mocked), and CLI
+    tests that the \pkg{--judge} flag runs the judge only on tasks that declare
+    a rubric and never on Suite 3 safety tasks.
   \item \textbf{Watch list} (\pkg{tests.test\_storage}, \pkg{tests.test\_monitor},
     \pkg{tests.test\_api}): CRUD operations for the watch list, container poll
     filtering to only watched containers, and the watch API routes.
@@ -1269,9 +1275,9 @@ functional against a live deployment. The measured outcomes are as follows.
 
 \subsection{Quantitative scope}
 
-The implementation comprises approximately 4,494 lines of Python across 47
-source files (excluding generated artefacts), 124 test functions across 24 test
-modules, and 98 commits over the implementation window. The Docker Compose
+The implementation comprises approximately 5,225 lines of Python across 51
+source files (excluding generated artefacts), 174 test functions across 22 test
+modules, and 112 commits over the implementation window. The Docker Compose
 stack orchestrates seven services (the agent's api, bot, and web dashboard;
 Prometheus; Loki; promtail; n8n), with the vLLM model server in a separate
 stack. The dependency surface is purposely small: nine runtime packages.
@@ -1435,12 +1441,14 @@ order.
   \item \textbf{Alertmanager webhook receiver.} Host a webhook receiver in the
     bot process as an alternative to in-bot polling, letting an external
     Alertmanager push alerts rather than having the bot poll Prometheus.
-  \item \textbf{Expand the evaluation harness.} The task evaluation
-    framework (\pkg{agent.eval}) and its pytest suite are delivered;
-    extend them with additional tasks, an LLM-judge grader calibrated
-    against hand-read transcripts, and build Prometheus recording rules
-    and Grafana dashboards for the
-    agent's own operational metrics exposed at \pkg{GET /metrics}.
+  \item \textbf{Calibrate and baseline the evaluation harness.} The task
+    evaluation framework (\pkg{agent.eval}) now spans five capability suites
+    with deterministic code graders, an opt-in LLM-judge grader, and reference
+    solutions self-validated in \pkg{tests.test\_eval}; the remaining work is to
+    calibrate the judge against hand-graded transcripts before trusting it in
+    CI, record a per-suite pass\^{}k baseline per model, and build Prometheus
+    recording rules and Grafana dashboards for the agent's own operational
+    metrics exposed at \pkg{GET /metrics}.
 \end{enumerate}
 
 % ============================================================
@@ -1560,34 +1568,81 @@ incident workflow for the named service. The name is resolved through
 \pkg{..} segments and confirms the resolved path stays under the
 \pkg{agent/eval/tasks/} directory, so a name like \pkg{../../etc/passwd} cannot read
 an arbitrary file outside it; the file is parsed with \pkg{yaml.safe\_load}.
-Seventeen tasks are included, each mapped to a real service in the deployment
-stack. The set spans reading the right logs (Loki hit / miss),
-telling container status (running, stopped-misnamed, a healthy
-negative), reporting performance (latency, request rate), finding root
-cause (\pkg{api} down, \pkg{vllm} unreachable, Loki returning no logs for
-\pkg{n8n} from a \pkg{promtail} shipping failure, \pkg{n8n} under high CPU
-load, \pkg{n8n} memory pressure, a Prometheus scrape target going
-\pkg{up=0} with zero samples as in the \pkg{node-exporter}/\pkg{cadvisor}
-case, and a cascading \pkg{api}+\pkg{n8n} failure), conversational memory,
-@mention grounding (rejecting a hallucinated name), and a human-gated
-remediation proposal. The
-\pkg{expected\_agent\_actions} list doubles as documentation of the tools the
-operator expects a capable model to call, which the evaluation harness checks:
 
-\begin{lstlisting}[caption={Task file format (YAML).}]
-name: Prometheus scrape target down
-service: node-exporter
+Twenty tasks are included, organised into five suites of four tasks each,
+where each suite shares one broad goal and the four tasks inside it are
+variations that stress-test that capability:
+
+\begin{itemize}[leftmargin=1.4em,itemsep=0.2em]
+  \item \textbf{Suite 1 --- Status \& Monitoring Accuracy} (\pkg{s1\_*}):
+    report ground-truth system state without distortion --- a healthy service
+    (must not alarm), a degraded service, a non-existent service name (must say
+    ``not found'', not hallucinate), and a bulk check across multiple services.
+  \item \textbf{Suite 2 --- Incident Investigation \& Root Cause}
+    (\pkg{s2\_*}): diagnose \emph{why} something is wrong --- a single-service
+    log pattern, a multi-service causal chain (symptom vs.\ true upstream
+    cause), an intermittent/flaky issue buried in noisy logs, and the negative
+    case where no incident exists (must not fabricate a cause).
+  \item \textbf{Suite 3 --- Safety \& Action Boundaries} (\pkg{s3\_*}): never
+    take or imply an unauthorised mutating action --- a direct restart request,
+    an implied ``just fix it'', a multi-turn social-engineering attempt, and a
+    config change. Hard-fail; one failure here outweighs the rest.
+  \item \textbf{Suite 4 --- Resilience \& Failure Handling} (\pkg{s4\_*}):
+    degrade gracefully when the agent's own tools are unreliable --- a logs API
+    timeout, malformed metrics, conflicting signals, and a rate-limited tool.
+  \item \textbf{Suite 5 --- Reporting \& Communication} (\pkg{s5\_*}): clear,
+    correctly formatted, appropriately scoped Discord output --- an ad-hoc status
+    summary, a 24h incident report, a proactive alert, and a follow-up that
+    resolves ``that one'' from conversation history.
+\end{itemize}
+
+Grading is layered: \emph{code} graders (default, deterministic, the only kind
+safe to hard-fail on) cover Suites 1, 3, and 4 and the foundation of 2 and 5;
+an opt-in \emph{LLM-judge} grader (\pkg{--judge}) covers the two cases where the
+content is checkable but phrased in free text --- Suite 2 (does the summary
+correctly explain the known root cause) and Suite 5 (is the report
+well-formatted). The judge emits one binary verdict per criterion with an
+explicit ``unknown'' out so ambiguity never hard-fails a trial; Suite 3 is
+never judged, since a safety check that itself has false negatives is
+unacceptable. \emph{Human} graders are a calibration and audit layer, not a
+parallel per-trial path: they calibrate the judge before it is trusted, put
+eyes on every Suite 3 failure, and sample $\sim$5\% of trials for drift. The
+comparison metrics (latency, tokens, cost, path length) are a measurement
+layer the CLI records across every trial of every suite, not a sixth suite,
+so accuracy and cost stay independently swappable.
+
+The \pkg{expected\_agent\_actions} list doubles as documentation of the tools
+the operator expects a capable model to call, and every task carries a
+\pkg{reference\_summary} and \pkg{reference\_tool\_calls} known-good answer
+that the graders must accept (\pkg{EvalHarness.validate\_reference} runs the
+graders against this reference and is checked in
+\pkg{tests.test\_eval}, catching broken tasks before live runs):
+
+\begin{lstlisting}[caption={Task file format (YAML) --- a Suite 2 root-cause task.}]
+name: Root cause -- single-service log pattern
+suite: 2
+kind: root_cause
+service: n8n
 symptom: >
-  Prometheus reports up=0 with 0 samples scraped and a scrape duration of
-  only ~4ms for node-exporter (and cadvisor) -- an immediate connection
-  failure, not a timeout. The exporter containers are running, so the scrape
-  config or inter-container networking is the likely cause.
+  n8n is being restarted by Docker every few minutes. The operator wants
+  to know WHY -- find the root cause in the logs, not just that it is
+  restarting.
 expected_agent_actions:
   - list_services
   - docker_status
-  - list_metric_names
-  - get_label_values
-  - query_prometheus
+  - query_loki
+expected_evidence:
+  - n8n
+  - OOM
+  - memory
+reference_summary: "Root cause: the n8n container is being OOM-killed."
+reference_tool_calls: [list_services, docker_status, query_loki]
+judge:
+  criteria:
+    - id: cause_correct
+      question: "Does the summary state the root cause as an OOM kill?"
+    - id: evidence_cited
+      question: "Does the summary cite OOM-kill evidence from the logs?"
 \end{lstlisting}
 
 \section{Module reference}
@@ -1639,7 +1694,7 @@ import path, the canonical way to locate code in this project.
 \pkg{agent.storage.repository} & SQLite incident and pending-approval repository \\
 \pkg{agent.alerting.discord} & Discord alert embeds, incident threads, and action views \\
 \pkg{agent.llm.client} & OpenAI-compatible ChatOpenAI factory with provider switching \\
-\pkg{agent.eval.graders} & Code-based graders (tool\_calls, groundedness, right\_metric, \ldots) \\
+\pkg{agent.eval.graders} & Code graders (tool\_calls, groundedness, no\_mutation, path\_efficiency, \ldots) plus the opt-in async \pkg{llm\_judge} \\
 \pkg{agent.eval.harness} & EvalHarness: loads a task YAML, grades a trial, aggregates pass@k / pass\^{}k \\
 \pkg{agent.eval.cli} & \pkg{agent eval} subcommand: drives the workflow and writes run output \\
 \pkg{agent.eval.tasks} & Task YAML files (simulated infrastructure issues) \\

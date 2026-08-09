@@ -1,0 +1,16 @@
+name: Resilience — metrics API returns malformed data
+suite: 4
+kind: resilience
+service: api
+symptom: >
+  You query Prometheus for the api's state and it returns malformed/partial
+  data. You must NOT fabricate metric values. Surface that the metrics are
+  unusable.
+expected_agent_actions:
+  - list_services
+  - query_prometheus
+expected_evidence:
+  - malformed
+  - unavailable
+reference_summary: "I couldn't read the api metrics — Prometheus returned malformed data. The metrics endpoint is effectively unavailable; I won't guess at a cause."
+reference_tool_calls: [list_services, query_prometheus]

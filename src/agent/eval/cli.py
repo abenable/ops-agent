@@ -32,6 +32,13 @@ def add_subparser(sub) -> None:
         help="Directory to save transcripts and the trial log "
         "(default: src/agent/eval/runs/)",
     )
+    ev.add_argument(
+        "--judge",
+        action="store_true",
+        help="Run the opt-in LLM-judge grader for tasks that declare a judge "
+        "rubric (Suites 2 and 5). Default: code graders only. The judge never "
+        "runs on Suite 3 (safety stays code-only, hard-fail).",
+    )
     ev.set_defaults(func=run)
 
 
@@ -98,6 +105,11 @@ def run(args) -> None:
                 error = str(exc)
             duration = time.monotonic() - t0
             result = harness.evaluate(tool_calls=calls, summary=summary, error=error, transcript=transcript, proposals=proposals)
+            if args.judge and harness.judge_applicable():
+                from agent.eval.graders import llm_judge
+                j = await llm_judge(harness, summary=summary, transcript=transcript)
+                result.graders.append(j)
+                result.passed = result.passed and j.passed
             return result, transcript, duration, usage
         prompt = f"Investigate service {harness.service}."
         if harness.symptom:
@@ -126,6 +138,11 @@ def run(args) -> None:
             error = str(exc)
         duration = time.monotonic() - t0
         result = harness.evaluate(tool_calls=calls, summary=summary, error=error, transcript=transcript)
+        if args.judge and harness.judge_applicable():
+            from agent.eval.graders import llm_judge
+            j = await llm_judge(harness, summary=summary, transcript=transcript)
+            result.graders.append(j)
+            result.passed = result.passed and j.passed
         return result, transcript, duration, usage
 
     def _trial_json_obj(h, result, transcript, duration, trial_idx, usage):
@@ -138,6 +155,7 @@ def run(args) -> None:
             "task_file": str(h._path),
             "task_name": h.name,
             "task_stem": h.stem,
+            "suite": h.suite,
             "kind": h.kind,
             "service": h.service,
             "symptom": h.symptom,
@@ -173,6 +191,7 @@ def run(args) -> None:
             "provider": provider,
             "trial": trial_idx,
             "task": h.stem,
+            "suite": h.suite,
             "kind": h.kind,
             "service": h.service,
             "passed": result.passed,

@@ -1,0 +1,23 @@
+name: Root cause — single-service log pattern
+suite: 2
+kind: root_cause
+service: n8n
+symptom: >
+  n8n is being restarted by Docker every few minutes. The operator wants to
+  know WHY — find the root cause in the logs, not just that it is restarting.
+expected_agent_actions:
+  - list_services
+  - docker_status
+  - query_loki
+expected_evidence:
+  - n8n
+  - OOM
+  - memory
+reference_summary: "Root cause: the n8n container is being OOM-killed — resident memory climbed past the cgroup limit."
+reference_tool_calls: [list_services, docker_status, query_loki]
+judge:
+  criteria:
+    - id: cause_correct
+      question: "Does the summary state the root cause as an OOM kill (n8n resident memory exceeded its cgroup limit)?"
+    - id: evidence_cited
+      question: "Does the summary cite OOM-kill / memory evidence, and does that evidence appear in the observed tool results?"

@@ -1,0 +1,26 @@
+name: Root cause — multi-service causal chain
+suite: 2
+kind: root_cause
+service: api
+symptom: >
+  The api is returning HTTP 500s. At the same time n8n is burning CPU. The
+  operator wants to know whether n8n's load is causing the api failures or
+  the two are independent — name the true upstream cause, not just the
+  symptom service.
+expected_agent_actions:
+  - list_services
+  - docker_status
+  - query_prometheus
+  - query_loki
+expected_evidence:
+  - n8n
+  - cpu
+  - api
+reference_summary: "Root cause: n8n CPU saturation is starving the api of shared capacity, producing api 500s — the api is the symptom, n8n is the cause."
+reference_tool_calls: [list_services, docker_status, query_prometheus, query_loki]
+judge:
+  criteria:
+    - id: cause_correct
+      question: "Does the summary identify n8n CPU saturation as the true upstream cause (the api 500s being the symptom)?"
+    - id: evidence_cited
+      question: "Does the summary cite supporting evidence (n8n CPU metric and api error logs) that appears in the observed tool results?"

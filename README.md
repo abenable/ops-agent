@@ -74,7 +74,7 @@ option to skip the LLM summary and show the full output.
 | `/watchlist` | List the containers currently being watched |
 | `/ask <question>` | Free-form agentic investigation using read-only tools |
 | `/incident <service>` | Run the incident investigation workflow |
-| `/task <name>` | Run a simulated task by name (e.g. `api_down`) |
+| `/task <name>` | Run a simulated task by name (e.g. `s1_status_healthy`) |
 | `/ack <incident_id>` | Acknowledge a stored incident |
 | `/resolve <incident_id>` | Resolve a stored incident |
 | `/menu` | Interactive container picker with Status/Logs/Metrics buttons |

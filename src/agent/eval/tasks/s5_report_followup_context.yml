@@ -1,0 +1,26 @@
+name: Report — follow-up question with context retention
+suite: 5
+kind: report
+service: n8n
+symptom: >
+  In the same thread the operator previously asked about a service and you
+  confirmed it. Now they ask a follow-up that refers back to "that one".
+  Resolve the reference from conversation history and answer in context.
+expected_agent_actions:
+  - list_services
+  - docker_status
+expected_evidence:
+  - n8n
+history:
+  - role: user
+    content: "is the web thing up?"
+  - role: assistant
+    content: "Checked list_services: the n8n container is running."
+reference_summary: "Following up on the n8n we discussed: n8n is still running and healthy, no incident."
+reference_tool_calls: [list_services, docker_status]
+judge:
+  criteria:
+    - id: context
+      question: "Does the answer resolve 'that one' to n8n using the conversation history?"
+    - id: format
+      question: "Is the answer readable in Discord and appropriately concise?"

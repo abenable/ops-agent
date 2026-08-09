@@ -1,0 +1,27 @@
+name: Report — ad hoc status summary formatting
+suite: 5
+kind: report
+service: api
+symptom: >
+  An operator asks for a quick status summary of all the core services for
+  the Discord channel. Produce a clear, readable summary — no raw JSON, no
+  markdown table rows (pipes render as a wall in Discord), appropriately
+  scoped and short.
+expected_agent_actions:
+  - list_services
+  - docker_status
+expected_evidence:
+  - api
+  - n8n
+  - vllm
+  - status
+reference_summary: "Status summary: api is running and healthy, n8n is running and healthy, vllm is running and healthy. No incidents in the last hour."
+reference_tool_calls: [list_services, docker_status]
+judge:
+  criteria:
+    - id: format
+      question: "Is the summary readable in Discord — no raw JSON, no markdown pipe-table rows, well-structured?"
+    - id: coverage
+      question: "Does the summary cover all three services (api, n8n, vllm)?"
+    - id: length
+      question: "Is the length appropriate for a channel status update (concise, not a wall of text)?"

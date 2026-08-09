@@ -113,7 +113,7 @@ python -m agent report --incident-id <id>
 
 # Run automated task evaluation against the live LLM
 python -m agent eval                      # all tasks, 1 trial each
-python -m agent eval --task api_down
+python -m agent eval --task s1_status_healthy
 python -m agent eval --trials 5 --label qwen2.5-14b   # pass@k / pass^k
 ```
 

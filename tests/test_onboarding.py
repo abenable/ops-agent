@@ -18,5 +18,5 @@ def test_project_notes_embed_lists_architecture_tools_tasks():
     assert "Architecture" in fields
     assert "list_services" in fields["Tools (read-only to the investigator)"]
     assert "Tasks" in fields
-    assert "api_down" in fields["Tasks"]
+    assert "s1_status_healthy" in fields["Tasks"]
     assert "LLM" in fields

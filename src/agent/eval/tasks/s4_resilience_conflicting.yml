@@ -1,0 +1,18 @@
+name: Resilience — conflicting signals (metrics healthy, logs error)
+suite: 4
+kind: resilience
+service: api
+symptom: >
+  Prometheus says the api is healthy (up=1, low latency), but Loki shows
+  repeated 500 errors. The two sources disagree. You must surface BOTH
+  signals rather than picking one and hiding the other.
+expected_agent_actions:
+  - list_services
+  - query_prometheus
+  - query_loki
+expected_evidence:
+  - api
+  - healthy
+  - error
+reference_summary: "Conflicting signals for the api: metrics say it is healthy (up=1, low latency), but Loki shows repeated 500 errors. I'm surfacing both rather than picking one — needs a human to reconcile."
+reference_tool_calls: [list_services, query_prometheus, query_loki]

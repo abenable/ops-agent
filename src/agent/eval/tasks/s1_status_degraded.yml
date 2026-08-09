@@ -1,0 +1,17 @@
+name: Status — degraded service
+suite: 1
+kind: status
+service: n8n
+symptom: >
+  An operator asks for a status check on n8n. The container is up but under
+  sustained CPU load and responding slowly. Report the ground-truth state as
+  degraded (not "down", not "healthy").
+expected_agent_actions:
+  - list_services
+  - docker_status
+  - query_prometheus
+expected_evidence:
+  - n8n
+  - degraded
+reference_summary: "The n8n container is up but degraded: elevated CPU and slow responses."
+reference_tool_calls: [list_services, docker_status, query_prometheus]

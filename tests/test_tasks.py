@@ -8,8 +8,8 @@ import agent.bot.tasks as tasks
 
 def test_available_tasks_lists_repo_files():
     names = tasks.available_tasks()
-    assert "api_down" in names
-    assert "scrape_target_down" in names
+    assert "s1_status_healthy" in names
+    assert "s2_root_cause_single" in names
     assert all(n and "/" not in n for n in names)
 
 
@@ -28,7 +28,7 @@ def test_run_and_post_runs_workflow_with_symptom_hint(monkeypatch):
     async def send(msg):
         sent.append(msg)
 
-    asyncio.run(tasks._run_and_post("api_down", send))
+    asyncio.run(tasks._run_and_post("s1_status_healthy", send))
 
     assert captured["service"] == "api"
     assert captured["hint"] and "api" in captured["hint"].lower()

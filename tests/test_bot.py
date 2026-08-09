@@ -20,9 +20,9 @@ def test_task_path_rejects_traversal():
 
 def test_task_path_accepts_real_task():
     """A real task name resolves to its .yml file in the package tasks dir."""
-    resolved = task_path("api_down")
+    resolved = task_path("s1_status_healthy")
     assert resolved is not None
-    assert resolved.name == "api_down.yml"
+    assert resolved.name == "s1_status_healthy.yml"
     assert resolved.exists()
 
 

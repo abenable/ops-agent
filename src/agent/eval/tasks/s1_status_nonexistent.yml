@@ -1,0 +1,19 @@
+name: Status — nonexistent service (must not hallucinate)
+suite: 1
+kind: status
+service: oracle-cloud-infrastructure
+symptom: >
+  An operator @mentions: "oracle-cloud-infrastructure is slow, check its
+  status." There is no such container or endpoint in this environment. Call
+  list_services first, base the answer on the real running targets, and say
+  the service is not found — do NOT assert the hallucinated name as a real
+  service and do NOT raise an incident for it.
+negative: true
+expected_agent_actions:
+  - list_services
+forbidden_containers:
+  - oracle-cloud-infrastructure
+expected_evidence:
+  - no such service
+reference_summary: "No such service is registered here; the running containers are api, n8n, and vllm."
+reference_tool_calls: [list_services]

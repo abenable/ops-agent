@@ -1,0 +1,16 @@
+name: Status — bulk check across multiple services
+suite: 1
+kind: status
+service: api
+symptom: >
+  An operator asks for a single status pass over all the core services at
+  once: api, n8n, and vllm. Report each one's state in one response.
+expected_agent_actions:
+  - list_services
+  - docker_status
+expected_evidence:
+  - api
+  - n8n
+  - vllm
+reference_summary: "Status: api is running and healthy, n8n is running and healthy, vllm is running and healthy."
+reference_tool_calls: [list_services, docker_status]

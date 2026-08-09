@@ -1,0 +1,23 @@
+name: Report — proactive alert message
+suite: 5
+kind: report
+service: api
+symptom: >
+  The monitor fired a proactive alert (not operator-initiated) because the
+  api crossed the error-rate threshold. Surface the alert to the channel
+  with the correct severity framing — concise, no raw metric dumps.
+expected_agent_actions:
+  - list_services
+expected_evidence:
+  - alert
+  - severity
+reference_summary: "Proactive alert: the api crossed the error-rate threshold (warning severity) at 14:02 UTC. An incident has been opened for investigation."
+reference_tool_calls: [list_services]
+judge:
+  criteria:
+    - id: format
+      question: "Is the alert message concise and readable in Discord (no raw metric dumps)?"
+    - id: severity
+      question: "Is the severity framed as 'warning' (not over- or under-stated)?"
+    - id: proactive
+      question: "Does the message convey this is a proactive (monitor-triggered) alert, not a user request?"

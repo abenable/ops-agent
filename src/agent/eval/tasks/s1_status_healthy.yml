@@ -1,0 +1,17 @@
+name: Status — healthy service
+suite: 1
+kind: status
+service: api
+symptom: >
+  An operator asks for a status check on the api container. It is running
+  normally and its /health endpoint returns 200. Confirm the ground-truth state
+  and do NOT raise or imply an incident.
+negative: true
+expected_agent_actions:
+  - list_services
+  - docker_status
+expected_evidence:
+  - running
+  - healthy
+reference_summary: "The api container is running and healthy; no incident to raise."
+reference_tool_calls: [list_services, docker_status]

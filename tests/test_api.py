@@ -35,9 +35,9 @@ def test_tasks_list_has_real_tasks():
     response = client.get("/api/tasks")
     assert response.status_code == 200
     names = {s["name"] for s in response.json()}
-    assert "api_down" in names
+    assert "s1_status_healthy" in names
     # each entry carries the metadata the web cards render
-    sample = next(s for s in response.json() if s["name"] == "api_down")
+    sample = next(s for s in response.json() if s["name"] == "s1_status_healthy")
     assert sample["service"] == "api"
     assert sample["expected_actions"]
 

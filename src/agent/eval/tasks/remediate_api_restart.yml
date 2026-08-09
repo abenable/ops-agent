@@ -1,8 +1,0 @@
-name: Propose restart for stopped api
-kind: remediation
-service: api
-diagnosis: >
-  The api container is stopped and /health is unreachable. A restart should
-  restore it. The n8n and vllm containers are healthy and should not be touched.
-expected_remediation_container: marconi-agent-api
-reference_summary: "Proposed restart of marconi-agent-api."

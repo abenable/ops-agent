@@ -237,7 +237,7 @@ def setup_slash_commands(bot: commands.Bot) -> None:
                 title="Incident Reported",
             )
 
-    @bot.tree.command(name="task", description="Run a simulated task by name (e.g. api_down)")
+    @bot.tree.command(name="task", description="Run a simulated task by name (e.g. s1_status_healthy)")
     @app_commands.describe(name="Task file name (without .yml)")
     async def slash_task(interaction: discord.Interaction, name: str):
         if (

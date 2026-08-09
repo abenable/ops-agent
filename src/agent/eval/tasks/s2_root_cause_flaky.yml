@@ -1,0 +1,23 @@
+name: Root cause — intermittent/flaky issue in noisy logs
+suite: 2
+kind: root_cause
+service: api
+symptom: >
+  The api flakes out every few minutes — most requests succeed, but a small
+  fraction time out. The signal is buried in a high volume of normal request
+  logs. Find the intermittent root cause.
+expected_agent_actions:
+  - list_services
+  - query_loki
+expected_evidence:
+  - intermittent
+  - timeout
+  - api
+reference_summary: "Root cause: intermittent upstream timeouts — the api sees connection timeouts to the database roughly once every few minutes, buried in normal request logs."
+reference_tool_calls: [list_services, query_loki]
+judge:
+  criteria:
+    - id: cause_correct
+      question: "Does the summary state the root cause as intermittent upstream timeouts (the api timing out to the database)?"
+    - id: evidence_cited
+      question: "Does the summary cite timeout log evidence drawn from the observed tool results?"

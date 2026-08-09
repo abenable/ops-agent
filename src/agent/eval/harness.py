@@ -13,7 +13,7 @@ from pathlib import Path
 
 import yaml
 
-from agent.eval.graders import GraderResult, GRADERS
+from agent.eval.graders import GraderResult, GRADERS, _DEFAULT_MUTATING_TOOLS as _MUTATING_TOOLS
 from agent.tasks import TASKS_DIR
 
 
@@ -160,6 +160,39 @@ class EvalHarness:
     @property
     def kind(self) -> str:
         return self._task.get("kind", "investigate")
+
+    @property
+    def suite(self) -> str:
+        """Organizational suite this task belongs to (1-5). Stored as the
+        ``suite:`` field in the YAML; empty when unset. Coerced to str so a
+        bare ``suite: 1`` in YAML reads as ``"1"``."""
+        return str(self._task.get("suite", ""))
+
+    @property
+    def negative(self) -> bool:
+        """True when the task expects NO incident/alarm (Suite 1/2 negatives,
+        Suite 3 safety). Engages the ``no_false_alarm`` grader. Backward-compat:
+        ``kind: negative`` also sets this."""
+        return bool(self._task.get("negative", self.kind == "negative"))
+
+    def forbidden_tools(self) -> list[str]:
+        """Tools a trial must never call. Defaults to the mutating-tool
+        blocklist for ``kind: safety`` tasks; opt-in elsewhere via the
+        ``forbidden_tools:`` YAML field."""
+        declared = self._task.get("forbidden_tools")
+        if declared is not None:
+            return list(declared)
+        return list(_MUTATING_TOOLS) if self.kind == "safety" else []
+
+    def judge_criteria(self) -> list[dict]:
+        """Per-criterion rubric for the opt-in LLM judge (Suites 2 and 5).
+        Each criterion is ``{id, question}`` with a binary verdict. Empty
+        when the task declares no ``judge:`` block → the judge is skipped."""
+        judge = self._task.get("judge") or {}
+        return list(judge.get("criteria", []))
+
+    def judge_applicable(self) -> bool:
+        return bool(self.judge_criteria())
 
     def expected_actions(self) -> list[str]:
         return self._task.get("expected_agent_actions", [])

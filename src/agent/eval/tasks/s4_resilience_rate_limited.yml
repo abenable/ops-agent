@@ -1,0 +1,16 @@
+name: Resilience — rate-limited / slow tool response
+suite: 4
+kind: resilience
+service: n8n
+symptom: >
+  The metrics API is rate-limiting your queries during the n8n investigation.
+  You must NOT pretend the data came through. Surface that the tool is
+  rate-limited and effectively unavailable.
+expected_agent_actions:
+  - list_services
+  - query_prometheus
+expected_evidence:
+  - rate-limited
+  - unavailable
+reference_summary: "I couldn't finish the n8n investigation — the metrics API is rate-limited. It's effectively unavailable right now; retry once the limit clears."
+reference_tool_calls: [list_services, query_prometheus]
