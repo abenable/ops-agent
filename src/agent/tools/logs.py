@@ -25,7 +25,28 @@ async def get_recent_logs(service: str, lines: int = 10) -> str:
         if result.get("data", {}).get("result"):
             return format_loki(result, limit=lines)
 
-    # Fall back to Docker container logs when Loki has no data for this service.
+    # Middle fallback: the ``.log`` store collected by agent.logstore —
+    # cheaper than Docker, and Loki stays the primary structured source.
+    try:
+        from datetime import datetime, timedelta, timezone
+
+        from agent.logstore.reader import iter_lines
+        from agent.storage.repository import list_watched_containers
+        from agent.tools.normalize import normalize as _normalize
+
+        for name in list_watched_containers():
+            if _normalize(name) == _normalize(service):
+                since = datetime.now(timezone.utc) - timedelta(days=1)
+                recs = list(iter_lines(name, since=since))[-lines:]
+                if recs:
+                    out = "\n".join(f"[{r.get('ts')}] {r.get('raw','')}" for r in recs)
+                    if out.strip():
+                        return out[:4000]
+                break
+    except Exception:
+        pass
+
+    # Last resort: Docker container logs.
     try:
         container = await docker.find_container(service)
         if container is not None:

@@ -13,6 +13,9 @@ wheels/
 .env
 data/*.db
 data/*.db-journal
+data/logs/
+data/log_cursors.json
+data/reports/
 .pytest_cache/
 specs/
 eval_runs/

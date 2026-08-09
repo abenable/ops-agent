@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     # Cadence for the periodic container-status snapshot posted to #status-updates.
     status_snapshot_interval_seconds: int = 3600
 
+    # Structured log collector (agent.logstore) → ``.log`` store under data/logs/.
+    log_collect_interval_seconds: int = 600
+    log_retention_days: int = 30
+    daily_report_hour: int = 23
+    weekly_report_day: int = 6
+
     # Self-hosted LLM (OpenAI-compatible)
     llm_base_url: str = "http://localhost:11434/v1"
     llm_model: str = "mistral"

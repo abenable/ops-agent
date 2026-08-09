@@ -73,16 +73,31 @@ async def resolve_container_name(service: str) -> str | None:
     return container_name(container) if container else None
 
 
-async def container_logs(container_id: str, tail: int = 20) -> str:
-    """Fetch the last `tail` lines of a container's combined stdout/stderr."""
+async def container_logs(
+    container_id: str,
+    tail: int = 20,
+    since: str | None = None,
+    timestamps: bool = False,
+) -> str:
+    """Fetch a container's combined stdout/stderr.
+
+    With ``since`` (RFC3339 timestamp or unix seconds) returns only lines after
+    that instant; ``tail`` is forced to ``"all"`` in that case so ``since``
+    actually bounds the window rather than being applied to the last N. With
+    ``timestamps=True`` the Engine API prefixes each line with its RFC3339 ts.
+    """
+    params = {"stdout": "true", "stderr": "true"}
+    if since is not None:
+        params["since"] = since
+        params["tail"] = "all"
+    else:
+        params["tail"] = tail
+    if timestamps:
+        params["timestamps"] = "true"
     async with _docker_client() as client:
         response = await client.get(
             f"/v1.40/containers/{container_id}/logs",
-            params={
-                "stdout": "true",
-                "stderr": "true",
-                "tail": tail,
-            },
+            params=params,
         )
         response.raise_for_status()
         return response.text

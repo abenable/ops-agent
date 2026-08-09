@@ -1,6 +1,7 @@
 """Background endpoint monitoring loop for Discord alerts and status updates."""
 
 import asyncio
+from datetime import datetime, time, timedelta, timezone
 
 from discord.ext import tasks
 
@@ -10,6 +11,7 @@ from agent.storage.repository import list_watched_containers
 from agent.tools import docker
 from agent.tools.health import check_endpoint
 from agent.workflows.incident import run_incident_workflow
+from agent.workflows.reporting import daily_report, weekly_report
 
 
 async def _open_incident(bot, name: str):
@@ -162,6 +164,26 @@ async def _poll_once(bot) -> None:
     await _poll_containers(bot)
 
 
+def _expire_old_logs() -> None:
+    """Delete raw ``.log`` files and daily sidecars older than
+    ``log_retention_days``. Keeps the human-readable ``.md`` reports."""
+    from agent.logstore.collector import LOG_ROOT
+    from agent.workflows.reporting import DAILY_DIR
+
+    cutoff = (datetime.now(timezone.utc).date() - timedelta(days=settings.log_retention_days)).isoformat()
+    for root in (LOG_ROOT, DAILY_DIR):
+        if not root.exists():
+            continue
+        for path in root.rglob("*"):
+            if not path.is_file() or path.suffix == ".md":
+                continue
+            if path.stem < cutoff:
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+
+
 def start_monitor(bot):
     """Start the periodic endpoint poll and the container-status snapshot loop."""
 
@@ -173,5 +195,39 @@ def start_monitor(bot):
     async def _snapshot():
         await _post_container_snapshot(bot)
 
+    @tasks.loop(seconds=max(settings.log_collect_interval_seconds, 60))
+    async def _log_collect():
+        from agent.logstore.collector import collect_once
+
+        try:
+            await collect_once()
+        except Exception:
+            pass
+
+    @tasks.loop(time=time(hour=settings.daily_report_hour))
+    async def _daily_report():
+        if settings.discord_log_channel_id is None:
+            return
+        yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()
+        await discord_alert.send_alert(
+            settings.discord_log_channel_id,
+            daily_report(yesterday)[:1900],
+            bot,
+            severity="info",
+            title=f"Daily log report {yesterday}",
+        )
+        # weekly rollup piggybacks on the daily loop the morning of weekly_report_day
+        if datetime.now(timezone.utc).weekday() == settings.weekly_report_day:
+            await discord_alert.send_alert(
+                settings.discord_log_channel_id,
+                weekly_report(yesterday)[:1900],
+                bot,
+                severity="info",
+                title=f"Weekly log report {yesterday}",
+            )
+        _expire_old_logs()
+
     _poll.start()
     _snapshot.start()
+    _log_collect.start()
+    _daily_report.start()
