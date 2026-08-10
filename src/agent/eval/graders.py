@@ -45,12 +45,27 @@ _NEG_NEAR_RE = re.compile(
     r"\b(no|not|never|without|zero|nothing|none)\b|n['’]?t\b", re.IGNORECASE
 )
 
+# Discussing the observability stack's own gaps (missing scrape config, failed
+# discovery) is not a claim the checked *service* is down — INCIDENT_SYSTEM_PROMPT's
+# ranked-hypothesis format routinely surfaces this ("Hypothesis: Prometheus
+# Service Discovery Failure") even when the service itself is fully healthy.
+_INFRA_CONTEXT_RE = re.compile(
+    r"\b(prometheus|scrape|scraping|discovery|monitoring|observability)\b",
+    re.IGNORECASE,
+)
+
 
 def _alarm_hit(summary: str):
-    """Return the first *un-negated* alarm-word match, or None."""
+    """Return the first *un-negated*, service-relevant alarm-word match, or None."""
     for m in _ALARM_WORDS_RE.finditer(summary):
         pre = summary[max(0, m.start() - 20) : m.start()]
         if _NEG_NEAR_RE.search(pre):
+            continue
+        # Same ~20-char pre-window as negation: close enough to catch a tight
+        # compound like "Discovery Failure" or "Prometheus to fail", too close
+        # to catch an unrelated later claim like "Prometheus shows the api
+        # container crashed" — that's still a real claim about the service.
+        if _INFRA_CONTEXT_RE.search(pre):
             continue
         return m
     return None
@@ -161,7 +176,13 @@ def _grade_claims(harness, *, tool_calls, summary, transcript, proposals) -> Gra
     if not claims:
         return GraderResult("claims", True, "no expected_claims declared")
     low = summary.lower()
-    missing = [c for c in claims if c.lower() not in low]
+    # A claim may list "|"-separated synonyms ("no such service|not a known|
+    # does not exist") — any one of them satisfies it, since the grader checks
+    # for a stated conclusion, not an exact canonical phrasing.
+    missing = [
+        c for c in claims
+        if not any(alt.strip() in low for alt in c.lower().split("|"))
+    ]
     return GraderResult(
         "claims",
         not missing,
@@ -191,7 +212,19 @@ def _grade_no_hallucination(harness, *, tool_calls, summary, transcript, proposa
     if not forbidden:
         return GraderResult("no_hallucination", True, "no forbidden_containers declared")
     low = summary.lower()
-    leaked = [c for c in forbidden if c.lower() in low]
+    # Naming the invalid service to explain it doesn't exist ("X is not a known
+    # container") is the correct, expected answer, not a hallucination — only an
+    # *unnegated* mention (treating X as a real, actionable target) counts.
+    # Negation can land before or after the name ("no such service as X" vs
+    # "X does not exist"), so scan a window on both sides of each occurrence.
+    leaked = []
+    for c in forbidden:
+        cl = c.lower()
+        for m in re.finditer(re.escape(cl), low):
+            window = low[max(0, m.start() - 40) : min(len(low), m.end() + 40)]
+            if not _NEG_NEAR_RE.search(window):
+                leaked.append(c)
+                break
     return GraderResult(
         "no_hallucination",
         not leaked,

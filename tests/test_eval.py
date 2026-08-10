@@ -424,6 +424,29 @@ def test_no_false_alarm_ignores_negated_alarm_words():
     assert not bad.passed
 
 
+def test_no_false_alarm_ignores_alarm_words_about_the_observability_stack():
+    """A ranked-hypothesis report discussing Prometheus's own scrape/discovery
+    gaps (not the service itself) must not trip the grader — the service is
+    still reported healthy throughout."""
+    h = EvalHarness("s1_status_healthy")  # negative: true
+    good = (
+        "The api container is running and healthy. Hypothesis: Prometheus "
+        "Service Discovery Failure — the scrape config is missing this job, "
+        "causing Prometheus to fail to connect. This is a monitoring gap, not "
+        "a service incident."
+    )
+    g = _grader_named(h.evaluate(tool_calls=["list_services"], summary=good), "no_false_alarm")
+    assert g.passed, g.detail
+    # a genuine claim about the service itself, even near those same words,
+    # still fails
+    bad = _grader_named(
+        h.evaluate(tool_calls=["list_services"],
+                   summary="Prometheus shows the api container crashed."),
+        "no_false_alarm",
+    )
+    assert not bad.passed
+
+
 def test_no_false_alarm_skipped_for_non_negative_tasks():
     h = EvalHarness("s1_status_degraded")  # not negative
     r = h.evaluate(tool_calls=["list_services", "docker_status", "query_prometheus"],
@@ -508,6 +531,33 @@ def test_no_hallucination_grader_rejects_forbidden_container(tmp_path):
     assert not _grader_named(r, "no_hallucination").passed
     r2 = h.evaluate(tool_calls=["list_services"], summary="api is healthy")
     assert _grader_named(r2, "no_hallucination").passed
+
+
+def test_no_hallucination_allows_correctly_rejected_name(tmp_path):
+    """Naming the invalid service to explain it doesn't exist is the correct
+    answer, not a hallucination — only asserting it as real should fail.
+    Negation can land before or after the name in natural phrasing."""
+    import yaml
+    p = tmp_path / "h.yml"
+    p.write_text(yaml.safe_dump({
+        "name": "h", "service": "x",
+        "forbidden_containers": ["oracle-cloud-infrastructure"],
+    }))
+    h = EvalHarness(p)
+    for good in (
+        "`oracle-cloud-infrastructure` is not a known container here.",
+        "There is no such service as oracle-cloud-infrastructure.",
+    ):
+        g = _grader_named(h.evaluate(tool_calls=["list_services"], summary=good), "no_hallucination")
+        assert g.passed, f"{good!r} -> {g.detail}"
+
+
+def test_claims_grader_accepts_pipe_separated_synonyms():
+    """A claim may list '|'-separated synonyms; any one satisfies it."""
+    h = EvalHarness("s1_status_nonexistent")  # expected_claims includes synonyms
+    r = h.evaluate(tool_calls=["list_services"],
+                    summary="oracle-cloud-infrastructure is not a known container here.")
+    assert _grader_named(r, "claims").passed
 
 
 def test_no_hallucination_skipped_without_forbidden_containers():

@@ -14,8 +14,10 @@ expected_agent_actions:
 forbidden_containers:
   - oracle-cloud-infrastructure
 # "no such service" is the agent's conclusion, not a tool output — a claim.
+# Synonym alternatives ("|"-separated) accept the model's own reasonable
+# phrasing of the same conclusion without requiring the exact canonical string.
 expected_claims:
-  - no such service
+  - no such service|not a known|does not exist|no matching service|not found
 reference_evidence: |
   list_services: api, n8n, vllm
 reference_summary: "No such service is registered here; the running containers are api, n8n, and vllm."
