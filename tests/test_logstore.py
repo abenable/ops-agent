@@ -14,13 +14,34 @@ from agent.logstore import collector, reader
 
 # ---------------------------------------------------------------- container_logs
 
+def _frame(stream_type: int, payload: bytes) -> bytes:
+    """Build one Docker Engine API multiplexed log frame."""
+    return bytes([stream_type, 0, 0, 0]) + len(payload).to_bytes(4, "big") + payload
+
+
+def test_demux_docker_stream_strips_frame_header():
+    """Regression: a naive printable-char filter left a stray character
+    behind whenever a frame's length low byte fell in printable ASCII range
+    (e.g. length=86 -> b'V'), corrupting the collector's <ts> <message>
+    parsing. The real fix reads the length field and skips exactly the
+    header + payload, regardless of what those bytes look like as text."""
+    from agent.tools.docker import _demux_docker_stream
+
+    line1 = b"2026-08-10T12:00:00Z hello\n"
+    line2 = ("x" * 82 + "\n").encode()  # length 83; low byte 0x53 = 'S', printable
+    assert chr(len(line2) & 0xFF).isprintable()
+    data = _frame(1, line1) + _frame(2, line2)
+    assert _demux_docker_stream(data) == (line1 + line2).decode()
+
+
+
 def test_container_logs_since_forces_tail_all_and_adds_timestamps():
     """A `since` cursor must force tail='all' and pass timestamps through."""
     from agent.tools import docker
 
     fake = AsyncMock()
     fake.raise_for_status = lambda: None
-    fake.text = ""
+    fake.content = b""
     client = AsyncMock()
     client.__aenter__ = AsyncMock(return_value=client)
     client.__aexit__ = AsyncMock(return_value=False)
@@ -40,7 +61,7 @@ def test_container_logs_default_tail_preserved_without_since():
 
     fake = AsyncMock()
     fake.raise_for_status = lambda: None
-    fake.text = ""
+    fake.content = b""
     client = AsyncMock()
     client.__aenter__ = AsyncMock(return_value=client)
     client.__aexit__ = AsyncMock(return_value=False)
@@ -171,14 +192,19 @@ def test_reader_missing_container_yields_nothing(isolated_store):
 
 def test_get_recent_logs_jsonl_middle_fallback(isolated_store, monkeypatch):
     """Loki empty + store has data → JSONL store serves (Docker never hit)."""
-    import json as _json
     from agent.tools import logs as logs_mod
     from agent.tools.sources import loki as loki_mod
 
+    # get_recent_logs's local-store fallback windows to the last 24h (matching
+    # the Loki path's minutes=1440), so the record must be recent relative to
+    # wall-clock "now" rather than a fixed calendar date, or this becomes a
+    # time bomb that starts failing a day after it's written.
+    ts = (datetime.now(timezone.utc) - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    day = ts[:10]
     root = isolated_store / "svc"
     root.mkdir(parents=True)
-    (root / "2026-08-09.log").write_text(
-        "2026-08-09T10:00:00Z ERROR stored boom\n", encoding="utf-8",
+    (root / f"{day}.log").write_text(
+        f"{ts} ERROR stored boom\n", encoding="utf-8",
     )
     # Loki returns empty (no result), Docker must NOT be reached.
     monkeypatch.setattr(logs_mod, "format_loki", lambda *a, **k: "")
@@ -187,4 +213,4 @@ def test_get_recent_logs_jsonl_middle_fallback(isolated_store, monkeypatch):
     from agent.tools.logs import get_recent_logs
     out = asyncio.run(get_recent_logs("svc", lines=10))
     assert "stored boom" in out
-    assert "[2026-08-09T10:00:00Z]" in out
+    assert f"[{ts}]" in out

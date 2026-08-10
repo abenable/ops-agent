@@ -32,7 +32,7 @@ class FakeLLM:
         self._responses = responses or [FakeMessage("remediation summary")]
         self._index = 0
 
-    def bind_tools(self, _tools):
+    def bind_tools(self, _tools, **_kwargs):
         return self
 
     async def ainvoke(self, _messages):

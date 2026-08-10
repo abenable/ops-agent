@@ -149,6 +149,12 @@ async def run_agentic_investigation_stream(
     )
     by_name = {t.name: t for t in tools}
     llm = get_llm().bind_tools(tools)
+    # Force the first call to use a tool: without this, a model whose prompt
+    # already narrates the ground truth (e.g. a task's symptom text) answers
+    # straight from the prompt instead of verifying it, skipping the loop
+    # entirely at step 0. Every real task starts from list_services, so a
+    # forced first call costs nothing on the path that was already correct.
+    llm_forced = get_llm().bind_tools(tools, tool_choice="required")
     messages = [SystemMessage(system_prompt)]
     for turn in (history or [])[-10:]:
         role, content = turn.get("role"), turn.get("content")
@@ -185,7 +191,7 @@ async def run_agentic_investigation_stream(
     for step in range(settings.max_tool_steps):
         total_steps = step + 1
         llm_start = time.monotonic()
-        ai = await llm.ainvoke(messages)
+        ai = await (llm_forced if step == 0 else llm).ainvoke(messages)
         dt = time.monotonic() - llm_start
         LLM_CALL_DURATION.labels(kind="agentic").observe(dt)
         LLM_CALL_TOTAL.labels(kind="agentic").inc()

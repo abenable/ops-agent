@@ -37,7 +37,7 @@ class FakeLLM:
         self._responses = responses
         self._index = 0
 
-    def bind_tools(self, _tools):
+    def bind_tools(self, _tools, **_kwargs):
         return self
 
     async def ainvoke(self, _messages):

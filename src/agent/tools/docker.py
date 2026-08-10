@@ -104,6 +104,31 @@ async def resolve_label_name(service: str) -> str:
     return compose_service_name(container) or container_name(container)
 
 
+def _demux_docker_stream(data: bytes) -> str:
+    """Strip Docker's stdout/stderr stream-multiplexing framing.
+
+    The Engine API returns non-tty container logs (the default for
+    compose-managed services — none in this stack set ``tty: true``) as
+    repeated frames: 1 byte stream type + 3 reserved bytes + 4-byte
+    big-endian payload length, then that many payload bytes. A naive
+    printable-char filter mostly removes the header (3 of its first 4 bytes
+    are always 0x00) but leaves the length field's low byte whenever it
+    lands in printable ASCII range — a stray character glued onto the front
+    of a line, which broke the collector's ``<ts> <message>`` line parsing.
+    # ponytail: assumes non-tty logs (true for every service here); a tty
+    # container's unframed stream would be misparsed by this.
+    """
+    out = bytearray()
+    i, n = 0, len(data)
+    while i + 8 <= n:
+        length = int.from_bytes(data[i + 4 : i + 8], "big")
+        start = i + 8
+        end = min(start + length, n)
+        out += data[start:end]
+        i = start + length
+    return out.decode("utf-8", errors="replace")
+
+
 async def container_logs(
     container_id: str,
     tail: int = 20,
@@ -131,7 +156,7 @@ async def container_logs(
             params=params,
         )
         response.raise_for_status()
-        return response.text
+        return _demux_docker_stream(response.content)
 
 
 async def restart_container(container_id: str, timeout: int = 10) -> dict:
