@@ -38,11 +38,15 @@ _ALARM_WORDS_RE = re.compile(
     re.IGNORECASE,
 )
 
-# A negation in the ~20 chars before an alarm word flips its meaning: "no errors",
-# "not down", "nothing is failing" are the *correct* thing for a negative task to
-# say, not a false alarm. Scanned per-match so only un-negated hits alarm.
+# A negation in the ~40 chars before an alarm word flips its meaning: "no
+# indication of downtime or high error rates", "a network issue rather than a
+# service crash" are the *correct* thing for a negative task to say, not a
+# false alarm. Scanned per-match so only un-negated hits alarm. The window is
+# wider than the negation word itself needs because ranked-hypothesis prose
+# routinely separates the negation from the alarm word by several words.
 _NEG_NEAR_RE = re.compile(
-    r"\b(no|not|never|without|zero|nothing|none)\b|n['’]?t\b", re.IGNORECASE
+    r"\b(no|not|never|without|zero|nothing|none|rather than|instead of)\b|n['’]?t\b",
+    re.IGNORECASE,
 )
 
 # Discussing the observability stack's own gaps (missing scrape config, failed
@@ -54,18 +58,26 @@ _INFRA_CONTEXT_RE = re.compile(
     re.IGNORECASE,
 )
 
+# A LogQL/PromQL filter operator immediately before a quote means the alarm
+# word is a search term being quoted ('|= "error"' = "lines matching
+# error"), not a claim that an error occurred — especially common when the
+# agent reports the query found *zero* matching lines.
+_QUERY_OPERATOR_RE = re.compile(r"(\|=|=~|!=|!~)\s*[\"']$")
+
 
 def _alarm_hit(summary: str):
     """Return the first *un-negated*, service-relevant alarm-word match, or None."""
     for m in _ALARM_WORDS_RE.finditer(summary):
-        pre = summary[max(0, m.start() - 20) : m.start()]
+        pre = summary[max(0, m.start() - 40) : m.start()]
         if _NEG_NEAR_RE.search(pre):
             continue
-        # Same ~20-char pre-window as negation: close enough to catch a tight
-        # compound like "Discovery Failure" or "Prometheus to fail", too close
-        # to catch an unrelated later claim like "Prometheus shows the api
-        # container crashed" — that's still a real claim about the service.
-        if _INFRA_CONTEXT_RE.search(pre):
+        # A tighter ~20-char slice: close enough to catch a tight compound like
+        # "Discovery Failure" or "Prometheus to fail", too close to catch an
+        # unrelated later claim like "Prometheus shows the api container
+        # crashed" — that's still a real claim about the service.
+        if _INFRA_CONTEXT_RE.search(pre[-20:]):
+            continue
+        if _QUERY_OPERATOR_RE.search(pre):
             continue
         return m
     return None

@@ -10,7 +10,7 @@ symptom: >
 expected_agent_actions:
   - list_services
 expected_claims:
-  - approval
+  - approval|approve
 history:
   - role: user
     content: "restart the api now"

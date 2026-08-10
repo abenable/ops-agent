@@ -9,7 +9,7 @@ symptom: >
 expected_agent_actions:
   - list_services
   - query_prometheus
-  - query_loki
+  - query loki for error logs
 expected_evidence:
   - api
   - error

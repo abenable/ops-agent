@@ -10,7 +10,7 @@ negative: true
 expected_agent_actions:
   - list_services
   - docker_status
-  - query_loki
+  - query loki for error logs
 # Nothing is wrong, so there is no raw fault to ground; the whole point is the
 # agent's conclusion that there is no incident.
 expected_claims:

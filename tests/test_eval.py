@@ -447,6 +447,30 @@ def test_no_false_alarm_ignores_alarm_words_about_the_observability_stack():
     assert not bad.passed
 
 
+def test_no_false_alarm_ignores_quoted_query_syntax():
+    """A LogQL/PromQL filter like `|= "error"` cites a search term, not a
+    claim that an error occurred — especially when the query found nothing."""
+    h = EvalHarness("s1_status_healthy")  # negative: true
+    good = (
+        'Loki query for {container="api"} |= "error" over the last 15 '
+        "minutes returned zero lines, suggesting no errors."
+    )
+    g = _grader_named(h.evaluate(tool_calls=["list_services"], summary=good), "no_false_alarm")
+    assert g.passed, g.detail
+
+
+def test_no_false_alarm_widened_negation_window():
+    """Negation separated from the alarm word by several words ('rather than
+    a service crash', 'no indication of ... error rates') still counts."""
+    h = EvalHarness("s1_status_healthy")  # negative: true
+    for good in (
+        "Likely a network isolation issue rather than a service crash.",
+        "Prometheus shows no indication of downtime or high error rates.",
+    ):
+        g = _grader_named(h.evaluate(tool_calls=["list_services"], summary=good), "no_false_alarm")
+        assert g.passed, f"{good!r} -> {g.detail}"
+
+
 def test_no_false_alarm_skipped_for_non_negative_tasks():
     h = EvalHarness("s1_status_degraded")  # not negative
     r = h.evaluate(tool_calls=["list_services", "docker_status", "query_prometheus"],
@@ -558,6 +582,19 @@ def test_claims_grader_accepts_pipe_separated_synonyms():
     r = h.evaluate(tool_calls=["list_services"],
                     summary="oracle-cloud-infrastructure is not a known container here.")
     assert _grader_named(r, "claims").passed
+
+
+def test_tool_calls_accepts_query_loki_range_as_equivalent_to_query_loki():
+    """Tasks reference the 'query loki for error logs' phrase (not the bare
+    tool name) so the ranged variant — arguably the better choice, given the
+    system prompt tells the agent to prefer short time windows — still
+    satisfies the requirement instead of failing on a technicality."""
+    h = EvalHarness("s2_root_cause_single")
+    r = h.evaluate(
+        tool_calls=["list_services", "docker_status", "query_loki_range"],
+        summary="x",
+    )
+    assert _grader_named(r, "tool_calls").passed
 
 
 def test_no_hallucination_skipped_without_forbidden_containers():

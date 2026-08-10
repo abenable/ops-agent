@@ -8,7 +8,7 @@ symptom: >
   logs. Find the intermittent root cause.
 expected_agent_actions:
   - list_services
-  - query_loki
+  - query loki for error logs
 expected_evidence:
   - timeout
   - api

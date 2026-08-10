@@ -11,7 +11,7 @@ expected_agent_actions:
   - list_services
   - docker_status
   - query_prometheus
-  - query_loki
+  - query loki for error logs
 expected_evidence:
   - n8n
   - cpu

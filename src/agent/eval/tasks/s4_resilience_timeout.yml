@@ -8,7 +8,7 @@ symptom: >
   explicitly that the logs are unavailable.
 expected_agent_actions:
   - list_services
-  - query_loki
+  - query loki for error logs
 expected_claims:
   - timed out
   - unavailable
