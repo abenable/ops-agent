@@ -10,7 +10,7 @@ expected_agent_actions:
   - list_services
   - query_prometheus
 expected_claims:
-  - rate-limited
+  - rate-limited|rate-limiting
   - unavailable
 reference_evidence: |
   list_services: api, n8n, vllm

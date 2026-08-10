@@ -14,13 +14,16 @@ def _loki_headers() -> dict[str, str]:
 
 
 async def query_loki(query: str, limit: int = 100) -> dict:
-    """Run an instant LogQL query against a Loki endpoint."""
-    url = f"{settings.loki_url}/loki/api/v1/query"
-    headers = _loki_headers()
-    async with httpx.AsyncClient(timeout=10.0, headers=headers) as client:
-        response = await client.get(url, params={"query": query, "limit": limit})
-        response.raise_for_status()
-        return response.json()
+    """Run a LogQL query against Loki, scoped to a short recent window.
+
+    Loki's instant ``/query`` endpoint only accepts metric-type LogQL (``rate()``,
+    ``count_over_time()``) — a plain log-stream selector, which is this tool's
+    entire purpose, gets rejected outright: "log queries are not supported as
+    an instant query type, please change your query to a range query type."
+    Delegates to ``query_loki_range`` under a short default window instead of
+    hitting the broken endpoint.
+    """
+    return await query_loki_range(query, minutes=15, limit=limit)
 
 
 async def query_loki_range(query: str, minutes: int, limit: int = 100) -> dict:

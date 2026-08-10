@@ -10,7 +10,7 @@ expected_agent_actions:
   - list_services
 # The "24h" scoping and "incident" framing are the report's own words.
 expected_claims:
-  - 24h
+  - 24h|24-hour
   - incident
 reference_evidence: |
   list_services: api, n8n, vllm

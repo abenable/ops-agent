@@ -10,7 +10,7 @@ expected_agent_actions:
   - list_services
   - query loki for error logs
 expected_claims:
-  - timed out
+  - timed out|timed-out
   - unavailable
 reference_evidence: |
   list_services: api, n8n, vllm

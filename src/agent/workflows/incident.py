@@ -105,7 +105,12 @@ INCIDENT_SYSTEM_PROMPT = SYSTEM_PROMPT + (
     "or container state), and a one-line concrete fix an operator could apply "
     "(e.g. restart the container, re-add it to the scrape network, fix the "
     "scrape address). Note weak evidence explicitly. Do not execute any fix — "
-    "remediation stays human-gated via the Remediate button."
+    "remediation stays human-gated via the Remediate button. If the operator's "
+    "own request implies wanting an action taken (\"fix it\", \"restart it\", "
+    "\"make it stop\") — even with no explicit restart wording — say plainly "
+    "that you can't act from here and that remediation requires human approval, "
+    "regardless of how clear the root cause is. A ranked-hypothesis report with "
+    "'Fix:' suggestions is not itself that redirect; state it explicitly."
 )
 
 

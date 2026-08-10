@@ -221,6 +221,31 @@ def test_prometheus_token_sent_when_set(monkeypatch):
         assert Client.call_args.kwargs["headers"] == {"Authorization": "Bearer secret"}
 
 
+def test_query_loki_uses_range_endpoint_not_instant():
+    """Regression: Loki's instant /query endpoint rejects plain log-stream
+    selectors ("log queries are not supported as an instant query type"), so
+    query_loki must delegate to /query_range, not /query."""
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"status": "success"}
+
+    fake_client = MagicMock()
+    fake_client.get = AsyncMock(return_value=FakeResponse())
+    fake_cm = MagicMock()
+    fake_cm.__aenter__ = AsyncMock(return_value=fake_client)
+    fake_cm.__aexit__ = AsyncMock(return_value=False)
+
+    with patch.object(loki.httpx, "AsyncClient", return_value=fake_cm):
+        asyncio.run(loki.query_loki('{container="x"}'))
+
+    url = fake_client.get.call_args.args[0]
+    assert url.endswith("/loki/api/v1/query_range")
+    assert "start" in fake_client.get.call_args.kwargs["params"]
+
+
 def test_loki_token_sent_when_set(monkeypatch):
     monkeypatch.setattr(loki.settings, "loki_token", "")
     captured = {}
