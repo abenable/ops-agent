@@ -20,9 +20,13 @@ export type ServiceStatus = {
 
 export type ServiceLogs = { service: string; lines: number; logs: string };
 
-export type ServiceMetrics = Record<string, unknown> & {
-  service?: string;
-};
+// get_service_metrics returns either the raw Prometheus instant-query envelope
+// or a {service, message} fallback (no Prometheus data / unreachable). It never
+// produces cpu_percent/memory_percent — there is no percentage-shaped metric.
+export type PrometheusSeries = { metric: Record<string, string>; value?: [number, string] };
+export type ServiceMetrics =
+  | { service?: string; message: string }
+  | { status?: string; data?: { resultType?: string; result: PrometheusSeries[] } };
 
 export type Incident = {
   id: string;
@@ -111,10 +115,6 @@ export function containerName(c: ContainerInfo): string {
 }
 
 export type IncidentStatus = "open" | "ack" | "resolved";
-
-export function isHealthyState(state: string | undefined): boolean {
-  return state === "running";
-}
 
 // SSE event stream from the agentic investigation loop.
 export type AgentEvent =

@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import {
   ActivityIcon,
@@ -7,9 +8,13 @@ import {
   FlaskConicalIcon,
   MessagesSquareIcon,
   RadioIcon,
+  ShieldAlertIcon,
   ShieldCheckIcon,
+  ShieldQuestionIcon,
 } from "lucide-react";
 
+import { api } from "@/api";
+import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import {
   Sidebar,
@@ -44,6 +49,16 @@ const NAV = [
 
 export function AppShell() {
   const path = useRouterState({ select: (s) => s.location.pathname });
+  // Cheap reachability ping (no Docker dependency) so "Live"/"Agent healthy"
+  // reflect the actual API process instead of being permanently hardcoded.
+  const ping = useQuery({
+    queryKey: ["ping"],
+    queryFn: api.watched,
+    refetchInterval: 15_000,
+    retry: 1,
+  });
+  const online = ping.isSuccess;
+  const checking = ping.isLoading;
 
   return (
     <SidebarProvider>
@@ -90,8 +105,14 @@ export function AppShell() {
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton render={<Link to="/" />}>
-                <ShieldCheckIcon />
-                <span>Agent healthy</span>
+                {online ? (
+                  <ShieldCheckIcon />
+                ) : checking ? (
+                  <ShieldQuestionIcon />
+                ) : (
+                  <ShieldAlertIcon />
+                )}
+                <span>{online ? "Agent healthy" : checking ? "Checking agent…" : "Agent unreachable"}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
@@ -102,8 +123,13 @@ export function AppShell() {
         <header className="flex h-12 shrink-0 items-center gap-2 px-4">
           <SidebarTrigger />
           <Badge variant="outline" className="gap-1.5">
-            <span className="size-1.5 rounded-full bg-success" />
-            Live
+            <span
+              className={cn(
+                "size-1.5 rounded-full",
+                online ? "bg-success" : checking ? "bg-muted-foreground" : "bg-destructive",
+              )}
+            />
+            {online ? "Live" : checking ? "Checking…" : "Unreachable"}
           </Badge>
           <Badge variant="outline">
             <BotIcon />

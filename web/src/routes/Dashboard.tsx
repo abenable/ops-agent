@@ -56,7 +56,11 @@ function StatCard({
 
 export function Dashboard() {
   const queryClient = useQueryClient();
-  const containers = useQuery({ queryKey: ["containers"], queryFn: api.containers });
+  const containers = useQuery({
+    queryKey: ["containers"],
+    queryFn: api.containers,
+    refetchInterval: 10_000,
+  });
   const watched = useQuery({ queryKey: ["watched"], queryFn: api.watched });
   const incidents = useQuery({
     queryKey: ["incidents"],

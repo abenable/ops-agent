@@ -111,7 +111,7 @@ export function Incidents() {
         </div>
       )}
 
-      {fixFor && <FixPanel incidentId={fixFor} />}
+      {fixFor && <FixPanel key={fixFor} incidentId={fixFor} />}
     </div>
   );
 }

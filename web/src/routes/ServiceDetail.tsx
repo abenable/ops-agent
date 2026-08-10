@@ -1,14 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import { ArrowLeftIcon, CpuIcon, MemoryStickIcon, ScrollTextIcon, ShieldAlertIcon } from "lucide-react";
+import { ActivityIcon, ArrowLeftIcon, ScrollTextIcon, ShieldAlertIcon } from "lucide-react";
 import { toast } from "sonner";
 
-import { api } from "../api";
+import { api, type PrometheusSeries } from "../api";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -17,7 +16,11 @@ import { ContainerStatusBadge } from "@/components/status";
 export function ServiceDetail() {
   const { name } = useParams({ from: "/services/$name" });
   const queryClient = useQueryClient();
-  const status = useQuery({ queryKey: ["status", name], queryFn: () => api.status(name) });
+  const status = useQuery({
+    queryKey: ["status", name],
+    queryFn: () => api.status(name),
+    refetchInterval: 10_000,
+  });
   const logs = useQuery({
     queryKey: ["logs", name],
     queryFn: () => api.logs(name, 100),
@@ -37,8 +40,8 @@ export function ServiceDetail() {
     onError: () => toast.error("Failed to run incident workflow."),
   });
 
-  const cpu = typeof metrics.data?.cpu_percent === "number" ? metrics.data.cpu_percent : undefined;
-  const mem = typeof metrics.data?.memory_percent === "number" ? metrics.data.memory_percent : undefined;
+  const metricMessage = metrics.data && "message" in metrics.data ? metrics.data.message : undefined;
+  const metricSeries = metrics.data && "data" in metrics.data ? (metrics.data.data?.result ?? []) : [];
 
   return (
     <div className="flex flex-col gap-6">
@@ -122,26 +125,20 @@ export function ServiceDetail() {
                 <Skeleton className="h-2 w-full" />
               </div>
             )}
-            {cpu === undefined && mem === undefined && metrics.data && (
+            {!metrics.isLoading && metricMessage && (
+              <p className="text-sm text-muted-foreground">{metricMessage}</p>
+            )}
+            {!metrics.isLoading && metricSeries.length > 0 && (
+              <div className="flex flex-col gap-2">
+                {metricSeries.map((s, i) => (
+                  <MetricRow key={i} series={s} />
+                ))}
+              </div>
+            )}
+            {!metrics.isLoading && !metricMessage && metricSeries.length === 0 && metrics.data && (
               <pre className="overflow-x-auto rounded-lg bg-muted/50 p-3 font-mono text-xs text-muted-foreground">
                 {JSON.stringify(metrics.data, null, 2)}
               </pre>
-            )}
-            {(cpu !== undefined || mem !== undefined) && (
-              <div className="flex flex-col gap-6">
-                <MetricBar
-                  label="CPU"
-                  value={cpu ?? 0}
-                  icon={CpuIcon}
-                  max={100}
-                />
-                <MetricBar
-                  label="Memory"
-                  value={mem ?? 0}
-                  icon={MemoryStickIcon}
-                  max={100}
-                />
-              </div>
             )}
           </CardContent>
         </Card>
@@ -188,31 +185,25 @@ function Field({ label, value, mono }: { label: string; value?: string; mono?: b
   );
 }
 
-function MetricBar({
-  label,
-  value,
-  icon,
-  max,
-}: {
-  label: string;
-  value: number;
-  icon: typeof CpuIcon;
-  max: number;
-}) {
-  const Icon = icon;
-  const pct = Math.min(100, Math.round((value / max) * 100));
+// Renders one Prometheus vector series as-is: a label built from its metric
+// labels (or "value" when unlabeled, e.g. our unscoped avg() query) and its
+// raw value. No percentage bar — the backend has no 0-100-scaled metric, so
+// showing one here would fabricate a number the source data never provided.
+function MetricRow({ series }: { series: PrometheusSeries }) {
+  const label = Object.entries(series.metric ?? {})
+    .map(([k, v]) => `${k}=${v}`)
+    .join(", ") || "value";
+  const raw = series.value?.[1];
+  const value = raw === undefined ? "—" : Number.isNaN(Number(raw)) ? raw : Number(raw).toLocaleString();
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between text-sm">
-        <span className="flex items-center gap-2 font-medium">
-          <Icon className="size-4 text-muted-foreground" />
-          {label}
-        </span>
-        <Badge variant="outline" className="tabular-nums">
-          {pct}%
-        </Badge>
-      </div>
-      <Progress value={pct} />
+    <div className="flex items-center justify-between gap-2 text-sm">
+      <span className="flex items-center gap-2 font-medium">
+        <ActivityIcon className="size-4 text-muted-foreground" />
+        {label}
+      </span>
+      <Badge variant="outline" className="tabular-nums">
+        {value}
+      </Badge>
     </div>
   );
 }
