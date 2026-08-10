@@ -38,6 +38,92 @@ def test_logs_stub(monkeypatch):
     assert result == "No logs."
 
 
+# --- label resolution: compose service key vs. Docker container name -------
+#
+# Loki/Prometheus label containers by the short docker-compose service key
+# ('n8n'), while callers (web dashboard, Discord button targets) often pass
+# the full container name ('marconi-agent-n8n'). Regression coverage for that
+# mismatch and for metrics.py hardcoding a 'service' label + a metric name
+# that doesn't exist for every job.
+
+
+def test_resolve_label_name_uses_compose_service_label(monkeypatch):
+    container = {
+        "Id": "abc123",
+        "Names": ["/marconi-agent-n8n"],
+        "Labels": {"com.docker.compose.service": "n8n"},
+    }
+    monkeypatch.setattr(docker, "find_container", AsyncMock(return_value=container))
+    assert asyncio.run(docker.resolve_label_name("marconi-agent-n8n")) == "n8n"
+
+
+def test_resolve_label_name_falls_back_to_container_name_without_label(monkeypatch):
+    container = {"Id": "abc123", "Names": ["/standalone"], "Labels": {}}
+    monkeypatch.setattr(docker, "find_container", AsyncMock(return_value=container))
+    assert asyncio.run(docker.resolve_label_name("standalone")) == "standalone"
+
+
+def test_resolve_label_name_falls_back_to_input_when_no_container(monkeypatch):
+    monkeypatch.setattr(docker, "find_container", AsyncMock(return_value=None))
+    assert asyncio.run(docker.resolve_label_name("typo-name")) == "typo-name"
+
+
+def test_get_recent_logs_queries_loki_with_compose_label_not_container_name(monkeypatch):
+    """The full container name must never leak into the Loki selector — Loki's
+    stream label is the short compose key, so a selector built from the full
+    name (containing 'marconi') matches nothing."""
+    container = {
+        "Id": "abc123",
+        "Names": ["/marconi-agent-n8n"],
+        "Labels": {"com.docker.compose.service": "n8n"},
+    }
+    monkeypatch.setattr(docker, "find_container", AsyncMock(return_value=container))
+    captured = {}
+
+    async def fake_query_loki_range(query, minutes, limit):
+        captured["query"] = query
+        return {"data": {"result": [{"values": [[1, "log line"]]}]}}
+
+    monkeypatch.setattr(loki, "query_loki_range", fake_query_loki_range)
+    asyncio.run(get_recent_logs("marconi-agent-n8n", lines=5))
+    assert "marconi" not in captured["query"]
+    assert "n8n" in captured["query"]
+
+
+def test_get_service_metrics_queries_by_job_label_not_service(monkeypatch):
+    """No series in this stack carries a 'service' label (only 'job'), and no
+    metric name is safe to hardcode across jobs — n8n's prom-client metrics
+    are prefixed 'n8n_process_...', not 'process_...'. The query must be a
+    bare job selector with no assumed metric name."""
+    container = {
+        "Id": "abc123",
+        "Names": ["/marconi-agent-n8n"],
+        "Labels": {"com.docker.compose.service": "n8n"},
+    }
+    monkeypatch.setattr(docker, "find_container", AsyncMock(return_value=container))
+    captured = {}
+
+    async def fake_query_prometheus(query):
+        captured["query"] = query
+        return {
+            "data": {
+                "result": [
+                    {
+                        "metric": {"__name__": "n8n_process_cpu_user_seconds_total", "job": "n8n"},
+                        "value": [1, "1.2"],
+                    }
+                ]
+            }
+        }
+
+    monkeypatch.setattr(prometheus, "query_prometheus", fake_query_prometheus)
+    result = asyncio.run(get_service_metrics("marconi-agent-n8n"))
+    assert captured["query"] == '{job="n8n"}'
+    assert "service" not in captured["query"]
+    assert "process_cpu_seconds_total" not in captured["query"]
+    assert result["data"]["result"][0]["metric"]["__name__"] == "n8n_process_cpu_user_seconds_total"
+
+
 def test_get_label_values_rejects_path_injection():
     """The label arg is LLM-controlled and interpolated into the URL path; invalid
     labels must be refused rather than sent to Prometheus, preventing path/query

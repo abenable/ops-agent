@@ -185,23 +185,29 @@ function Field({ label, value, mono }: { label: string; value?: string; mono?: b
   );
 }
 
-// Renders one Prometheus vector series as-is: a label built from its metric
-// labels (or "value" when unlabeled, e.g. our unscoped avg() query) and its
-// raw value. No percentage bar — the backend has no 0-100-scaled metric, so
-// showing one here would fabricate a number the source data never provided.
+// Renders one Prometheus vector series as-is (the backend now returns every
+// series for the service's scrape job, unfiltered — see get_service_metrics).
+// No percentage bar — there is no 0-100-scaled metric here, so showing one
+// would fabricate a number the source data never provided. The metric name
+// (__name__) is the primary label; job/instance are constant across every
+// row on this per-service page, so they're dropped rather than repeated.
 function MetricRow({ series }: { series: PrometheusSeries }) {
-  const label = Object.entries(series.metric ?? {})
+  const metric = series.metric ?? {};
+  const label = metric.__name__ || "value";
+  const extra = Object.entries(metric)
+    .filter(([k]) => k !== "__name__" && k !== "job" && k !== "instance")
     .map(([k, v]) => `${k}=${v}`)
-    .join(", ") || "value";
+    .join(", ");
   const raw = series.value?.[1];
   const value = raw === undefined ? "—" : Number.isNaN(Number(raw)) ? raw : Number(raw).toLocaleString();
   return (
     <div className="flex items-center justify-between gap-2 text-sm">
-      <span className="flex items-center gap-2 font-medium">
-        <ActivityIcon className="size-4 text-muted-foreground" />
-        {label}
+      <span className="flex min-w-0 items-center gap-2 font-medium">
+        <ActivityIcon className="size-4 shrink-0 text-muted-foreground" />
+        <span className="truncate font-mono text-xs">{label}</span>
+        {extra && <span className="truncate text-xs font-normal text-muted-foreground">{extra}</span>}
       </span>
-      <Badge variant="outline" className="tabular-nums">
+      <Badge variant="outline" className="shrink-0 tabular-nums">
         {value}
       </Badge>
     </div>

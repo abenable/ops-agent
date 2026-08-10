@@ -73,6 +73,37 @@ async def resolve_container_name(service: str) -> str | None:
     return container_name(container) if container else None
 
 
+def compose_service_name(container: dict) -> str | None:
+    """The docker-compose service key for this container (e.g. 'n8n'), read
+    from the 'com.docker.compose.service' label Compose sets automatically.
+
+    This is the identifier Prometheus scrape jobs and Promtail stream labels
+    are keyed on in this stack — NOT the container name, which Compose
+    prefixes with the project name (e.g. 'marconi-agent-n8n'). None for
+    containers Compose didn't create.
+    """
+    return (container.get("Labels") or {}).get("com.docker.compose.service")
+
+
+async def resolve_label_name(service: str) -> str:
+    """Resolve a service/container name (any spelling: short, full, typo'd
+    separators) to the identifier Loki/Prometheus labels actually use in this
+    stack — the docker-compose service key, not the Docker container name.
+
+    Observability backends here are labeled with the short compose key
+    ('n8n'), while callers (the web dashboard, Discord button targets) often
+    pass the full container name ('marconi-agent-n8n'). Matching the full name
+    against a Loki/Prometheus selector built for the short key silently
+    matches nothing. Falls back to the input unchanged if no container is
+    found or it carries no compose label, so callers degrade gracefully
+    instead of raising.
+    """
+    container = await find_container(service)
+    if container is None:
+        return service
+    return compose_service_name(container) or container_name(container)
+
+
 async def container_logs(
     container_id: str,
     tail: int = 20,

@@ -10,7 +10,11 @@ async def get_recent_logs(service: str, lines: int = 10) -> str:
     """Return recent logs for a service. Tries Loki first, falls back to
     Docker container logs when Loki has no matching stream.
     """
-    frag = regex_parts(service)
+    # Loki's stream labels are keyed on the docker-compose service name
+    # ('n8n'), not the full container name ('marconi-agent-n8n') callers often
+    # pass in — resolve to the label Loki actually carries before matching.
+    label = await docker.resolve_label_name(service)
+    frag = regex_parts(label)
     selectors = [
         f'{{service=~".*{frag}.*"}}',
         f'{{container=~".*{frag}.*"}}',
