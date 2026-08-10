@@ -1,0 +1,26 @@
+{
+  "timestamp": "20260810T222742Z",
+  "label": "baseline",
+  "model": "marconi-llm",
+  "task": "s2_root_cause_single",
+  "kind": "root_cause",
+  "service": "n8n",
+  "n_trials": 1,
+  "k": 1,
+  "pass_at_k": 0.0,
+  "pass_k": 0.0,
+  "wins": 0,
+  "score_mean": 0.9,
+  "graders": {
+    "tool_calls": 1.0,
+    "no_raw_markup": 1.0,
+    "groundedness": 0.0,
+    "claims": 1.0,
+    "no_false_alarm": 1.0,
+    "no_hallucination": 1.0,
+    "right_container": 1.0,
+    "exactly_one": 1.0,
+    "no_mutation": 1.0,
+    "path_efficiency": 1.0
+  }
+}
