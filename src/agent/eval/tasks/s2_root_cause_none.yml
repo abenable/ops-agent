@@ -11,9 +11,15 @@ expected_agent_actions:
   - list_services
   - docker_status
   - query_loki
-expected_evidence:
+# Nothing is wrong, so there is no raw fault to ground; the whole point is the
+# agent's conclusion that there is no incident.
+expected_claims:
   - no incident
   - healthy
+reference_evidence: |
+  list_services: api, n8n, vllm
+  docker_status api: state=running, status=Up 6 hours
+  query_loki api: no error lines returned; recent entries all 200 OK
 reference_summary: "No incident: all monitored services are healthy and operating normally."
 reference_tool_calls: [list_services, docker_status, query_loki]
 judge:

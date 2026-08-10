@@ -16,6 +16,9 @@ history:
     content: "is the web thing up?"
   - role: assistant
     content: "Checked list_services: the n8n container is running."
+reference_evidence: |
+  list_services: api, n8n, vllm
+  docker_status n8n: state=running, status=Up 2 hours
 reference_summary: "Following up on the n8n we discussed: n8n is still running and healthy, no incident."
 reference_tool_calls: [list_services, docker_status]
 judge:

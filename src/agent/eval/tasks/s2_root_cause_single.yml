@@ -13,6 +13,10 @@ expected_evidence:
   - n8n
   - OOM
   - memory
+reference_evidence: |
+  list_services: api, n8n, vllm
+  docker_status n8n: state=restarting, status=Restarting (137) 12 seconds ago
+  query_loki n8n: "Container n8n OOMKilled — resident memory 512MB exceeded the cgroup limit"
 reference_summary: "Root cause: the n8n container is being OOM-killed — resident memory climbed past the cgroup limit."
 reference_tool_calls: [list_services, docker_status, query_loki]
 judge:

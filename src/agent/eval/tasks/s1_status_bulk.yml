@@ -5,6 +5,9 @@ service: api
 symptom: >
   An operator asks for a single status pass over all the core services at
   once: api, n8n, and vllm. Report each one's state in one response.
+# All three are healthy here; a bulk report that alarms on a healthy fleet is
+# a false alarm, so this is a negative task (consistent with s1_status_healthy).
+negative: true
 expected_agent_actions:
   - list_services
   - docker_status
@@ -12,5 +15,10 @@ expected_evidence:
   - api
   - n8n
   - vllm
+reference_evidence: |
+  list_services: api, n8n, vllm
+  docker_status api: state=running, status=Up 3 hours
+  docker_status n8n: state=running, status=Up 2 hours
+  docker_status vllm: state=running, status=Up 5 hours
 reference_summary: "Status: api is running and healthy, n8n is running and healthy, vllm is running and healthy."
 reference_tool_calls: [list_services, docker_status]

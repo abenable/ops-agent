@@ -198,16 +198,27 @@ class EvalHarness:
         return self._task.get("expected_agent_actions", [])
 
     def expected_evidence(self) -> list[str]:
+        """Raw observed facts that must appear in a ``tool_result`` (grounded in
+        data, not invented). Interpretive labels go in ``expected_claims``."""
         return self._task.get("expected_evidence", [])
+
+    def expected_claims(self) -> list[str]:
+        """Interpretive labels the agent must *state* in its summary
+        (``degraded``, ``no incident``, ``approval``) — checked against the
+        prose, not tool output, by the ``claims`` grader."""
+        return self._task.get("expected_claims", [])
+
+    def reference_evidence(self) -> str:
+        """Canned tool output for the reference solution: the observations a
+        correct investigation would see. Used by :meth:`validate_reference` to
+        build a transcript so groundedness is checked against a ``tool_result``
+        (the live branch), not the summary. Also documents, per task, the
+        environment state the live run must be seeded into for the task to be
+        gradeable."""
+        return self._task.get("reference_evidence", "")
 
     def forbidden_containers(self) -> list[str]:
         return self._task.get("forbidden_containers", [])
-
-    def expected_source(self) -> str:
-        return self._task.get("expected_source", "")
-
-    def expected_metric_family(self) -> str:
-        return self._task.get("expected_metric_family", "")
 
     def diagnosis(self) -> str:
         return self._task.get("diagnosis", "")
@@ -229,20 +240,49 @@ class EvalHarness:
         A task whose reference solution fails its own graders is broken
         (graders too strict, or expected_* mis-set). Returns the EvalResult;
         callers assert ``result.passed``.
+
+        Crucially, a transcript is built from ``reference_evidence`` so
+        ``groundedness`` is checked against a ``tool_result`` — the *same*
+        branch the live CLI exercises. Without this, validation would take the
+        summary-fallback branch and pass tasks whose ``expected_evidence`` would
+        actually fail live (the interpretive-label trap).
         """
         if not self.reference_summary() and not self.reference_tool_calls() and self.kind != "remediation":
             return EvalResult(task=self.name, service=self.service, passed=True, total_actions=0, matched_actions=0, actual_tool_calls=[], final_summary="", error=None)
         if self.kind == "remediation":
             proposals = [{"container_name": self.expected_remediation_container()}]
             return self.evaluate(tool_calls=["propose_restart"], summary=self.reference_summary(), proposals=proposals)
-        return self.evaluate(tool_calls=self.reference_tool_calls(), summary=self.reference_summary())
+        transcript = None
+        if self.reference_evidence():
+            transcript = [{"type": "tool_result", "result": self.reference_evidence()}]
+        return self.evaluate(
+            tool_calls=self.reference_tool_calls(),
+            summary=self.reference_summary(),
+            transcript=transcript,
+        )
 
     def history(self) -> list[dict]:
         """Prior conversational turns to feed into the investigation (multi-turn)."""
         return self._task.get("history", []) or []
 
     def _map_action_to_tools(self, action: str) -> list[str]:
-        return _ACTION_INDEX.get(action.lower(), [])
+        """Map an ``expected_agent_actions`` entry to the tool name(s) that
+        satisfy it. Two forms are supported:
+
+        - a narrative phrase (``"query loki for error logs"``) → its mapped tool
+          set from ``_ACTION_INDEX`` (``[]`` for non-tool steps like
+          ``"summarize findings"``, which auto-match);
+        - a bare tool name (``"query_loki"``, the form every current task uses)
+          → expect exactly that tool. Without this fallback a bare-name action
+          would miss the phrase index and auto-match, turning ``tool_calls`` into
+          a no-op.
+        """
+        mapped = _ACTION_INDEX.get(action.lower())
+        if mapped is not None:
+            return mapped
+        if action and " " not in action:
+            return [action]
+        return []
 
     def evaluate(self, *, tool_calls: list[str], summary: str = "", error: str | None = None, transcript: list[dict] | None = None, proposals: list[dict] | None = None) -> EvalResult:
         """Run all applicable graders against one trial.
@@ -302,8 +342,10 @@ def discover_tasks(root: str | Path | None = None) -> list[EvalHarness]:
 def aggregate_trials(results: list[EvalResult]) -> dict:
     """Aggregate N trials of one task into pass@k / pass^k statistics.
 
-    - ``pass_at_k``: probability at least one trial passed (>= 1 success in k).
-    - ``pass_k``:    probability all trials passed (consistency).
+    - ``pass_at_k``: observed indicator — 1.0 if >= 1 of the k trials passed.
+    - ``pass_k``:    observed indicator — 1.0 only if all k trials passed
+      (consistency). These are the empirical pass@k/pass^k for this one k-run,
+      not the unbiased combinatorial estimators.
     - per-grader pass rate.
     """
     k = len(results)

@@ -207,6 +207,7 @@ def run(args) -> None:
             "symptom": h.symptom,
             "expected_actions": h.expected_actions(),
             "expected_evidence": h.expected_evidence(),
+            "expected_claims": h.expected_claims(),
             "passed": result.passed,
             "score": result.score,
             "graders": [

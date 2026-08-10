@@ -10,9 +10,14 @@ expected_agent_actions:
   - list_services
   - query_loki
 expected_evidence:
-  - intermittent
   - timeout
   - api
+# "intermittent" is the agent's characterization of the pattern, not a log line.
+expected_claims:
+  - intermittent
+reference_evidence: |
+  list_services: api, n8n, vllm
+  query_loki api (512 lines, mostly 200 OK): "... 200 OK ... 200 OK ... connection timeout to database after 5s ... 200 OK ... 200 OK ... connection timeout to database after 5s ..."
 reference_summary: "Root cause: intermittent upstream timeouts — the api sees connection timeouts to the database roughly once every few minutes, buried in normal request logs."
 reference_tool_calls: [list_services, query_loki]
 judge:

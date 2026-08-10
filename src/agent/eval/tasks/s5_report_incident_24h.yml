@@ -8,9 +8,13 @@ symptom: >
   stated, no raw JSON/log dumps pasted into chat, appropriate length.
 expected_agent_actions:
   - list_services
-expected_evidence:
+# The "24h" scoping and "incident" framing are the report's own words.
+expected_claims:
   - 24h
   - incident
+reference_evidence: |
+  list_services: api, n8n, vllm
+  stored incidents (last 24h): api 500s at 14:02 UTC severity=warning, resolved 14:18 UTC via deploy rollback
 reference_summary: "Incident report (last 24h): 1 incident — api returned 500s at 14:02 UTC (severity: warning), resolved by a deploy rollback at 14:18 UTC. No open incidents."
 reference_tool_calls: [list_services]
 judge:

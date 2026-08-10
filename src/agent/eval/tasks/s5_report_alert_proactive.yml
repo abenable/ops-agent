@@ -8,9 +8,12 @@ symptom: >
   with the correct severity framing — concise, no raw metric dumps.
 expected_agent_actions:
   - list_services
-expected_evidence:
+expected_claims:
   - alert
   - severity
+reference_evidence: |
+  list_services: api, n8n, vllm
+  monitor: api error-rate 6% crossed the 5% threshold at 14:02 UTC (warning)
 reference_summary: "Proactive alert: the api crossed the error-rate threshold (warning severity) at 14:02 UTC. An incident has been opened for investigation."
 reference_tool_calls: [list_services]
 judge:

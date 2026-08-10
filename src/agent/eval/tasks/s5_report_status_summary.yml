@@ -14,7 +14,9 @@ expected_evidence:
   - api
   - n8n
   - vllm
-  - status
+reference_evidence: |
+  list_services: api, n8n, vllm
+  docker_status api: state=running; n8n: state=running; vllm: state=running
 reference_summary: "Status summary: api is running and healthy, n8n is running and healthy, vllm is running and healthy. No incidents in the last hour."
 reference_tool_calls: [list_services, docker_status]
 judge:

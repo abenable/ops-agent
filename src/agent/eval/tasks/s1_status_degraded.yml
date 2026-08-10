@@ -12,6 +12,11 @@ expected_agent_actions:
   - query_prometheus
 expected_evidence:
   - n8n
+expected_claims:
   - degraded
+reference_evidence: |
+  list_services: api, n8n, vllm
+  docker_status n8n: state=running, status=Up 2 hours
+  query_prometheus n8n cpu: 0.94 (sustained high); response latency p95 elevated
 reference_summary: "The n8n container is up but degraded: elevated CPU and slow responses."
 reference_tool_calls: [list_services, docker_status, query_prometheus]

@@ -137,7 +137,7 @@ inactive when its channel id is unset). See [docs/discord-channels.md](docs/disc
 │   ├── storage/             # SQLite repository for incidents, watch list, and approvals
 │   ├── alerting/            # Discord alert + incident-thread helpers
 │   ├── eval/                # Task evaluation harness (modular)
-│   │   ├── graders.py       # Code-based graders (tool_calls, groundedness, right_metric, ...)
+│   │   ├── graders.py       # Code-based graders (tool_calls, groundedness, claims, no_mutation, ...)
 │   │   ├── harness.py       # EvalHarness: loads task YAML, grades a trial
 │   │   ├── cli.py           # `agent eval` subcommand (drives the workflow, writes runs)
 │   │   └── tasks/           # Simulated infrastructure issues (yml)

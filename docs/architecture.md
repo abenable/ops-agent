@@ -61,8 +61,8 @@
   read-only Docker container status/logs.
 - `agent.eval` — task evaluation harness, split into focused modules:
   `agent.eval.graders` (code-based graders: tool_calls, no_raw_markup,
-  groundedness, no_false_alarm, no_hallucination, right_source, right_metric,
-  right_container, exactly_one), `agent.eval.harness` (`EvalHarness` loads a
+  groundedness, claims, no_false_alarm, no_hallucination, no_mutation,
+  path_efficiency, right_container, exactly_one), `agent.eval.harness` (`EvalHarness` loads a
   task YAML and grades a trial; action-to-tool mapping; `aggregate_trials`),
   `agent.eval.cli` (the `agent eval` subcommand that drives the workflow and
   writes run output), and `agent.eval.tasks/` (the task YAMLs). See

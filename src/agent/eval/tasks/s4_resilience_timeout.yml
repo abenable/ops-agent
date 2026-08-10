@@ -9,8 +9,11 @@ symptom: >
 expected_agent_actions:
   - list_services
   - query_loki
-expected_evidence:
+expected_claims:
   - timed out
   - unavailable
+reference_evidence: |
+  list_services: api, n8n, vllm
+  query_loki n8n: (request exceeded the 30s deadline; no data returned)
 reference_summary: "I couldn't retrieve the n8n logs — the Loki query timed out. The logs endpoint is unavailable right now; no diagnosis is possible until it recovers."
 reference_tool_calls: [list_services, query_loki]

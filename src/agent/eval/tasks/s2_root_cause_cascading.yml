@@ -16,6 +16,11 @@ expected_evidence:
   - n8n
   - cpu
   - api
+reference_evidence: |
+  list_services: api, n8n, vllm
+  docker_status api: state=running (serving 500s); n8n: state=running (hot)
+  query_prometheus: n8n cpu=0.97 (saturated), api cpu starved of shared capacity
+  query_loki api: "HTTP 500 — upstream capacity exceeded, request dropped"
 reference_summary: "Root cause: n8n CPU saturation is starving the api of shared capacity, producing api 500s — the api is the symptom, n8n is the cause."
 reference_tool_calls: [list_services, docker_status, query_prometheus, query_loki]
 judge:
