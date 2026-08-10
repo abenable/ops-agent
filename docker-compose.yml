@@ -15,6 +15,16 @@ configs:
             - targets: ['n8n:5678']
           metrics_path: /metrics
 
+        - job_name: 'api'
+          static_configs:
+            - targets: ['host.docker.internal:8123']
+          metrics_path: /metrics
+
+        - job_name: 'vllm'
+          static_configs:
+            - targets: ['host.docker.internal:8000']
+          metrics_path: /metrics
+
         - job_name: 'node-exporter'
           static_configs:
             - targets: ['node-exporter:9100']
@@ -77,6 +87,25 @@ configs:
                 service: n8n
                 __path__: /home/node/.n8n/n8n.log
 
+        # api/bot run with network_mode: host and have no log file to tail, so
+        # their stdout/stderr is discovered via the Docker Engine API instead
+        # (this reads the container's log stream directly; it does not touch
+        # stdout, so `docker logs` keeps working unmodified). Scoped to api/bot
+        # only so it doesn't double-ingest n8n, which the static job above
+        # already covers.
+        - job_name: docker-logs
+          docker_sd_configs:
+            - host: unix:///var/run/docker.sock
+              refresh_interval: 15s
+          relabel_configs:
+            - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+              target_label: 'service'
+            - source_labels: ['service']
+              regex: '^(api|bot)$'
+              action: keep
+            - target_label: 'job'
+              replacement: 'docker-logs'
+
 services:
   api:
     container_name: marconi-agent-api
@@ -130,6 +159,10 @@ services:
     image: prom/prometheus:latest
     ports:
       - "9090:9090"
+    # api/bot run on network_mode: host, so they're reachable from this
+    # bridge-networked container only via the host gateway, not by service name.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - prom_data:/prometheus
     configs:
@@ -182,6 +215,8 @@ services:
     image: grafana/promtail:latest
     volumes:
       - n8n_data:/home/node/.n8n
+      # Read-only Docker Engine API access for the docker_sd_configs job below.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     configs:
       - source: promtail-config
         target: /etc/promtail/config.yml

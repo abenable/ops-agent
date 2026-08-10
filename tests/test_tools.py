@@ -161,3 +161,41 @@ def test_get_label_values_accepts_valid_label(monkeypatch):
     out = asyncio.run(prometheus.get_label_values("job"))
     assert out == ["web", "api"]
     assert captured["url"].endswith("/api/v1/label/job/values")
+
+
+def test_loki_get_label_values_rejects_path_injection():
+    bad = ["foo/../bar", "a?b", "x#y", "../etc", "a/b", "a\\b", " with space", "1abc", ""]
+    for label in bad:
+        assert asyncio.run(loki.get_label_values(label)) == [], f"expected reject for {label!r}"
+
+
+def test_loki_get_label_values_accepts_valid_label(monkeypatch):
+    """Loki's label schema is a separate namespace from Prometheus's — this hits
+    Loki's own /label/{name}/values endpoint, not Prometheus's."""
+    captured = {}
+
+    class FakeResp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"data": ["n8n"]}
+
+    class FakeClient:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, url, params=None):
+            captured["url"] = url
+            return FakeResp()
+
+    monkeypatch.setattr(loki.httpx, "AsyncClient", FakeClient)
+    out = asyncio.run(loki.get_label_values("service"))
+    assert out == ["n8n"]
+    assert captured["url"].endswith("/loki/api/v1/label/service/values")

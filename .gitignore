@@ -27,3 +27,6 @@ web-dist/
 # Local presentation docs (keep untracked)
 docs/demo-evaluation-actions.md
 docs/speaker-notes.md
+
+# Env backups (secrets)
+.env*

@@ -1,16 +1,37 @@
 """Grafana Loki query helper."""
 
+import re
 from datetime import datetime, timedelta, timezone
 
 import httpx2 as httpx
 
 from agent.config.settings import settings
 
+_LABEL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
 
 def _loki_headers() -> dict[str, str]:
     if settings.loki_token:
         return {"Authorization": f"Bearer {settings.loki_token}"}
     return {}
+
+
+async def get_label_values(label: str) -> list[str]:
+    """List values for a given Loki stream label.
+
+    Loki's label schema is set by Promtail's scrape config, not by Docker
+    container names — it commonly has no 'container' label at all (this stack's
+    labels are 'job', 'service', 'service_name', 'filename'). Callers must not
+    assume Prometheus's label set applies here; discover it instead.
+    """
+    if not _LABEL_RE.match(label):
+        return []
+    url = f"{settings.loki_url}/loki/api/v1/label/{label}/values"
+    headers = _loki_headers()
+    async with httpx.AsyncClient(timeout=10.0, headers=headers) as client:
+        response = await client.get(url)
+        response.raise_for_status()
+        return response.json().get("data", []) or []
 
 
 async def query_loki(query: str, limit: int = 100) -> dict:

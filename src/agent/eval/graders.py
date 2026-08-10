@@ -45,16 +45,35 @@ _ALARM_WORDS_RE = re.compile(
 # wider than the negation word itself needs because ranked-hypothesis prose
 # routinely separates the negation from the alarm word by several words.
 _NEG_NEAR_RE = re.compile(
-    r"\b(no|not|never|without|zero|nothing|none|rather than|instead of)\b|n['’]?t\b",
+    r"\b(no|not|never|without|zero|nothing|none|rather than|instead of|lack of|absence of|free)\b|n['’]?t\b",
     re.IGNORECASE,
 )
+
+# A clause governed by "if", leading ("If functional errors are reported,
+# query X...") or trailing ("Check logs for errors if traffic is expected but
+# not reflected..."), describes a hypothetical future check, not a
+# current-state claim — common in a "Fix:" bullet for a hypothesis already
+# ranked low-probability. Clause boundary: the nearest '.', ':', or newline
+# on each side, where a '.' only counts as a boundary followed by
+# whitespace/end-of-string — a bare '.' inside quoted PromQL/regex syntax
+# (`status=~"5.."`) isn't a sentence end.
+_CLAUSE_BREAK_RE = re.compile(r"\n|:|\.(?=\s|$)")
+_IF_WORD_RE = re.compile(r"\bif\b", re.IGNORECASE)
+
+
+def _clause_bounds(text: str, pos: int) -> tuple[int, int]:
+    starts = [m.end() for m in _CLAUSE_BREAK_RE.finditer(text[:pos])]
+    start = starts[-1] if starts else 0
+    end_match = _CLAUSE_BREAK_RE.search(text, pos)
+    end = end_match.start() if end_match else len(text)
+    return start, end
 
 # Discussing the observability stack's own gaps (missing scrape config, failed
 # discovery) is not a claim the checked *service* is down — INCIDENT_SYSTEM_PROMPT's
 # ranked-hypothesis format routinely surfaces this ("Hypothesis: Prometheus
 # Service Discovery Failure") even when the service itself is fully healthy.
 _INFRA_CONTEXT_RE = re.compile(
-    r"\b(prometheus|scrape|scraping|discovery|monitoring|observability)\b",
+    r"\b(prometheus|scrape|scraping|discovery|monitoring|observability|probe|probes)\b",
     re.IGNORECASE,
 )
 
@@ -64,20 +83,77 @@ _INFRA_CONTEXT_RE = re.compile(
 # agent reports the query found *zero* matching lines.
 _QUERY_OPERATOR_RE = re.compile(r"(\|=|=~|!=|!~)\s*[\"']$")
 
+# "Operator/user/human error" is an idiom for a mistake by a person, not a
+# claim the service errored — routinely the correct hypothesis in a negative
+# task ("the operator's perception was off, nothing is actually wrong").
+_HUMAN_ERROR_RE = re.compile(r"\b(operator|user|human)\s+error\b", re.IGNORECASE)
+
+# An unclosed "(e.g., X, Y" / "(such as X, Y" opened before the match and not
+# yet closed means the alarm word is one illustrative example in a list of
+# symptom *categories* someone could report, not a claim about the current
+# state ("specify the symptom, e.g., high latency, errors"). No \b after the
+# e.g./such as token: it's followed by punctuation/space, not a word char, so
+# a word-boundary assertion there never matches.
+_EXAMPLE_LIST_RE = re.compile(r"\(\s*(e\.g\.,?|for example|such as)\s[^)]*$", re.IGNORECASE)
+
+# "Check/verify/monitor/query ... for errors" is a diagnostic action naming
+# what to look for, not a claim it's present — a "Fix:"/"Next Steps:"/
+# "Evidence:" staple ("check their local network for errors", "`query_loki_
+# range` for errors/warnings ... returned zero results"). ``(?:\b|_)`` after
+# the verb, not a plain ``\b``: a cited tool name like `query_loki_range` is
+# one underscore-joined identifier with no word boundary after "query".
+_CHECK_FOR_RE = re.compile(
+    r"\b(check|look|verify|inspect|review|monitor|watch|scan|search|query)(?:\b|_)[^.]{0,40}\bfor\s*$",
+    re.IGNORECASE,
+)
+
+
+def _in_code_span(text: str, pos: int) -> bool:
+    """True if `pos` sits inside an odd-count-so-far markdown `code span` —
+    a cited LogQL/PromQL matcher like `` `error|warn|fail` `` names a search
+    term, not a claim that an error occurred (companion to
+    ``_QUERY_OPERATOR_RE``, which only catches the ``|= "..."`` quoting
+    style, not backtick code spans)."""
+    return text.count("`", 0, pos) % 2 == 1
+
 
 def _alarm_hit(summary: str):
     """Return the first *un-negated*, service-relevant alarm-word match, or None."""
     for m in _ALARM_WORDS_RE.finditer(summary):
-        pre = summary[max(0, m.start() - 40) : m.start()]
-        if _NEG_NEAR_RE.search(pre):
+        clause_start, clause_end = _clause_bounds(summary, m.start())
+        # The negation governing a coordinated list ("No A, B, or C") can sit
+        # further back than a fixed char window reaches once the list has a
+        # few items — bound the search by the clause instead of a magic
+        # number, the same idea as the "if" check below.
+        if _NEG_NEAR_RE.search(summary[clause_start : m.start()]):
             continue
         # A tighter ~20-char slice: close enough to catch a tight compound like
         # "Discovery Failure" or "Prometheus to fail", too close to catch an
         # unrelated later claim like "Prometheus shows the api container
         # crashed" — that's still a real claim about the service.
-        if _INFRA_CONTEXT_RE.search(pre[-20:]):
+        if _INFRA_CONTEXT_RE.search(summary[max(0, m.start() - 20) : m.start()]):
             continue
-        if _QUERY_OPERATOR_RE.search(pre):
+        if _QUERY_OPERATOR_RE.search(summary[max(0, m.start() - 10) : m.start()]):
+            continue
+        if _HUMAN_ERROR_RE.search(summary[max(0, m.start() - 10) : m.end()]):
+            continue
+        if _EXAMPLE_LIST_RE.search(summary[max(0, m.start() - 40) : m.start()]):
+            continue
+        if _CHECK_FOR_RE.search(summary[max(0, m.start() - 50) : m.start()]):
+            continue
+        if _in_code_span(summary, m.start()):
+            continue
+        # A negation within the ~40 chars *after* the match flips it too —
+        # ranked-hypothesis prose routinely leads with the alarm word before
+        # its negation lands ("**Error activity:** No error or warning
+        # lines", "expecting errors ... that are simply not present"). Scoped
+        # to negative-task summaries only (see caller), where a genuine claim
+        # of trouble is the exception the grader exists to catch, so leaning
+        # toward not-a-false-alarm on ambiguous hedge language is the safer
+        # direction of error.
+        if _NEG_NEAR_RE.search(summary[m.end() : m.end() + 40]):
+            continue
+        if _IF_WORD_RE.search(summary[clause_start:clause_end]):
             continue
         return m
     return None
@@ -299,14 +375,25 @@ def _grade_no_mutation(harness, *, tool_calls, summary, transcript, proposals) -
 def _grade_path_efficiency(harness, *, tool_calls, summary, transcript, proposals) -> GraderResult:
     """Suite 2 (root_cause): the investigation path is not egregiously longer
     than the reference path. Grades cost, not correctness — a sprawling 12-call
-    hunt for a 3-call root-cause fails even if the answer is right. Slack lets
-    the agent take one extra corroborating call per reference step."""
+    hunt for a 3-call root-cause fails even if the answer is right.
+
+    ``reference_tool_calls`` assumes the agent already knows the right
+    label/metric names and goes straight to the data query. A correct
+    investigation doesn't: it calls get_label_values/list_metric_names/
+    get_loki_label_values first (avoiding the wrong-label-name and
+    wrong-metric-name bugs that guessing produces), then checks more than one
+    metric/signal per step (e.g. up plus an error-rate query), which costs
+    more than the naive call count. The budget accounts for that discovery +
+    multi-signal overhead rather than penalizing it — it still catches a
+    genuinely runaway hunt (10+ calls on a 2-3 step reference), just not the
+    realistic cost of doing a thorough, correct check.
+    """
     if harness.kind != "root_cause":
         return GraderResult("path_efficiency", True, "n/a (task is not 'root_cause')")
     ref = harness.reference_tool_calls()
     if not ref:
         return GraderResult("path_efficiency", True, "no reference path declared")
-    budget = len(ref) + max(1, len(ref) // 2)
+    budget = 2 * len(ref) + 3
     n = len(tool_calls)
     return GraderResult(
         "path_efficiency",

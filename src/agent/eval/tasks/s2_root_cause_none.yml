@@ -14,7 +14,7 @@ expected_agent_actions:
 # Nothing is wrong, so there is no raw fault to ground; the whole point is the
 # agent's conclusion that there is no incident.
 expected_claims:
-  - no incident
+  - no incident|no root cause|not indicate an actual incident|does not indicate an actual incident
   - healthy
 reference_evidence: |
   list_services: api, n8n, vllm

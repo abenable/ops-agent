@@ -1342,6 +1342,72 @@ cost of sending operational data off-prem. The tradeoff between capability and
 self-hosting is a deliberate deployment decision; a fuller treatment is in
 \texttt{docs/model-comparison.md}.
 
+\subsection{Evaluation baseline: Qwen3.6-35B-A3B}
+\label{sec:eval-baseline}
+
+The task evaluation harness (\S\ref{app:task}) is baselined against
+\pkg{Qwen3.6-35B-A3B} (self-hosted behind a LiteLLM gateway), run at
+\pkg{--trials 5} with the LLM-judge grader enabled for Suites~2 and~5. Twenty
+tasks span five capability suites; seven are excluded from the pass-rate
+figures below because they require a live fault condition the deployment does
+not currently stage --- an n8n OOM-kill, a cross-service CPU-saturation chain,
+a buried intermittent-timeout log line, sustained CPU load, an api 500-error
+burst, a malformed Prometheus response, and a Loki query timeout. Against
+real, unstaged infrastructure those seven honestly return clean data, which a
+grader correctly scores as a miss against the scripted fault; closing this gap
+needs either a response-stubbing layer keyed off each task's reference
+evidence or live fault injection, tracked as future work
+(\S\ref{sec:future-work}). The remaining thirteen tasks measure investigation
+correctness, safety-gate adherence, and report formatting against real,
+reachable infrastructure state.
+
+\begin{table}[h]
+\centering
+\caption{Per-suite pass rate, non-exempt tasks only, \pkg{Qwen3.6-35B-A3B}, 5 trials/task.}
+\label{tab:eval-suites}
+\small
+\begin{tabularx}{\textwidth}{clXr}
+\toprule
+\textbf{Suite} & \textbf{Capability} & \textbf{Tasks} & \textbf{Pass rate} \\
+\midrule
+1 & Status queries & 3 of 4 (excl.\ degraded-service) & 15/15 (100\%) \\
+2 & Root-cause investigation & 1 of 4 (excl.\ 3 fault variants) & 5/5 (100\%) \\
+3 & Safety and approval gating & 4 of 4 & 20/20 (100\%) \\
+4 & Resilience to degraded tools & 1 of 4 (excl.\ 3 fault variants) & 5/5 (100\%) \\
+5 & Report formatting & 4 of 4 & 20/20 (100\%) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{Per-run cost, 100 trials (20 tasks $\times$ 5), \pkg{Qwen3.6-35B-A3B}.}
+\label{tab:eval-cost}
+\small
+\begin{tabularx}{\textwidth}{lXr}
+\toprule
+\textbf{Metric} & \textbf{} & \textbf{Value} \\
+\midrule
+Total tokens & prompt / completion & 1{,}617{,}018 / 53{,}646 (1{,}670{,}664 total) \\
+Tokens per trial & mean & 16{,}707 \\
+Tool calls & total / mean per trial & 594 / 5.9 \\
+LLM calls & total / mean per trial & 485 / 4.8 \\
+LLM time & total / mean per trial & 581.5\,s / 5.8\,s \\
+Wall time & total / mean (max) per trial & 589.2\,s / 5.9\,s (44.2\,s) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Prompt tokens dominate completion tokens by roughly 30:1, consistent with a
+tool-calling loop that re-sends the accumulating transcript (system prompt,
+prior tool calls, and tool results) on every LLM turn rather than a single
+long-form generation; this is the ratio a switch to a provider with
+prompt-side caching would act on. Tool time (7.0\,s total across 594 calls)
+is negligible against LLM time (581.5\,s), confirming the loop's wall-clock
+cost is inference-bound, not I/O-bound --- the relevant lever for cost or
+latency is the model and the number of LLM turns per investigation, not the
+tool layer.
+
 % ============================================================
 \section{Challenges}
 % ============================================================
@@ -1406,6 +1472,7 @@ Several challenges were encountered and resolved during the implementation:
 
 % ============================================================
 \section{Future Work}
+\label{sec:future-work}
 % ============================================================
 
 The MVP is a foundation for several planned extensions, listed in priority
@@ -1441,14 +1508,20 @@ order.
   \item \textbf{Alertmanager webhook receiver.} Host a webhook receiver in the
     bot process as an alternative to in-bot polling, letting an external
     Alertmanager push alerts rather than having the bot poll Prometheus.
-  \item \textbf{Calibrate and baseline the evaluation harness.} The task
-    evaluation framework (\pkg{agent.eval}) now spans five capability suites
-    with deterministic code graders, an opt-in LLM-judge grader, and reference
-    solutions self-validated in \pkg{tests.test\_eval}; the remaining work is to
-    calibrate the judge against hand-graded transcripts before trusting it in
-    CI, record a per-suite pass\^{}k baseline per model, and build Prometheus
-    recording rules and Grafana dashboards for the agent's own operational
-    metrics exposed at \pkg{GET /metrics}.
+  \item \textbf{Live fault staging for the remaining evaluation tasks.} Seven
+    of twenty tasks (\S\ref{sec:eval-baseline}) need a fault condition nothing
+    currently stages in live infrastructure. A response-stubbing layer keyed
+    off each task's \pkg{reference\_evidence}, or an actual fault-injection
+    step (a memory-capped n8n restart, a synthetic 500-error burst), would
+    close this gap and unblock a trustworthy full-suite pass\^{}k baseline.
+  \item \textbf{Calibrate the LLM-judge grader.} The judge is wired and
+    opt-in (\pkg{--judge}) for Suites~2 and~5, but has no hand-graded
+    baseline yet; before trusting it in CI, grade roughly 20 transcripts by
+    hand, run \pkg{scripts/judge\_agreement.py}, and tighten the
+    per-criterion questions until agreement is acceptable.
+  \item \textbf{Operational metrics dashboards.} Build Prometheus recording
+    rules and Grafana dashboards for the agent's own operational metrics
+    exposed at \pkg{GET /metrics}.
 \end{enumerate}
 
 % ============================================================

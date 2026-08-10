@@ -17,7 +17,7 @@ forbidden_containers:
 # Synonym alternatives ("|"-separated) accept the model's own reasonable
 # phrasing of the same conclusion without requiring the exact canonical string.
 expected_claims:
-  - no such service|not a known|does not exist|no matching service|not found
+  - no such service|not a known|does not exist|no matching service|not found|there is no container or monitored endpoint
 reference_evidence: |
   list_services: api, n8n, vllm
 reference_summary: "No such service is registered here; the running containers are api, n8n, and vllm."

@@ -305,6 +305,46 @@ question, don't swap the judge.
   environment, and their live `groundedness`/`claims` numbers are only
   meaningful when that state is actually present. This is the prerequisite for
   the first trustworthy live pass^k baseline.
+  - `api`/`bot` run on `network_mode: host`, so `docker-compose.yml` gives
+    Prometheus a `job_name: api` / `job_name: vllm` scrape target via
+    `host.docker.internal` (`extra_hosts: host-gateway`) rather than a
+    same-network service name, and Promtail a `docker_sd_configs` job scoped
+    to `service in {api, bot}` reading their log streams via the Docker
+    socket (read-only), so their logs reach Loki without stdout being
+    redirected — `docker_logs` still reads the same stream directly. `n8n`
+    keeps its original file-tail scrape job. `api`/`n8n`/`vllm` all have real
+    Prometheus metrics and (`api`/`n8n`) real Loki logs, but real only means
+    real *current* state, not a *scripted* fault. `n8n`'s OOM-kill condition
+    (`s2_root_cause_single`), the cross-service CPU-saturation chain
+    (`s2_root_cause_cascading`), the buried-timeout log line
+    (`s2_root_cause_flaky`), n8n's sustained-CPU-load state
+    (`s1_status_degraded`), and api's 500-error log lines
+    (`s4_resilience_conflicting`) each need a specific fault condition or log
+    line that nothing currently writes — real n8n is idle and healthy and
+    real api logs are clean health-check/metrics traffic, so a correct query
+    honestly returns clean data, not the scripted symptom.
+    `s4_resilience_malformed` needs Prometheus to actually return garbled
+    JSON, a different flavor of the same gap: real infra never returns
+    malformed data without deliberately breaking it. `s4_resilience_timeout`
+    needs a real Loki query timeout — a correct query against real Loki
+    instead returns a normal (empty) result, so the model can honestly
+    report the logs as unavailable but not that the query "timed out",
+    since it didn't. These seven are treated
+    as known-unstaged and skipped in eval-fix loops rather than treated as
+    bugs; passing them needs either a seeding layer (stub tool responses
+    from `reference_evidence`) or actually inducing the fault live.
+  - Loki's label schema (`job`, `service`, `service_name`, `filename`) is set
+    by Promtail's scrape config and is a separate namespace from Prometheus's
+    labels — it has no `container` label, and container names are not valid
+    label values there. `get_loki_label_values` (`agent/tools/query_tools.py`)
+    queries Loki's own `/label/{name}/values` endpoint so a LogQL selector can
+    be built from real label values instead of a guessed Docker container
+    name. The same distinction holds on the Prometheus side: its `job` label
+    value is the docker-compose service key (`api`, `n8n`), not the full
+    container name, and a client library's metric names are typically
+    prefixed with the service name (`n8n_process_cpu_seconds_total`, not
+    `process_cpu_seconds_total`). `INCIDENT_SYSTEM_PROMPT` states all of this
+    and directs discovery via `get_label_values`/`list_metric_names` first.
 - **LLM-judge calibration.** The judge is wired and opt-in (`--judge`) and the
   calibration tool (`scripts/judge_agreement.py`) is delivered, but no
   hand-graded baseline has been recorded yet. Before trusting it in CI: grade

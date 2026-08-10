@@ -15,6 +15,7 @@ from agent.tools.query_tools import (
     docker_logs,
     docker_status,
     get_label_values,
+    get_loki_label_values,
     list_metric_names,
     list_services,
     query_loki,
@@ -74,6 +75,7 @@ TOOLS = [
     query_prometheus_range,
     query_loki,
     query_loki_range,
+    get_loki_label_values,
 ]
 
 SYSTEM_PROMPT = (
@@ -81,7 +83,20 @@ SYSTEM_PROMPT = (
     "Start by calling list_services to learn the real container and endpoint names, "
     "then discover metric names and label values. "
     "Use the actual names you discover, not the user's spelling, for your queries. "
+    "Prometheus's 'job' label value is the docker-compose service key (e.g. 'api', "
+    "'n8n'), not the full container name (e.g. NOT 'marconi-agent-api') — this "
+    "matters most for a job=~\"a|b|c\" filter spanning several services, where "
+    "guessing even one name wrong silently drops it from the results. Call "
+    "get_label_values('job') to confirm the real values before writing that filter. "
+    "Client-library metric names are usually prefixed with the service name (e.g. "
+    "n8n's CPU/memory metrics are 'n8n_process_cpu_seconds_total', not the bare "
+    "'process_cpu_seconds_total') — call list_metric_names(match=<service>) before "
+    "guessing a metric name for a specific service. "
     "Use docker_status and docker_logs to inspect containers Prometheus/Loki do not cover. "
+    "Loki's label schema is set by Promtail and is separate from Prometheus's — it "
+    "commonly has no 'container' label at all. Before writing a LogQL selector, call "
+    "get_loki_label_values('service') (or 'job') to learn the real label values instead "
+    "of guessing a Docker container name into the query. "
     "Write cheap PromQL/LogQL queries and prefer short time windows. "
     "If a query returns no results, do not guess a different label filter and "
     "retry blindly — call get_label_values or list_metric_names once to learn "
@@ -98,7 +113,27 @@ SYSTEM_PROMPT = (
 # remediation stays human-gated via the Remediate button (a separate workflow),
 # so the operator decides what to execute.
 INCIDENT_SYSTEM_PROMPT = SYSTEM_PROMPT + (
-    " Keep the report tight and scannable. Lead with the affected container(s) "
+    " IMPORTANT — read this before the report format below: a message that "
+    "presents a proactive alert or stored incident already labeled with its "
+    "own severity (e.g. \"api error-rate hit 6%, crossing the 5% threshold, "
+    "at 14:02 UTC (severity: warning)\") is a report to relay, NOT a problem "
+    "to investigate. In that case: call list_services for real names, then "
+    "state the given metric, threshold, timestamp, and severity directly in "
+    "1-2 sentences. Do NOT generate ranked hypotheses, do NOT call "
+    "query_prometheus/query_loki to re-verify those numbers, and do NOT "
+    "speculate about root cause — the values are already verified by the "
+    "monitor, restating them correctly (especially the severity word) is "
+    "the entire task. "
+    "This does NOT apply to a message describing a tool or API misbehaving "
+    "(rate-limited, timing out, returning malformed data) — that describes "
+    "an obstacle you must still actually attempt via the real tool call, not "
+    "a value to passively relay. "
+    "A root-cause investigation should check both Prometheus metrics and Loki "
+    "logs for the affected service before concluding — metrics alone show THAT "
+    "something changed, logs usually show WHY. Include at least one "
+    "query_loki/query_loki_range call for the service in question unless "
+    "get_loki_label_values shows it has no logs there. "
+    "Keep the report tight and scannable. Lead with the affected container(s) "
     "and a one-sentence root cause. Then 2-3 ranked root-cause hypotheses "
     "(most likely first) as a compact list; for each: a one-line claim, the "
     "single strongest piece of evidence (a specific metric value, log line, "
@@ -177,6 +212,7 @@ async def run_agentic_investigation_stream(
     ai = None
     total_steps = 0
     pending: list[dict] | None = None  # tool calls carried over from the previous turn
+    budget_nudge_sent = False
     t0 = time.monotonic()
     usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0,
              "n_llm_calls": 0, "n_tool_calls": 0, "llm_time_s": 0.0,
@@ -241,6 +277,22 @@ async def run_agentic_investigation_stream(
             messages.append(ToolMessage(str(out)[:4000], tool_call_id=tool_id))
             yield {"type": "tool_result", "step": step, "name": name,
                    "result": str(out)[:2000], "duration_s": round(_tool_duration, 3)}
+
+        # A root-cause investigation with real signal wraps up in a handful of
+        # calls; past this many, more calls are almost always guessed
+        # metric/label-name variants rather than new information. The static
+        # "never repeat the same kind of query" instruction doesn't catch this
+        # — each guess is technically a different query. Naming the actual
+        # count back to the model gets more compliance than the same abstract
+        # rule stated up front. One-shot: repeating it would just add noise.
+        if not budget_nudge_sent and usage["n_tool_calls"] >= 6:
+            budget_nudge_sent = True
+            messages.append(HumanMessage(
+                f"You have made {usage['n_tool_calls']} tool calls. If you haven't found "
+                "the data you need by now, further guesses at metric or label names are "
+                "unlikely to help — stop searching and report the gap as part of your "
+                "findings instead of continuing to explore."
+            ))
 
     # Step cap reached with pending tool calls: ask the tool-less LLM to
     # synthesize the evidence gathered so far into prose. Without this nudge the

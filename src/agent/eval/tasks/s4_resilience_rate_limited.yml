@@ -11,7 +11,7 @@ expected_agent_actions:
   - query_prometheus
 expected_claims:
   - rate-limited|rate-limiting
-  - unavailable
+  - unavailable|blocked|impossible to retrieve
 reference_evidence: |
   list_services: api, n8n, vllm
   query_prometheus n8n: "HTTP 429 Too Many Requests — rate limit exceeded, retry after 30s"

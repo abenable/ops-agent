@@ -459,6 +459,26 @@ def test_no_false_alarm_ignores_quoted_query_syntax():
     assert g.passed, g.detail
 
 
+def test_no_false_alarm_ignores_backtick_code_span():
+    """A cited LogQL matcher in a markdown code span (`` `error|warn|fail` ``)
+    names a search term, not a claim — the backtick-quoting style companion
+    to the existing `|= "..."` quoting-style check."""
+    h = EvalHarness("s1_status_healthy")  # negative: true
+    good = (
+        "All services are healthy. Loki query for `error|warn|fail` in the "
+        "last 30 minutes returned 0 results."
+    )
+    g = _grader_named(h.evaluate(tool_calls=["list_services"], summary=good), "no_false_alarm")
+    assert g.passed, g.detail
+    # a real claim outside any code span still fails
+    bad = _grader_named(
+        h.evaluate(tool_calls=["list_services"],
+                   summary="The api `service` crashed unexpectedly."),
+        "no_false_alarm",
+    )
+    assert not bad.passed
+
+
 def test_no_false_alarm_widened_negation_window():
     """Negation separated from the alarm word by several words ('rather than
     a service crash', 'no indication of ... error rates') still counts."""
@@ -469,6 +489,210 @@ def test_no_false_alarm_widened_negation_window():
     ):
         g = _grader_named(h.evaluate(tool_calls=["list_services"], summary=good), "no_false_alarm")
         assert g.passed, f"{good!r} -> {g.detail}"
+
+
+def test_no_false_alarm_ignores_heading_immediately_negated():
+    """A bold section label ('**Error activity:**') followed shortly by a
+    negated repeat of the same word ('No error or warning lines') is the
+    heading for a clean finding, not an alarm — the negation lands on the
+    repeat, not on the heading word itself."""
+    h = EvalHarness("s1_status_healthy")  # negative: true
+    good = (
+        "The api container is healthy. **Error activity:** No error or "
+        "warning lines in the last 20 log entries; all requests returned 200 OK."
+    )
+    g = _grader_named(h.evaluate(tool_calls=["list_services"], summary=good), "no_false_alarm")
+    assert g.passed, g.detail
+    # an un-negated heading claim still fails
+    bad = _grader_named(
+        h.evaluate(tool_calls=["list_services"],
+                   summary="**Error activity:** Repeated failures in the last 20 log entries."),
+        "no_false_alarm",
+    )
+    assert not bad.passed
+
+
+def test_no_false_alarm_ignores_probe_config_hypothesis():
+    """Speculating that a missing blackbox-probe config could cause a scrape
+    to 'fail silently' is discussing the monitoring layer, not claiming the
+    service itself is failing."""
+    h = EvalHarness("s1_status_healthy")  # negative: true
+    good = (
+        "The api container is running and healthy. Hypothesis: Prometheus lacks "
+        "a blackbox probe configuration for this instance, causing the probe to "
+        "fail silently rather than reflecting the service's real state."
+    )
+    g = _grader_named(h.evaluate(tool_calls=["list_services"], summary=good), "no_false_alarm")
+    assert g.passed, g.detail
+
+
+def test_no_false_alarm_ignores_operator_error_hypothesis():
+    """'Operator error' / 'user error' is an idiom for a human mistake, a
+    routine and correct hypothesis in a negative task — not a claim the
+    service itself errored."""
+    h = EvalHarness("s1_status_healthy")  # negative: true
+    good = (
+        "The api container is healthy and running normally. Hypothesis 3: "
+        "Operator Error or Misinterpretation — the operator may be expecting "
+        "an issue that is simply not present."
+    )
+    g = _grader_named(h.evaluate(tool_calls=["list_services"], summary=good), "no_false_alarm")
+    assert g.passed, g.detail
+
+
+def test_no_false_alarm_negation_trailing_without_repeat():
+    """A negation that trails the alarm word by a few words, without
+    repeating it verbatim, still flips a healthy-task summary: 'expecting
+    errors ... that are simply not present' is not a claim errors occurred."""
+    h = EvalHarness("s1_status_healthy")  # negative: true
+    good = (
+        "The api is healthy. The operator may be expecting errors or high "
+        "load that are simply not present in the current metrics."
+    )
+    g = _grader_named(h.evaluate(tool_calls=["list_services"], summary=good), "no_false_alarm")
+    assert g.passed, g.detail
+
+
+def test_no_false_alarm_ignores_example_list():
+    """An alarm word inside an unclosed '(e.g., X, Y' list is one illustrative
+    symptom category someone could report, not a claim about current state."""
+    h = EvalHarness("s1_status_healthy")  # negative: true
+    good = (
+        "All services are healthy. If the operator is experiencing issues, "
+        "they should specify the symptom (e.g., high latency, errors) so "
+        "targeted checks can be run."
+    )
+    g = _grader_named(h.evaluate(tool_calls=["list_services"], summary=good), "no_false_alarm")
+    assert g.passed, g.detail
+    # a real claim near a closed parenthetical still fails
+    bad = _grader_named(
+        h.evaluate(tool_calls=["list_services"],
+                   summary="The api is down (errors like this need escalation)."),
+        "no_false_alarm",
+    )
+    assert not bad.passed
+
+
+def test_no_false_alarm_ignores_lack_of_phrasing():
+    """'lack of' is a negation ('no specific error symptoms') the plain
+    no/not/never word list didn't cover."""
+    h = EvalHarness("s1_status_healthy")  # negative: true
+    good = (
+        "All services are healthy. No recent error logs were queried due to "
+        "the lack of specific error symptoms, but the services are stable."
+    )
+    g = _grader_named(h.evaluate(tool_calls=["list_services"], summary=good), "no_false_alarm")
+    assert g.passed, g.detail
+
+
+def test_no_false_alarm_ignores_absence_of_phrasing():
+    """'absence of' is a negation ('the absence of errors in logs confirms
+    normal operation') the plain no/not/never word list didn't cover."""
+    h = EvalHarness("s1_status_healthy")  # negative: true
+    good = (
+        "The api service is healthy. No specific application metrics were "
+        "found, but the absence of errors in logs and successful health "
+        "checks confirm normal operation."
+    )
+    g = _grader_named(h.evaluate(tool_calls=["list_services"], summary=good), "no_false_alarm")
+    assert g.passed, g.detail
+
+
+def test_no_false_alarm_negation_governs_coordinated_list():
+    """A negation governing a coordinated list ('No A, B, or C') can sit
+    further back than a fixed char window reaches once the list has a few
+    items — the clause-bounded check (same idea as the 'if' check) must
+    still catch it rather than only the fixed ~40-char window."""
+    h = EvalHarness("s1_status_healthy")  # negative: true
+    good = (
+        "**Metrics:** No anomalous spikes in request duration or error "
+        "rates (though specific metrics were not queried in detail, the "
+        "absence of errors and healthy status strongly suggests normal "
+        "operation)."
+    )
+    g = _grader_named(h.evaluate(tool_calls=["list_services"], summary=good), "no_false_alarm")
+    assert g.passed, g.detail
+
+
+def test_no_false_alarm_ignores_free_suffix():
+    """'-free' is a negating suffix ('error-free', like 'worry-free') the
+    plain no/not/never word list didn't cover — 'free' matches as its own
+    word inside the hyphenated compound via existing word-boundary rules."""
+    h = EvalHarness("s1_status_healthy")  # negative: true
+    good = "The service is healthy, monitored, and error-free."
+    g = _grader_named(h.evaluate(tool_calls=["list_services"], summary=good), "no_false_alarm")
+    assert g.passed, g.detail
+
+
+def test_no_false_alarm_ignores_check_for_suggestion():
+    """'Check X for errors' is a suggested diagnostic action naming what to
+    look for, not a claim it's present — a routine 'Fix:'/'Next Steps:'
+    staple in a healthy-service report."""
+    h = EvalHarness("s1_status_healthy")  # negative: true
+    good = (
+        "The api service is healthy. Operator should check their local "
+        "network or browser console for errors."
+    )
+    g = _grader_named(h.evaluate(tool_calls=["list_services"], summary=good), "no_false_alarm")
+    assert g.passed, g.detail
+    # a real claim not phrased as "check ... for X" still fails
+    bad = _grader_named(
+        h.evaluate(tool_calls=["list_services"], summary="The api is known for errors."),
+        "no_false_alarm",
+    )
+    assert not bad.passed
+
+
+def test_no_false_alarm_ignores_check_for_tool_name_identifier():
+    """The 'check X for errors' diagnostic-action pattern also shows up as a
+    cited tool-call identifier ('`query_loki_range` for errors/warnings ...
+    returned zero results') — the verb has no trailing word boundary in that
+    form since 'query_loki_range' is one underscore-joined token."""
+    h = EvalHarness("s1_status_healthy")  # negative: true
+    good = (
+        "The api is healthy. Evidence: `up{job=\"api\"}` is 1, and "
+        "`query_loki_range` for errors/warnings over the last 30 minutes "
+        "returned zero results."
+    )
+    g = _grader_named(h.evaluate(tool_calls=["list_services"], summary=good), "no_false_alarm")
+    assert g.passed, g.detail
+
+
+def test_no_false_alarm_ignores_if_conditional_clause():
+    """A 'Fix:' bullet suggesting what to check *if* a problem occurs later
+    ('If functional errors are reported, query X to identify failure rates')
+    describes a hypothetical, not a claim about current state — even when
+    the alarm word lands far enough from 'if' that a per-match char window
+    alone wouldn't reach it. PromQL/regex syntax in the same clause
+    ('status=~"5.."') must not be mistaken for a sentence-ending period."""
+    h = EvalHarness("s1_status_healthy")  # negative: true
+    good = (
+        "All services are healthy. Fix: If functional errors are reported, "
+        'query rate(http_requests_total{status=~"5.."}[5m]) to identify '
+        "specific failure rates."
+    )
+    g = _grader_named(h.evaluate(tool_calls=["list_services"], summary=good), "no_false_alarm")
+    assert g.passed, g.detail
+    # no governing "if" in the clause: still fails
+    bad = _grader_named(
+        h.evaluate(tool_calls=["list_services"],
+                   summary="The api container failure is ongoing."),
+        "no_false_alarm",
+    )
+    assert not bad.passed
+
+
+def test_no_false_alarm_ignores_trailing_if_conditional():
+    """'if' can trail the alarm word instead of leading it ('Check logs for
+    errors if traffic is expected but not reflected') — still a hypothetical,
+    not a claim about current state."""
+    h = EvalHarness("s1_status_healthy")  # negative: true
+    good = (
+        "All services are healthy. Check application logs for errors if "
+        "traffic is expected but not reflected in metrics."
+    )
+    g = _grader_named(h.evaluate(tool_calls=["list_services"], summary=good), "no_false_alarm")
+    assert g.passed, g.detail
 
 
 def test_no_false_alarm_skipped_for_non_negative_tasks():
@@ -726,8 +950,32 @@ def test_path_efficiency_grader_passes_at_reference_length(tmp_path):
         "reference_tool_calls": ["list_services", "docker_status", "query_loki"],
     }))
     h = EvalHarness(p)
-    # exactly the reference path -> passes (budget = 3 + 1 = 4)
+    # exactly the reference path -> passes (budget = 2*3 + 3 = 9)
     r = h.evaluate(tool_calls=["list_services", "docker_status", "query_loki"], summary="ok")
+    assert _grader_named(r, "path_efficiency").passed
+
+
+def test_path_efficiency_grader_allows_realistic_discovery_overhead(tmp_path):
+    """A correct investigation calls get_label_values/list_metric_names/
+    get_loki_label_values before querying (avoiding the wrong-label-name and
+    wrong-metric-name bugs discovery exists to prevent) — that overhead must
+    not itself fail the grader."""
+    import yaml
+    p = tmp_path / "rc.yml"
+    p.write_text(yaml.safe_dump({
+        "name": "rc", "service": "n8n", "kind": "root_cause",
+        "expected_agent_actions": ["list_services", "docker_status", "query_loki"],
+        "reference_tool_calls": ["list_services", "docker_status", "query_loki"],
+    }))
+    h = EvalHarness(p)
+    # discovery + multiple signals: 9 calls vs 3 reference (budget 2*3+3 = 9)
+    # -> passes. Matches an observed real trial: discover job/loki labels and
+    # metric names, then check docker state, several Prometheus metrics, and
+    # Loki logs before concluding.
+    calls = ["list_services", "get_label_values", "list_metric_names", "get_loki_label_values",
+             "docker_status", "query_prometheus", "query_prometheus", "query_prometheus",
+             "query_loki_range"]
+    r = h.evaluate(tool_calls=calls, summary="ok")
     assert _grader_named(r, "path_efficiency").passed
 
 
@@ -740,8 +988,12 @@ def test_path_efficiency_grader_fails_when_path_too_long(tmp_path):
         "reference_tool_calls": ["list_services", "docker_status", "query_loki"],
     }))
     h = EvalHarness(p)
-    # 6 calls vs 3 reference (budget 4) -> fails
-    calls = ["list_services", "docker_status", "query_loki", "query_prometheus", "list_metric_names", "get_label_values"]
+    # 11 calls vs 3 reference (budget 2*3+3 = 9) -> still fails: a genuinely
+    # runaway hunt, not just discovery overhead
+    calls = ["list_services", "docker_status", "query_loki", "query_prometheus",
+             "list_metric_names", "get_label_values", "query_prometheus_range",
+             "list_metric_names", "query_prometheus", "get_label_values",
+             "query_prometheus_range"]
     r = h.evaluate(tool_calls=calls, summary="ok")
     assert not _grader_named(r, "path_efficiency").passed
 

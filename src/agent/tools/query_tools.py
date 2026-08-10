@@ -62,6 +62,16 @@ async def query_prometheus_range(promql: str, minutes: int) -> str:
 
 
 @tool
+async def get_loki_label_values(label: str) -> str:
+    """List values for a Loki stream label such as 'service' or 'job'. Loki's
+    label schema is set by Promtail and is NOT the same as Prometheus's or a
+    Docker container name — do not guess a label like 'container'; call this
+    first to learn the real label values before writing a LogQL selector."""
+    values = await loki.get_label_values(label)
+    return "\n".join(values[:250]) if values else f"(no values for label {label})"
+
+
+@tool
 async def query_loki(logql: str, limit: int = 100) -> str:
     """Run an instant LogQL query against Loki. Use this to pull logs the query scopes itself.
     Keep `limit` small; it is clamped to the configured maximum."""
