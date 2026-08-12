@@ -384,10 +384,12 @@ daemon.}
 
 This section documents each component of the system, the design choices behind
 it, and the concrete behaviour it exhibits. The implementation is written in
-Python 3.13 and managed with \pkg{uv}; the runtime dependencies are
+Python 3.13 and managed with \pkg{uv}; the bot and API runtime depends on
 \pkg{langchain-openai}, \pkg{discord.py}, \pkg{fastapi}, \pkg{uvicorn},
 \pkg{pydantic-settings}, \pkg{python-dotenv}, \pkg{httpx2}, \pkg{pyyaml}, and
-\pkg{prometheus-client}.
+\pkg{prometheus-client}. A tenth declared dependency, \pkg{matplotlib}, is not
+imported by the agent itself; it backs \pkg{scripts/aggregate\_evals.py}, the
+tool that renders the eval comparison figures in Section~\ref{sec:eval-baseline}.
 
 \subsection{Configuration and settings}
 \label{sec:config}
@@ -1179,10 +1181,19 @@ The LLM is provider-portable without code changes:
     OpenAI-compatible endpoint on a host port and exposes the OpenAI
     tool-calling protocol through vLLM's \pkg{--enable-auto-tool-choice} flag
     with a model-appropriate \pkg{--tool-call-parser}.
-  \item \textbf{Two model legs.} The Ollama leg serves a Gemma 4 model and
-    tolerates GPU memory pressure through CPU offloading; the vLLM leg serves a
-    text-only model sized to fit the available VRAM. Switching between the two
-    is a one-line \pkg{LLM\_PROVIDER} change followed by a bot restart.
+  \item \textbf{Three model legs.} The Ollama leg serves a Gemma 4 model and
+    tolerates GPU memory pressure through CPU offloading; the vLLM leg serves
+    \pkg{Qwen/Qwen2.5-1.5B-Instruct}, sized to fit the available VRAM; the
+    legacy leg points \pkg{LLM\_BASE\_URL}/\pkg{LLM\_MODEL} at any
+    OpenAI-compatible endpoint, which in practice has meant a LiteLLM gateway
+    fronting a larger self-hosted model, or a hosted API called directly. A
+    gateway is only a routing layer: it does not by itself make a model
+    self-hosted or third-party, that depends on what sits behind it, so the
+    compliance posture of the legacy leg has to be read off the endpoint it is
+    pointed at, not the fact that a gateway is involved. Switching legs is a
+    one-line \pkg{LLM\_PROVIDER} change followed by a bot restart.
+    Section~\ref{sec:model-size} evaluates this legacy leg specifically, since
+    it is the one carrying the larger models under comparison.
 \end{itemize}
 
 \subsection{Testing}
@@ -1273,9 +1284,10 @@ functional against a live deployment. The measured outcomes are as follows.
     opt-out, and the eight-channel output mapping are all delivered and tested.
   \item \textbf{Self-hosted, provider-switchable LLM.} The OpenAI-compatible
     client drives the agentic loop on any conformant server, with a single
-    \pkg{LLM\_PROVIDER} selector switching between local Ollama and vLLM
-    backends, and a verified fallback when the configured model lacks
-    tool-calling support.
+    \pkg{LLM\_PROVIDER} selector switching between the Ollama and vLLM legs
+    and a legacy \pkg{LLM\_BASE\_URL}/\pkg{LLM\_MODEL} leg that reaches any
+    other conformant endpoint, and a verified fallback when the configured
+    model lacks tool-calling support.
   \item \textbf{Observability integration.} Prometheus and Loki sources return
     real data when reachable and degrade to stubs when not, with optional
     bearer-token authentication. A Docker Compose stack provisions the
@@ -1290,11 +1302,12 @@ functional against a live deployment. The measured outcomes are as follows.
 
 The implementation comprises approximately 6,213 lines of Python across 54
 source files (excluding generated artefacts), 226 test functions across 24 test
-modules, and 125 commits over the implementation window. The Docker Compose
+modules, and 126 commits over the implementation window. The Docker Compose
 stack orchestrates six services (the agent's api and bot, which also serves
 the web dashboard; Prometheus; Loki; promtail; n8n), with the vLLM model
 server in a separate stack. The dependency surface is purposely small: nine
-runtime packages.
+packages back the agent's own runtime, plus \pkg{matplotlib} for the eval
+report tooling described in Section~\ref{sec:eval-baseline}.
 
 \subsection{Operational impact}
 
@@ -1318,45 +1331,54 @@ Prometheus, Loki, or the LLM is absent. The integration path is exercised
 manually against the Docker Compose stack, where the monitor detects the
 n8n service going down and opens a threaded incident with an LLM summary.
 
-\subsection{Model size and tool-selection reliability}
+\subsection{Model evaluation: reliability and scale}
 \label{sec:model-size}
 
-Because the investigation loop is fixed, the model determines whether a tool
-is called for a given prompt. Two configurations were measured against an
-identical request: the agent's investigator system prompt (which instructs the
-model to call \pkg{list\_services} first), the vague user question
-``what containers are up?'', the \pkg{list\_services} tool, and
-\pkg{tool\_choice=auto}.
+The agentic loop, its bounds, and its tool set are fixed; what varies with the
+model behind \pkg{LLM\_PROVIDER} is whether the loop actually calls a tool
+when it should. This was checked twice, at two different scales: first with a
+single hand-run request against the smallest and largest models available at
+the time, to see whether the failure mode existed at all, then with the full
+task suite against the two models actually deployed on the legacy leg
+(\S\ref{sec:deploy}), to size the failure and its cost. Both results stand on
+their own; the second does not supersede the first, since they compare
+different model pairs at different points in the deployment's history.
+
+\subsubsection{Tool-selection reliability: an informal probe}
+
+An identical request was sent to two models: the agent's investigator system
+prompt (which instructs the model to call \pkg{list\_services} first), the
+vague user question ``what containers are up?'', the \pkg{list\_services}
+tool, and \pkg{tool\_choice=auto}.
 
 \begin{itemize}[leftmargin=1.4em,itemsep=0.2em]
   \item \pkg{Qwen/Qwen2.5-1.5B-Instruct} (self-hosted on vLLM, $\sim$1.5B
-    parameters) returned \pkg{finish\_reason=stop} with \emph{no} tool call:
-    it narrated intent (``I will use the \pkg{list\_services} tool\ldots'') and
-    hallucinated a reference to ``Oracle Cloud Infrastructure'', confusing the
-    ``Oracle'' bot persona with the cloud provider. When the user message
-    \emph{explicitly} requested the tool, the same model emitted the call and
-    returned the correct list, so the failure is tool \emph{selection} on
-    vague input, not tool-calling capability. It also emitted Markdown
-    \pkg{\#\#\#\#} headings in summaries despite being told to use bold,
-    which required a post-processor (\pkg{\_discordify}) to normalise.
-  \item \pkg{deepseek-v4-pro} (DeepSeek official API, larger) returned
-    \pkg{finish\_reason=tool\_calls} and called \pkg{list\_services(\{\})}
-    immediately, grounded its answer in the nine real containers, and passed
-    the startup tool-support probe on the first attempt with no retries.
+    parameters, the vLLM leg's default) returned \pkg{finish\_reason=stop}
+    with \emph{no} tool call: it narrated intent (``I will use the
+    \pkg{list\_services} tool\ldots'') and hallucinated a reference to
+    ``Oracle Cloud Infrastructure'', confusing the ``Oracle'' bot persona with
+    the cloud provider. When the user message \emph{explicitly} requested the
+    tool, the same model emitted the call and returned the correct list, so
+    the failure is tool \emph{selection} on vague input, not tool-calling
+    capability. It also emitted Markdown \pkg{\#\#\#\#} headings in summaries
+    despite being told to use bold, which required a post-processor
+    (\pkg{\_discordify}) to normalise.
+  \item \pkg{deepseek-v4-pro} (DeepSeek official API, reached through the
+    legacy leg) returned \pkg{finish\_reason=tool\_calls} and called
+    \pkg{list\_services(\{\})} immediately, grounded its answer in the live
+    container list, and passed the startup tool-support probe on the first
+    attempt with no retries.
 \end{itemize}
 
-The conclusion is that model size is the dominant factor in instruction
-following and tool selection, not the mechanism: the bounded ReAct loop,
-\pkg{bind\_tools}, and \pkg{ToolMessage} feedback are correct and standard.
-Stepping up within the self-hosted vLLM stack to a 7B--14B instruct model
-(e.g.\ \pkg{Qwen2.5-7B-Instruct}) preserves the self-hosted/compliance design
-principle while fixing the tool-selection failure; a hosted API
-(\pkg{deepseek-v4-pro} or the LiteLLM/Kimi gateway) works out of the box at the
-cost of sending operational data off-prem. The tradeoff between capability and
-self-hosting is a deliberate deployment decision; a fuller treatment is in
-\texttt{docs/model-comparison.md}.
+Model size, not the mechanism, explains the gap: the bounded ReAct loop,
+\pkg{bind\_tools}, and \pkg{ToolMessage} feedback behave identically under
+both models. A capable model just needs to be reachable, self-hosted through
+a larger instruct model on the legacy leg or a hosted API, at the cost in the
+hosted case of sending operational data off-prem. A fuller treatment of this
+probe is in \texttt{docs/model-comparison.md}. The formal evaluation below
+tests that self-hosted option at a much larger scale than this probe covers.
 
-\subsection{Evaluation baseline: model comparison}
+\subsubsection{Evaluation baseline: model comparison}
 \label{sec:eval-baseline}
 
 The task evaluation harness (\S\ref{app:task}) classifies its twenty tasks by
@@ -1369,8 +1391,12 @@ response, or a Loki query timeout) describes a condition nothing currently
 drives the infrastructure into. \pkg{python -m agent eval} skips the seven by
 default; every figure in this section is scoped to the achievable thirteen,
 run at 5 trials/task with the LLM judge enabled, comparing
-\pkg{Qwen3.6-35B-A3B} (self-hosted behind a LiteLLM gateway) against
-\pkg{deepseek-v4-flash} (hosted API).
+\pkg{Qwen3.6-35B-A3B}, reached through the legacy leg behind a LiteLLM
+gateway, against \pkg{deepseek-v4-flash} (hosted API). The gateway is a
+routing layer, not a hosting decision in itself: what makes the 35B leg
+self-hosted is that the gateway points at infrastructure the operator
+controls, the same distinction that separates the vLLM leg from a hosted API
+reached directly.
 
 \begin{figure}[h]
 \centering
@@ -1768,6 +1794,7 @@ import path, the canonical way to locate code in this project.
 \textbf{Module} & \textbf{Responsibility} \\
 \midrule
 \endhead
+\pkg{agent.\_\_main\_\_} & Entry point for \pkg{python -m agent}, delegating to \pkg{agent.cli.main} \\
 \pkg{agent.cli} & Command-line entry points for bot, API, incident, report \\
 \pkg{agent.config.settings} & Pydantic settings loaded from env and \pkg{.env} \\
 \pkg{agent.config.dotenv\_loader} & Explicit \pkg{.env} loading before settings \\
