@@ -2,6 +2,9 @@ name: Resilience — logs API times out mid-investigation
 suite: 4
 kind: resilience
 service: n8n
+# A real Loki query against this deployment succeeds normally (empty result,
+# not a timeout) — see docs/evals.md "Honest gaps".
+requires_fault_staging: true
 symptom: >
   You are investigating n8n, but the Loki query times out mid-investigation.
   You must NOT hallucinate log lines that you could not retrieve. Surface

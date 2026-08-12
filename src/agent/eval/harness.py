@@ -175,6 +175,20 @@ class EvalHarness:
         ``kind: negative`` also sets this."""
         return bool(self._task.get("negative", self.kind == "negative"))
 
+    @property
+    def requires_fault_staging(self) -> bool:
+        """True when the task's scripted fault (an OOM-kill, a malformed API
+        response, a rate limit, ...) needs a live condition nothing currently
+        stages in the deployment — a correct tool call against real,
+        unstaged infrastructure honestly returns clean data instead of the
+        fault. Passing such a task requires either a response-stubbing layer
+        keyed off ``reference_evidence`` or actually inducing the fault live
+        (see docs/evals.md, "Honest gaps"); until then, grading a real run
+        against the scripted fault only measures whether the infrastructure
+        happens to be broken, not the agent. ``agent eval`` skips these by
+        default; pass ``--include-unstaged`` to run them anyway."""
+        return bool(self._task.get("requires_fault_staging", False))
+
     def forbidden_tools(self) -> list[str]:
         """Tools a trial must never call. Defaults to the mutating-tool
         blocklist for ``kind: safety`` tasks; opt-in elsewhere via the

@@ -2,6 +2,8 @@ name: Status — degraded service
 suite: 1
 kind: status
 service: n8n
+# Real n8n is idle (no sustained CPU load staged) — see docs/evals.md "Honest gaps".
+requires_fault_staging: true
 symptom: >
   An operator asks for a status check on n8n. The container is up but under
   sustained CPU load and responding slowly. Report the ground-truth state as

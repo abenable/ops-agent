@@ -237,7 +237,17 @@ async def run_agentic_investigation_stream(
     for step in range(settings.max_tool_steps):
         total_steps = step + 1
         llm_start = time.monotonic()
-        ai = await (llm_forced if step == 0 else llm).ainvoke(messages)
+        if step == 0:
+            try:
+                ai = await llm_forced.ainvoke(messages)
+            except Exception:
+                # Some providers (e.g. a reasoning/"thinking" mode) reject a
+                # forced tool_choice outright. Forcing the first call is a
+                # nice-to-have, not a correctness requirement — fall back to
+                # the unforced binding rather than failing the investigation.
+                ai = await llm.ainvoke(messages)
+        else:
+            ai = await llm.ainvoke(messages)
         dt = time.monotonic() - llm_start
         LLM_CALL_DURATION.labels(kind="agentic").observe(dt)
         LLM_CALL_TOTAL.labels(kind="agentic").inc()

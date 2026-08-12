@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2026.8.9)  11 AUG 2026 01:20
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2026.8.9)  11 AUG 2026 16:09
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -1117,7 +1117,7 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
 
 [6]
-Underfull \hbox (badness 1867) in paragraph at lines 394--397
+Underfull \hbox (badness 1867) in paragraph at lines 395--398
 \T1/lmr/m/n/10.95 (+20) All run-time con-fig-u-ra-tion is cen-tralised in \T1/l
 mtt/m/n/10.95 agent.config.settings\T1/lmr/m/n/10.95 (+20) , a Py-dan-tic [[]]
  []
@@ -1131,7 +1131,7 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
 
 [7]
-Underfull \hbox (badness 10000) in paragraph at lines 504--508
+Underfull \hbox (badness 10000) in paragraph at lines 507--511
 \T1/lmr/m/n/10.95 (+20) Verbose tool out-put (con-tainer lists, logs, met-rics)
  is routed through
  []
@@ -1145,6 +1145,13 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
 
 [8]
+Underfull \hbox (badness 10000) in paragraph at lines 602--602
+[]|\T1/lmr/m/n/10 (+20) List pend-ing re-me-di-a-tion ap-provals (op-tional
+ []
+
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
 
 Package fancyhdr Warning: \headheight is too small (12.0pt): 
 (fancyhdr)                Make it at least 12.4pt, for example:
@@ -1163,13 +1170,22 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
 
 [10]
-Underfull \hbox (badness 10000) in paragraph at lines 735--745
+
+Package fancyhdr Warning: \headheight is too small (12.0pt): 
+(fancyhdr)                Make it at least 12.4pt, for example:
+(fancyhdr)                \setlength{\headheight}{12.4pt}.
+(fancyhdr)                You might also make \topmargin smaller to compensate:
+
+(fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
+
+[11]
+Underfull \hbox (badness 10000) in paragraph at lines 746--756
 \T1/lmr/m/n/10.95 (+20) The source helpers live in \T1/lmtt/m/n/10.95 agent.too
 ls.sources.prometheus \T1/lmr/m/n/10.95 (+20) [[]] and
  []
 
 
-Underfull \hbox (badness 1048) in paragraph at lines 735--745
+Underfull \hbox (badness 1048) in paragraph at lines 746--756
 \T1/lmtt/m/n/10.95 agent.tools.sources.loki \T1/lmr/m/n/10.95 (+20) [[]]. Each 
 is a thin \T1/lmtt/m/n/10.95 httpx.AsyncClient \T1/lmr/m/n/10.95 (+20) wrap-per
  with a
@@ -1183,21 +1199,12 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 
 (fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
 
-[11]
-Package hyperref Info: bookmark level for unknown lstlisting defaults to 0 on i
-nput line 797.
-LaTeX Font Info:    Font shape `T1/lmtt/bx/n' in size <9> not available
-(Font)              Font shape `T1/lmtt/b/n' tried instead on input line 798.
-
-
-Package fancyhdr Warning: \headheight is too small (12.0pt): 
-(fancyhdr)                Make it at least 12.4pt, for example:
-(fancyhdr)                \setlength{\headheight}{12.4pt}.
-(fancyhdr)                You might also make \topmargin smaller to compensate:
-
-(fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
-
 [12]
+Package hyperref Info: bookmark level for unknown lstlisting defaults to 0 on i
+nput line 808.
+LaTeX Font Info:    Font shape `T1/lmtt/bx/n' in size <9> not available
+(Font)              Font shape `T1/lmtt/b/n' tried instead on input line 809.
+
 
 Package fancyhdr Warning: \headheight is too small (12.0pt): 
 (fancyhdr)                Make it at least 12.4pt, for example:
@@ -1206,8 +1213,8 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 
 (fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
 
-[13{/usr/share/texmf/fonts/enc/dvips/lm/lm-mathsy.enc}]
-Underfull \hbox (badness 4229) in paragraph at lines 912--916
+[13]
+Underfull \hbox (badness 4229) in paragraph at lines 923--927
 \T1/lmr/m/n/10.95 (+20) The back-ground mon-i-tor, \T1/lmtt/m/n/10.95 agent.bot
 .monitor\T1/lmr/m/n/10.95 (+20) , runs in-side the bot pro-cess as a
  []
@@ -1220,7 +1227,13 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 
 (fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
 
-[14]
+[14{/usr/share/texmf/fonts/enc/dvips/lm/lm-mathsy.enc}]
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
 
 LaTeX Warning: `h' float specifier changed to `ht'.
 
@@ -1251,7 +1264,7 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
 
 [17]
-Underfull \hbox (badness 5431) in paragraph at lines 1198--1204
+Underfull \hbox (badness 5431) in paragraph at lines 1211--1217
 []\T1/lmr/bx/n/10.95 (+20) Tools and stor-age \T1/lmr/m/n/10.95 (+20) (\T1/lmtt
 /m/n/10.95 tests.test_-docker\T1/lmr/m/n/10.95 (+20) , \T1/lmtt/m/n/10.95 tests
 .test_-health\T1/lmr/m/n/10.95 (+20) , \T1/lmtt/m/n/10.95 tests.test_-ssh\T1/lm
@@ -1259,7 +1272,7 @@ r/m/n/10.95 (+20) ,
  []
 
 
-Underfull \hbox (badness 1983) in paragraph at lines 1204--1207
+Underfull \hbox (badness 1983) in paragraph at lines 1217--1220
 []\T1/lmr/bx/n/10.95 (+20) Interface \T1/lmr/m/n/10.95 (+20) (\T1/lmtt/m/n/10.9
 5 tests.test_-bot\T1/lmr/m/n/10.95 (+20) , \T1/lmtt/m/n/10.95 tests.test_-api\T
 1/lmr/m/n/10.95 (+20) , \T1/lmtt/m/n/10.95 tests.test_-alerting\T1/lmr/m/n/10.9
@@ -1293,6 +1306,26 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
 
 [20]
+<figures/pass_rate.pdf, id=462, 520.34402pt x 354.12299pt>
+File: figures/pass_rate.pdf Graphic file (type pdf)
+<use figures/pass_rate.pdf>
+Package pdftex.def Info: figures/pass_rate.pdf  used on input line 1377.
+(pdftex.def)             Requested size: 416.72963pt x 283.62296pt.
+<figures/task_cost.pdf, id=464, 520.34402pt x 332.44202pt>
+File: figures/task_cost.pdf Graphic file (type pdf)
+<use figures/task_cost.pdf>
+Package pdftex.def Info: figures/task_cost.pdf  used on input line 1404.
+(pdftex.def)             Requested size: 416.72963pt x 266.25832pt.
+
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
+
+Underfull \hbox (badness 5726) in paragraph at lines 1409--1422
+[]\T1/lmtt/m/n/10.95 Qwen3.6-35B-A3B \T1/lmr/m/n/10.95 (+20) av-er-ages 17,002 
+to-ken-s/-trial (321 tool calls to-tal, 4.9/trial);
+ []
+
 
 Package fancyhdr Warning: \headheight is too small (12.0pt): 
 (fancyhdr)                Make it at least 12.4pt, for example:
@@ -1301,7 +1334,16 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 
 (fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
 
-[21]
+[21{/usr/share/texmf/fonts/enc/dvips/lm/lm-rm.enc} <./figures/pass_rate.pdf>]
+<figures/tool_cost.pdf, id=549, 520.34402pt x 289.08pt>
+File: figures/tool_cost.pdf Graphic file (type pdf)
+<use figures/tool_cost.pdf>
+Package pdftex.def Info: figures/tool_cost.pdf  used on input line 1425.
+(pdftex.def)             Requested size: 416.72963pt x 231.52896pt.
+
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
 
 Package fancyhdr Warning: \headheight is too small (12.0pt): 
 (fancyhdr)                Make it at least 12.4pt, for example:
@@ -1310,7 +1352,7 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 
 (fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
 
-[22]
+[22 <./figures/task_cost.pdf>]
 
 Package fancyhdr Warning: \headheight is too small (12.0pt): 
 (fancyhdr)                Make it at least 12.4pt, for example:
@@ -1319,7 +1361,7 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 
 (fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
 
-[23]
+[23 <./figures/tool_cost.pdf>]
 
 Package fancyhdr Warning: \headheight is too small (12.0pt): 
 (fancyhdr)                Make it at least 12.4pt, for example:
@@ -1328,10 +1370,28 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 
 (fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
 
-[24
+[24]
+
+Package fancyhdr Warning: \headheight is too small (12.0pt): 
+(fancyhdr)                Make it at least 12.4pt, for example:
+(fancyhdr)                \setlength{\headheight}{12.4pt}.
+(fancyhdr)                You might also make \topmargin smaller to compensate:
+
+(fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
+
+[25]
+
+Package fancyhdr Warning: \headheight is too small (12.0pt): 
+(fancyhdr)                Make it at least 12.4pt, for example:
+(fancyhdr)                \setlength{\headheight}{12.4pt}.
+(fancyhdr)                You might also make \topmargin smaller to compensate:
+
+(fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
+
+[26
 
 ]
-Underfull \hbox (badness 1859) in paragraph at lines 1631--1631
+Underfull \hbox (badness 1859) in paragraph at lines 1664--1664
 []|\T1/lmr/m/n/10 (+20) Severity-coloured em-beds for down-
  []
 
@@ -1343,7 +1403,7 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 
 (fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
 
-[25
+[27
 
 ]
 
@@ -1354,7 +1414,7 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 
 (fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
 
-[26]
+[28]
 
 Package fancyhdr Warning: \headheight is too small (12.0pt): 
 (fancyhdr)                Make it at least 12.4pt, for example:
@@ -1363,7 +1423,7 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 
 (fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
 
-[27]
+[29]
 
 Package fancyhdr Warning: \headheight is too small (12.0pt): 
 (fancyhdr)                Make it at least 12.4pt, for example:
@@ -1372,22 +1432,22 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 
 (fancyhdr)                \addtolength{\topmargin}{-0.4pt}.
 
-[28] (./marconi-agent-report.aux)
+[30] (./marconi-agent-report.aux)
  ***********
 LaTeX2e <2023-11-01> patch level 1
 L3 programming layer <2024-01-22>
  ***********
 Package rerunfilecheck Info: File `marconi-agent-report.out' has not changed.
-(rerunfilecheck)             Checksum: 18982397CAA8D80E2730B4771CFCE344;7231.
+(rerunfilecheck)             Checksum: 63902A9DA13937341D20EA055E5E9F29;7239.
  ) 
 Here is how much of TeX's memory you used:
- 32347 strings out of 476182
- 639304 string characters out of 5795596
- 2299975 words of memory out of 5000000
- 53376 multiletter control sequences out of 15000+600000
- 653470 words of font info for 211 fonts, out of 8000000 for 9000
+ 32381 strings out of 476182
+ 640094 string characters out of 5795596
+ 2333975 words of memory out of 5000000
+ 53398 multiletter control sequences out of 15000+600000
+ 653849 words of font info for 215 fonts, out of 8000000 for 9000
  14 hyphenation exceptions out of 8191
- 93i,13n,99p,1017b,2172s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 93i,12n,99p,1017b,1365s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/share/texmf/fonts/type1/public/lm/lmbx10.pfb></usr/share/texmf/fonts/ty
 pe1/public/lm/lmbx12.pfb></usr/share/texmf/fonts/type1/public/lm/lmbx8.pfb></us
 r/share/texmf/fonts/type1/public/lm/lmbx9.pfb></usr/share/texmf/fonts/type1/pub
@@ -1399,10 +1459,10 @@ r8.pfb></usr/share/texmf/fonts/type1/public/lm/lmr9.pfb></usr/share/texmf/fonts
 /public/lm/lmtk10.pfb></usr/share/texmf/fonts/type1/public/lm/lmtt10.pfb></usr/
 share/texmf/fonts/type1/public/lm/lmtt8.pfb></usr/share/texmf/fonts/type1/publi
 c/lm/lmtt9.pfb></usr/share/texmf/fonts/type1/public/lm/lmtti10.pfb>
-Output written on marconi-agent-report.pdf (28 pages, 514554 bytes).
+Output written on marconi-agent-report.pdf (30 pages, 579038 bytes).
 PDF statistics:
- 681 PDF objects out of 1000 (max. 8388607)
- 586 compressed objects within 6 object streams
- 190 named destinations out of 1000 (max. 500000)
- 55301 words of extra memory for PDF output out of 61914 (max. 10000000)
+ 925 PDF objects out of 1000 (max. 8388607)
+ 639 compressed objects within 7 object streams
+ 193 named destinations out of 1000 (max. 500000)
+ 55316 words of extra memory for PDF output out of 61914 (max. 10000000)
 

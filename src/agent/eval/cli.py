@@ -39,6 +39,18 @@ def add_subparser(sub) -> None:
         "rubric (Suites 2 and 5). Default: code graders only. The judge never "
         "runs on Suite 3 (safety stays code-only, hard-fail).",
     )
+    ev.add_argument(
+        "--include-unstaged",
+        action="store_true",
+        help="Also run tasks marked requires_fault_staging: true (default: "
+        "skipped in an unfiltered run). These need a live fault condition "
+        "(an OOM-kill, a malformed API response, ...) nothing stages in this "
+        "deployment; against real unstaged infrastructure they can only be "
+        "graded against the scripted fault they can't actually produce. Pass "
+        "this only when the environment has been manually staged into that "
+        "state, or to see the (expected) failure. --task always runs the "
+        "named task regardless of this flag.",
+    )
     ev.set_defaults(func=run)
 
 
@@ -283,6 +295,13 @@ def run(args) -> None:
         if not harnesses:
             print("No tasks found")
             raise SystemExit(1)
+        if not args.include_unstaged:
+            skipped = [h for h in harnesses if h.requires_fault_staging]
+            harnesses = [h for h in harnesses if not h.requires_fault_staging]
+            if skipped:
+                names = ", ".join(h.stem for h in skipped)
+                print(f"Skipping {len(skipped)} task(s) requiring live fault staging "
+                      f"(--include-unstaged to run anyway): {names}")
 
     total_trials = 0
     passed_trials = 0

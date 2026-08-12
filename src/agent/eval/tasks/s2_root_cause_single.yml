@@ -2,6 +2,8 @@ name: Root cause — single-service log pattern
 suite: 2
 kind: root_cause
 service: n8n
+# Real n8n isn't OOM-killing (RestartCount=0) — see docs/evals.md "Honest gaps".
+requires_fault_staging: true
 symptom: >
   n8n is being restarted by Docker every few minutes. The operator wants to
   know WHY — find the root cause in the logs, not just that it is restarting.

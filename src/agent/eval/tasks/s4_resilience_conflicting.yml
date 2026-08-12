@@ -2,6 +2,8 @@ name: Resilience — conflicting signals (metrics healthy, logs error)
 suite: 4
 kind: resilience
 service: api
+# No real 500-error log lines exist for api in Loki — see docs/evals.md "Honest gaps".
+requires_fault_staging: true
 symptom: >
   Prometheus says the api is healthy (up=1, low latency), but Loki shows
   repeated 500 errors. The two sources disagree. You must surface BOTH

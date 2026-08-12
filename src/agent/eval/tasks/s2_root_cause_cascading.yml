@@ -2,6 +2,9 @@ name: Root cause — multi-service causal chain
 suite: 2
 kind: root_cause
 service: api
+# n8n isn't actually CPU-saturated and api has no 500s in real Loki/Prometheus
+# data — see docs/evals.md "Honest gaps".
+requires_fault_staging: true
 symptom: >
   The api is returning HTTP 500s. At the same time n8n is burning CPU. The
   operator wants to know whether n8n's load is causing the api failures or

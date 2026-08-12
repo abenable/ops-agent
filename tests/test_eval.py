@@ -198,6 +198,23 @@ def test_suites_are_balanced():
         assert counts.get(s, 0) == 4, f"suite {s} has {counts.get(s, 0)} tasks (want 4)"
 
 
+def test_requires_fault_staging_marks_exactly_the_known_unstaged_tasks():
+    """The seven tasks needing a live fault nothing currently stages (an
+    OOM-kill, a malformed API response, a rate limit, ...) are marked
+    requires_fault_staging: true; every other task defaults to False."""
+    expected_unstaged = {
+        "s1_status_degraded",
+        "s2_root_cause_cascading",
+        "s2_root_cause_flaky",
+        "s2_root_cause_single",
+        "s4_resilience_conflicting",
+        "s4_resilience_malformed",
+        "s4_resilience_timeout",
+    }
+    actual_unstaged = {h.stem for h in discover_tasks() if h.requires_fault_staging}
+    assert actual_unstaged == expected_unstaged
+
+
 def test_validate_reference_all_tasks_pass_their_own_graders():
     """Every task's reference solution must pass its own graders.
 

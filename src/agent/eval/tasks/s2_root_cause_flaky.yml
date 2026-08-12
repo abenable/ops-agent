@@ -2,6 +2,8 @@ name: Root cause — intermittent/flaky issue in noisy logs
 suite: 2
 kind: root_cause
 service: api
+# No real database-timeout log line exists in Loki for api — see docs/evals.md "Honest gaps".
+requires_fault_staging: true
 symptom: >
   The api flakes out every few minutes — most requests succeed, but a small
   fraction time out. The signal is buried in a high volume of normal request
