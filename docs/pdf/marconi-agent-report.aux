@@ -2,126 +2,74 @@
 \providecommand\hyper@newdestlabel[2]{}
 \providecommand\HyField@AuxAddToFields[1]{}
 \providecommand\HyField@AuxAddToCoFields[2]{}
-\catcode 95\active
-\citation{ollama}
-\citation{vllm}
-\citation{langchain}
-\citation{openai-tools}
-\@writefile{toc}{\contentsline {section}{\numberline {1}Background}{4}{section.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {2}Problem Statement}{4}{section.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {3}Solution Overview}{5}{section.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Design principles}{5}{subsection.3.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}System at a glance}{5}{subsection.3.2}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces High-level architecture and request flow. Discord commands, HTTP requests, and the background monitor all converge on the shared agent workflow layer, which holds two agents: a read-only investigator and a gated remediator. The workflow drives read-only tools and the LLM, persists incidents and pending remediation approvals to SQLite, and posts alerts to Discord. The dashed feedback edge shows the monitor escalating a down endpoint or firing alert rule to the alerting layer, routed along the top margin to avoid crossing other boxes. The remediation agent writes only a pending approval; execution of a restart is gated by a human approval (not shown) before it reaches the Docker daemon.}}{6}{figure.1}\protected@file@percent }
-\newlabel{fig:arch}{{1}{6}{High-level architecture and request flow. Discord commands, HTTP requests, and the background monitor all converge on the shared agent workflow layer, which holds two agents: a read-only investigator and a gated remediator. The workflow drives read-only tools and the LLM, persists incidents and pending remediation approvals to SQLite, and posts alerts to Discord. The dashed feedback edge shows the monitor escalating a down endpoint or firing alert rule to the alerting layer, routed along the top margin to avoid crossing other boxes. The remediation agent writes only a pending approval; execution of a restart is gated by a human approval (not shown) before it reaches the Docker daemon}{figure.1}{}}
-\citation{pydantic}
-\citation{discordpy}
-\@writefile{toc}{\contentsline {section}{\numberline {4}Implementation Methodology}{7}{section.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Configuration and settings}{7}{subsection.4.1}\protected@file@percent }
-\newlabel{sec:config}{{4.1}{7}{Configuration and settings}{subsection.4.1}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Discord interface}{7}{subsection.4.2}\protected@file@percent }
-\newlabel{sec:discord}{{4.2}{7}{Discord interface}{subsection.4.2}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Discord slash commands (module \texttt  {agent.bot.slash}).}}{8}{table.1}\protected@file@percent }
-\newlabel{tab:cmds}{{1}{8}{Discord slash commands (module \pkg {agent.bot.slash})}{table.1}{}}
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.2.1}Reply summarisation}{8}{subsubsection.4.2.1}\protected@file@percent }
-\newlabel{sec:summarize}{{4.2.1}{8}{Reply summarisation}{subsubsection.4.2.1}{}}
-\citation{fastapi}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}HTTP API}{9}{subsection.4.3}\protected@file@percent }
-\newlabel{sec:api}{{4.3}{9}{HTTP API}{subsection.4.3}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Agent tools}{9}{subsection.4.4}\protected@file@percent }
-\newlabel{sec:tools}{{4.4}{9}{Agent tools}{subsection.4.4}{}}
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.4.1}Service status}{9}{subsubsection.4.4.1}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces HTTP API endpoints (module \texttt  {agent.api.routes}).}}{10}{table.2}\protected@file@percent }
-\newlabel{tab:api}{{2}{10}{HTTP API endpoints (module \pkg {agent.api.routes})}{table.2}{}}
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.4.2}Metrics and logs}{10}{subsubsection.4.4.2}\protected@file@percent }
-\citation{docker}
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.4.3}HTTP health}{11}{subsubsection.4.4.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.4.4}Docker and SSH tools}{11}{subsubsection.4.4.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.4.5}LangChain query tools}{11}{subsubsection.4.4.5}\protected@file@percent }
-\newlabel{sec:querytools}{{4.4.5}{11}{LangChain query tools}{subsubsection.4.4.5}{}}
-\citation{prometheus}
-\citation{loki}
-\citation{react}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.5}Monitoring sources}{12}{subsection.4.5}\protected@file@percent }
-\newlabel{sec:sources}{{4.5}{12}{Monitoring sources}{subsection.4.5}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.6}Agentic investigation workflow}{12}{subsection.4.6}\protected@file@percent }
-\newlabel{sec:workflow}{{4.6}{12}{Agentic investigation workflow}{subsection.4.6}{}}
-\newlabel{lst:loop}{{1}{13}{Bounded tool-calling loop (module \pkg {agent.workflows.incident})}{lstlisting.1}{}}
-\@writefile{lol}{\contentsline {lstlisting}{\numberline {1}Bounded tool-calling loop (module \texttt  {agent.workflows.incident}).}{13}{lstlisting.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.7}Remediation agent and human-in-the-loop approval}{13}{subsection.4.7}\protected@file@percent }
-\newlabel{sec:remediation}{{4.7}{13}{Remediation agent and human-in-the-loop approval}{subsection.4.7}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces SQLite \texttt  {pending\_approvals} table schema (module \texttt  {agent.storage.repository}).}}{14}{table.3}\protected@file@percent }
-\newlabel{tab:schema-approvals}{{3}{14}{SQLite \pkg {pending\_approvals} table schema (module \pkg {agent.storage.repository})}{table.3}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.8}Background monitoring}{14}{subsection.4.8}\protected@file@percent }
-\newlabel{sec:monitor}{{4.8}{14}{Background monitoring}{subsection.4.8}{}}
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.8.1}HTTP endpoint liveness}{14}{subsubsection.4.8.1}\protected@file@percent }
-\citation{sqlite}
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.8.2}PromQL alert rules}{15}{subsubsection.4.8.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.8.3}Docker container monitoring}{15}{subsubsection.4.8.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.8.4}Periodic container-status snapshot}{15}{subsubsection.4.8.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.9}Incident tracking and storage}{15}{subsection.4.9}\protected@file@percent }
-\newlabel{sec:storage}{{4.9}{15}{Incident tracking and storage}{subsection.4.9}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.10}Conversation memory}{15}{subsection.4.10}\protected@file@percent }
-\newlabel{sec:memory}{{4.10}{15}{Conversation memory}{subsection.4.10}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces SQLite \texttt  {incidents} table schema (module \texttt  {agent.storage.repository}).}}{16}{table.4}\protected@file@percent }
-\newlabel{tab:schema}{{4}{16}{SQLite \pkg {incidents} table schema (module \pkg {agent.storage.repository})}{table.4}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces SQLite \texttt  {watched\_containers} table schema (module \texttt  {agent.storage.repository}).}}{16}{table.5}\protected@file@percent }
-\newlabel{tab:schema-watched}{{5}{16}{SQLite \pkg {watched\_containers} table schema (module \pkg {agent.storage.repository})}{table.5}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.11}Alerting}{16}{subsection.4.11}\protected@file@percent }
-\newlabel{sec:alerting}{{4.11}{16}{Alerting}{subsection.4.11}{}}
-\citation{uv}
-\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces SQLite \texttt  {conversation\_history} table schema (module \texttt  {agent.bot.history}).}}{17}{table.6}\protected@file@percent }
-\newlabel{tab:schema-history}{{6}{17}{SQLite \pkg {conversation\_history} table schema (module \pkg {agent.bot.history})}{table.6}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.12}Deployment and observability stack}{17}{subsection.4.12}\protected@file@percent }
-\newlabel{sec:deploy}{{4.12}{17}{Deployment and observability stack}{subsection.4.12}{}}
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.12.1}Local LLM deployment and provider switching}{17}{subsubsection.4.12.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.13}Testing}{18}{subsection.4.13}\protected@file@percent }
-\newlabel{sec:testing}{{4.13}{18}{Testing}{subsection.4.13}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {5}Results and Impact}{19}{section.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Delivered capabilities}{19}{subsection.5.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Quantitative scope}{20}{subsection.5.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Operational impact}{20}{subsection.5.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Verification}{20}{subsection.5.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}Model evaluation: reliability and scale}{20}{subsection.5.5}\protected@file@percent }
-\newlabel{sec:model-size}{{5.5}{20}{Model evaluation: reliability and scale}{subsection.5.5}{}}
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.5.1}Tool-selection reliability: an informal probe}{20}{subsubsection.5.5.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.5.2}Evaluation baseline: model comparison}{21}{subsubsection.5.5.2}\protected@file@percent }
-\newlabel{sec:eval-baseline}{{5.5.2}{21}{Evaluation baseline: model comparison}{subsubsection.5.5.2}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Trials passed per task (of 5), both models, achievable-13 task set.}}{21}{figure.2}\protected@file@percent }
-\newlabel{fig:pass-rate}{{2}{21}{Trials passed per task (of 5), both models, achievable-13 task set}{figure.2}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Mean tokens per trial by task, both models, achievable-13 task set.}}{22}{figure.3}\protected@file@percent }
-\newlabel{fig:task-cost}{{3}{22}{Mean tokens per trial by task, both models, achievable-13 task set}{figure.3}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Total tokens per tool across the 65-trial run, both models.}}{23}{figure.4}\protected@file@percent }
-\newlabel{fig:tool-cost}{{4}{23}{Total tokens per tool across the 65-trial run, both models}{figure.4}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {6}Challenges}{23}{section.6}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {7}Future Work}{24}{section.7}\protected@file@percent }
-\newlabel{sec:future-work}{{7}{24}{Future Work}{section.7}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {8}Conclusion}{25}{section.8}\protected@file@percent }
-\bibcite{react}{1}
-\bibcite{openai-tools}{2}
-\bibcite{langchain}{3}
-\bibcite{discordpy}{4}
-\bibcite{ollama}{5}
-\bibcite{vllm}{6}
-\bibcite{prometheus}{7}
-\bibcite{loki}{8}
-\bibcite{docker}{9}
-\bibcite{pydantic}{10}
-\bibcite{fastapi}{11}
-\bibcite{sqlite}{12}
-\bibcite{uv}{13}
-\@writefile{toc}{\contentsline {section}{References}{26}{section.8}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{Appendices}{27}{section*.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {A}Discord channel mapping}{27}{appendix.1.A}\protected@file@percent }
-\newlabel{app:channels}{{A}{27}{Discord channel mapping}{appendix.1.A}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces Discord channels and their roles.}}{27}{table.7}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {B}Task file format}{27}{appendix.1.B}\protected@file@percent }
-\newlabel{app:task}{{B}{27}{Task file format}{appendix.1.B}{}}
-\@writefile{lol}{\contentsline {lstlisting}{\numberline {2}Task file format (YAML): a Suite 2 root-cause task.}{28}{lstlisting.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {C}Module reference}{28}{appendix.1.C}\protected@file@percent }
-\newlabel{app:modules}{{C}{28}{Module reference}{appendix.1.C}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Overview}{3}{section.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2}Purpose and Boundaries}{3}{section.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}What the agent does}{3}{subsection.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}What the agent explicitly does not do}{4}{subsection.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}System Architecture}{4}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Processes}{4}{subsection.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}External dependencies}{5}{subsection.3.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Deployment topology}{5}{subsection.3.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4}Decision Logic: The Agentic Investigation Loop}{6}{section.4}\protected@file@percent }
+\newlabel{sec:decision-logic}{{4}{6}{Decision Logic: The Agentic Investigation Loop}{section.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}The core loop}{6}{subsection.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}System prompts as the real decision policy}{7}{subsection.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Two agents, one loop, different tool sets}{7}{subsection.4.3}\protected@file@percent }
 \gdef \LT@i {\LT@entry 
-    {1}{193.18439pt}\LT@entry 
-    {1}{247.54523pt}}
-\@writefile{lot}{\contentsline {table}{\numberline {8}{Module reference.}}{29}{table.8}\protected@file@percent }
-\gdef \@abspage@last{30}
+    {1}{114.43008pt}\LT@entry 
+    {1}{68.9055pt}\LT@entry 
+    {1}{251.00298pt}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Name resolution}{8}{subsection.4.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.5}Model-specific robustness}{8}{subsection.4.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Tool Reference}{8}{section.5}\protected@file@percent }
+\newlabel{sec:tools}{{5}{8}{Tool Reference}{section.5}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Remediation and the Human Approval Gate}{9}{section.6}\protected@file@percent }
+\newlabel{sec:remediation}{{6}{9}{Remediation and the Human Approval Gate}{section.6}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {7}Interfaces}{10}{section.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.1}Discord}{10}{subsection.7.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.2}Web dashboard}{11}{subsection.7.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.3}HTTP API}{11}{subsection.7.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.4}Command line}{12}{subsection.7.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {8}State and Persistence}{12}{section.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {9}Observability}{12}{section.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.1}Logging and live activity}{12}{subsection.9.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.2}Metrics}{13}{subsection.9.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.3}Debugging a specific run}{13}{subsection.9.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {10}Deterministic vs. Non-Deterministic Behavior}{13}{section.10}\protected@file@percent }
+\newlabel{sec:determinism}{{10}{13}{Deterministic vs. Non-Deterministic Behavior}{section.10}{}}
+\gdef \LT@ii {\LT@entry 
+    {1}{128.65646pt}\LT@entry 
+    {1}{140.0374pt}\LT@entry 
+    {1}{165.6447pt}}
+\@writefile{toc}{\contentsline {section}{\numberline {11}Failure Modes}{14}{section.11}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {12}Evaluation Framework}{16}{section.12}\protected@file@percent }
+\newlabel{sec:evals}{{12}{16}{Evaluation Framework}{section.12}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {12.1}Philosophy}{16}{subsection.12.1}\protected@file@percent }
+\gdef \LT@iii {\LT@entry 
+    {1}{51.83368pt}\LT@entry 
+    {1}{103.04872pt}\LT@entry 
+    {1}{279.45572pt}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {12.2}Graders}{17}{subsection.12.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {12.3}The opt-in LLM judge}{18}{subsection.12.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {12.4}Running an evaluation}{18}{subsection.12.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {12.5}Honest gaps in the evaluation environment}{19}{subsection.12.5}\protected@file@percent }
+\newlabel{sec:honest-gaps}{{12.5}{19}{Honest gaps in the evaluation environment}{subsection.12.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {12.6}Baseline results}{19}{subsection.12.6}\protected@file@percent }
+\newlabel{sec:baseline-results}{{12.6}{19}{Baseline results}{subsection.12.6}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Baseline pass/fail by suite, split into genuine failures and tasks whose scripted fault was never staged in this environment.}}{20}{figure.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Every grader failure in the run, split by whether it came from a fairly-gradeable task or an unstaged-fault task.}}{20}{figure.2}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Mean wall-clock duration and total token usage per suite for this run.}}{21}{figure.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {12.7}Model comparison}{21}{subsection.12.7}\protected@file@percent }
+\newlabel{sec:model-comparison}{{12.7}{21}{Model comparison}{subsection.12.7}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Pass rate by suite for both models, restricted to the thirteen tasks this environment can fairly grade. Labels show passed/total trials.}}{22}{figure.4}\protected@file@percent }
+\gdef \LT@iv {\LT@entry 
+    {1}{148.5733pt}\LT@entry 
+    {1}{151.41832pt}\LT@entry 
+    {1}{134.34692pt}}
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Mean latency and token usage per investigation, averaged across every trial each model ran (not restricted to fairly-gradeable tasks).}}{23}{figure.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {13}Configuration Reference}{23}{section.13}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {14}Known Limitations and Non-Goals}{25}{section.14}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {15}Conclusion}{26}{section.15}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {16}References}{26}{section.16}\protected@file@percent }
+\newlabel{sec:references}{{16}{26}{References}{section.16}{}}
+\gdef \@abspage@last{27}
