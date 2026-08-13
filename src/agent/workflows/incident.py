@@ -14,6 +14,7 @@ from agent.tools.metrics import get_service_metrics
 from agent.tools.query_tools import (
     docker_logs,
     docker_status,
+    get_collected_logs,
     get_label_values,
     get_loki_label_values,
     list_metric_names,
@@ -69,6 +70,7 @@ TOOLS = [
     list_services,
     docker_status,
     docker_logs,
+    get_collected_logs,
     query_prometheus,
     list_metric_names,
     get_label_values,
@@ -97,6 +99,10 @@ SYSTEM_PROMPT = (
     "commonly has no 'container' label at all. Before writing a LogQL selector, call "
     "get_loki_label_values('service') (or 'job') to learn the real label values instead "
     "of guessing a Docker container name into the query. "
+    "If Loki has no matching stream for a watched container, call "
+    "get_collected_logs before falling back to docker_logs — it reads the "
+    "agent's own local log history for that container, which covers a longer "
+    "window than a live docker_logs tail. "
     "Write cheap PromQL/LogQL queries and prefer short time windows. "
     "If a query returns no results, do not guess a different label filter and "
     "retry blindly — call get_label_values or list_metric_names once to learn "

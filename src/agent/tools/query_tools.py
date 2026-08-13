@@ -88,6 +88,35 @@ async def query_loki_range(logql: str, minutes: int, limit: int = 100) -> str:
 
 
 @tool
+async def get_collected_logs(container: str, hours: int = 24, limit: int = 100) -> str:
+    """List recent lines from the agent's own collected log store for a watched
+    container, covering the last `hours` (default 24, capped at 7 days). This is
+    the agent's local log history, separate from Loki and from live Docker logs —
+    use it when Loki has no matching stream for the service, before falling back
+    to docker_logs. Only covers containers on the watch list."""
+    from datetime import datetime, timedelta, timezone
+
+    from agent.logstore.reader import iter_lines
+    from agent.storage.repository import list_watched_containers
+    from agent.tools.normalize import normalize as _normalize
+
+    hours = max(1, min(hours, 7 * 24))
+    limit = max(1, min(limit, 500))
+    needle = _normalize(container)
+    target = next(
+        (name for name in list_watched_containers() if needle in _normalize(name)),
+        None,
+    )
+    if target is None:
+        return f"'{container}' is not a watched container; the collected log store only covers watched containers."
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+    lines = list(iter_lines(target, since=since))[-limit:]
+    if not lines:
+        return f"No collected log lines for '{target}' in the last {hours}h."
+    return "\n".join(f"[{r['ts']}] {r['raw']}" for r in lines)[:4000]
+
+
+@tool
 async def docker_status(container: str) -> str:
     """Return the state of a Docker container (read-only): state, status, image.
     Use a container name returned by list_services. Matching is separator-agnostic

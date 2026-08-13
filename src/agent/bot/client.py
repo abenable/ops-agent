@@ -204,7 +204,10 @@ def run_bot():
                 "For questions about containers, services, or endpoints, use the 'Running containers' "
                 "line in the context or call list_services — never list containers from memory. "
                 "Use the conversation history to resolve vague references such as 'logs', 'status', 'the web container', or 'that one' by reusing the exact container or service name mentioned earlier. "
-                "Only ask for clarification when no matching name exists in the history.\n\n"
+                "Only ask for clarification when no matching name exists in the history. "
+                "When a query returns results for several services or jobs, report on "
+                "every one of them, even the unremarkable ones — be brief per item, not "
+                "selective about which items you mention.\n\n"
                 f"{context}\n\n"
                 f"Question: {cleaned}"
             )
