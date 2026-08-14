@@ -4,10 +4,10 @@ import discord
 
 from agent.bot.summarize import clean
 from agent.bot.utils import format_prometheus, format_status
-from agent.storage.repository import add_watched_container, is_watched, remove_watched_container
-from agent.tools import docker
-from agent.tools.metrics import get_service_metrics
-from agent.tools.services import get_service_status
+from agent.memory.repository import add_watched_container, is_watched, remove_watched_container
+from agent.helpers import docker
+from agent.helpers.metrics import get_service_metrics
+from agent.helpers.services import get_service_status
 
 
 class _ActionView(discord.ui.View):

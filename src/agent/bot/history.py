@@ -3,7 +3,7 @@
 import sqlite3
 import textwrap
 
-from agent.storage import repository as _repo
+from agent.memory import repository as _repo
 from agent.workflows.incident import run_ask_workflow
 
 _HISTORY_LIMIT = 10  # keep prompt size small

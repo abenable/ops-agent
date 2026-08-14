@@ -6,11 +6,10 @@ from agent.bot.summarize import clean
 from agent.bot.utils import format_prometheus, format_status
 from agent.config.settings import settings
 from agent.llm.client import set_llm_provider
-from agent.tools.health import check_endpoint
-from agent.tools.logs import get_recent_logs
-from agent.tools.metrics import get_service_metrics
-from agent.tools.services import get_service_status
-from agent.workflows.incident import llm_supports_tool_calls, run_incident_workflow
+from agent.helpers.logs import get_recent_logs
+from agent.helpers.metrics import get_service_metrics
+from agent.helpers.services import get_service_status
+from agent.workflows.incident import llm_supports_tool_calls
 
 # Button label -> provider value, and the reverse for display.
 _PROVIDER_OF_BUTTON = {"Ollama": "ollama", "vLLM": "vllm", "Legacy": ""}
@@ -48,23 +47,6 @@ class ServicePanelView(discord.ui.View):
         result = await get_service_status(self.target)
         await interaction.response.send_message(format_status(result), ephemeral=True)
 
-    @discord.ui.button(label="Health", style=discord.ButtonStyle.primary, emoji="🏥")
-    async def health(self, interaction: discord.Interaction, _button: discord.ui.Button):
-        if not self.target:
-            await interaction.response.send_message("Pick a service first.", ephemeral=True)
-            return
-        url = self.endpoints.get(self.target)
-        if not url:
-            await interaction.response.send_message(
-                "No URL for this target.", ephemeral=True
-            )
-            return
-        result = await check_endpoint(url)
-        status = "Reachable" if result["reachable"] else "Unreachable"
-        code = result.get("status_code")
-        text = f"**{self.target}** — {status} ({code or 'no code'}) in {result['response_time_ms']} ms"
-        await interaction.response.send_message(text, ephemeral=True)
-
     @discord.ui.button(label="Logs", style=discord.ButtonStyle.secondary, emoji="📜")
     async def logs(self, interaction: discord.Interaction, _button: discord.ui.Button):
         if not self.target:
@@ -86,17 +68,6 @@ class ServicePanelView(discord.ui.View):
             format_prometheus(result), service=self.target, action="fetch Prometheus metrics"
         )
         await interaction.followup.send(summary)
-
-    @discord.ui.button(label="Incident", style=discord.ButtonStyle.danger, emoji="🚨")
-    async def incident(self, interaction: discord.Interaction, _button: discord.ui.Button):
-        if not self.target:
-            await interaction.response.send_message("Pick a service first.", ephemeral=True)
-            return
-        await interaction.response.defer(ephemeral=True)
-        result = await run_incident_workflow(self.target)
-        summary = result["summary"]
-        text = f"Incident `{result['incident_id']}` for `{self.target}`\n\n{summary}"
-        await interaction.followup.send(text[:2000])
 
 
 class LLMProviderView(discord.ui.View):

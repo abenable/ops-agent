@@ -1,19 +1,16 @@
-"""Tests for incident and reporting workflows."""
+"""Tests for the shared agentic investigation workflow."""
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agent.storage.repository import list_incidents
 import agent.workflows.incident as incident_module
-from agent.tools import query_tools
+from agent.helpers import query_tools
 from agent.workflows.incident import (
-    INCIDENT_SYSTEM_PROMPT,
     llm_supports_tool_calls,
     run_agentic_investigation,
     run_ask_workflow,
-    run_incident_workflow,
     run_scoped_investigation,
     _parse_dsml_calls,
     _strip_dsml,
@@ -46,21 +43,6 @@ class RaisingLLM:
 
     async def ainvoke(self, _messages):
         raise RuntimeError("LLM unreachable")
-
-
-def test_incident_workflow(tmp_database):
-    with patch("agent.workflows.incident.get_llm", return_value=FakeLLM()):
-        result = asyncio.run(run_incident_workflow("web"))
-
-    assert isinstance(result, dict)
-    assert "incident_id" in result
-    assert result["summary"] == "fake incident summary"
-
-    rows = list_incidents()
-    assert any(
-        row["service"] == "web" and row["summary"] == result["summary"]
-        for row in rows
-    )
 
 
 @pytest.fixture
@@ -105,9 +87,9 @@ def test_agentic_loop_runs_tool_and_returns_summary(tmp_database, patched_tool_s
     ]
 
     with patch("agent.workflows.incident.get_llm", return_value=FakeLLM(responses)):
-        result = asyncio.run(run_incident_workflow("web"))
+        result = asyncio.run(run_ask_workflow("investigate web"))
 
-    assert result["summary"] == "agentic summary"
+    assert result == "agentic summary"
     patched_tool_sources["query_prometheus"].assert_awaited_once_with("up == 0")
 
 
@@ -115,11 +97,6 @@ def test_agentic_loop_terminates_at_max_tool_steps(tmp_database, patched_tool_so
     from agent.config.settings import Settings
 
     monkeypatch.setattr(incident_module, "settings", Settings(max_tool_steps=2, _env_file=None))
-
-    # Avoid extra Prometheus hits from the static fallback; we only want to count tool calls.
-    monkeypatch.setattr(incident_module, "get_service_metrics", AsyncMock(return_value={"service": "web"}))
-    monkeypatch.setattr(incident_module, "get_recent_logs", AsyncMock(return_value="logs"))
-    monkeypatch.setattr(incident_module, "get_service_status", AsyncMock(return_value={"status": "ok"}))
 
     always_tool = FakeMessage(
         content="",
@@ -134,65 +111,11 @@ def test_agentic_loop_terminates_at_max_tool_steps(tmp_database, patched_tool_so
 
     responses = [always_tool, always_tool, FakeMessage("max-steps fallback summary")]
     with patch("agent.workflows.incident.get_llm", return_value=FakeLLM(responses)):
-        result = asyncio.run(run_incident_workflow("web"))
+        result = asyncio.run(run_ask_workflow("investigate web"))
 
     # It should hit the tool exactly twice (max steps), then fall back.
     assert patched_tool_sources["query_prometheus"].await_count == 2
-    assert result["summary"] == "max-steps fallback summary"
-
-
-def test_incident_workflow_falls_back_when_llm_fails(tmp_database):
-    with patch(
-        "agent.workflows.incident.get_llm",
-        side_effect=[RaisingLLM(), FakeLLM([FakeMessage("fallback summary")])],
-    ):
-        result = asyncio.run(run_incident_workflow("web"))
-
-    assert "fallback summary" in result["summary"]
-
-
-def test_ask_workflow_does_not_store_incident(tmp_database, patched_tool_sources, monkeypatch):
-    monkeypatch.setattr(incident_module.settings, "max_tool_steps", 6)
-
-    responses = [
-        FakeMessage(
-            content="",
-            tool_calls=[
-                {"name": "list_metric_names", "args": {"match": "cpu"}, "id": "call-1"}
-            ],
-        ),
-        FakeMessage(content="ask answer"),
-    ]
-
-    before = len(list_incidents())
-    with patch("agent.workflows.incident.get_llm", return_value=FakeLLM(responses)):
-        answer = asyncio.run(run_ask_workflow("what metrics exist?"))
-
-    assert answer == "ask answer"
-    assert len(list_incidents()) == before
-
-
-def test_incident_workflow_uses_ranked_hypothesis_prompt(tmp_database):
-    """The incident workflow must use INCIDENT_SYSTEM_PROMPT (ranked hypotheses),
-    while /ask keeps the general SYSTEM_PROMPT."""
-    captured = {}
-
-    async def fake_run(prompt, *, system_prompt=incident_module.SYSTEM_PROMPT, tools=None, kind="ask"):
-        captured["system_prompt"] = system_prompt
-        captured["prompt"] = prompt
-        return "summary"
-
-    monkeypatch_local = pytest.MonkeyPatch()
-    monkeypatch_local.setattr(incident_module, "run_agentic_investigation", fake_run)
-    try:
-        asyncio.run(run_incident_workflow("web"))
-    finally:
-        monkeypatch_local.undo()
-
-    assert captured["system_prompt"] is INCIDENT_SYSTEM_PROMPT
-    assert "ranked" in captured["system_prompt"].lower()
-    # Stored incident carries the summary.
-    assert list_incidents()[0]["summary"] == "summary"
+    assert result == "max-steps fallback summary"
 
 
 def test_ask_workflow_uses_general_prompt(tmp_database, patched_tool_sources, monkeypatch):

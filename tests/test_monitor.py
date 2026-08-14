@@ -7,7 +7,7 @@ import pytest
 
 from agent.bot import monitor
 from agent.config.settings import Settings
-from agent.tools.sources import loki, prometheus
+from agent.helpers.sources import loki, prometheus
 
 
 @pytest.fixture
@@ -44,51 +44,10 @@ def test_endpoints_empty_by_default(monkeypatch):
     assert monitor._endpoints() == {}
 
 
-def test_poll_once_escalates_on_healthy_to_down(monkeypatch):
-    settings = Settings(
-        monitored_endpoints="web=http://localhost:8000",
-        discord_status_channel_id=1,
-        discord_alert_channel_id=2,
-        # Neutralize the container poll phase so only endpoint logic is exercised.
-        # Explicit kwargs override os.environ, which load_env() pollutes from .env.
-        docker_monitor=False,
-        _env_file=None,
-    )
-    monkeypatch.setattr(monitor, "settings", settings)
-    monitor._last_state.clear()
-
-    bot = MagicMock()
-    send_alert = AsyncMock()
-    monkeypatch.setattr(monitor.discord_alert, "send_alert", send_alert)
-    run_workflow = AsyncMock(return_value={"incident_id": "abc123", "summary": "oh no"})
-    monkeypatch.setattr(monitor, "run_incident_workflow", run_workflow)
-    open_thread = AsyncMock()
-    monkeypatch.setattr(monitor.discord_alert, "open_incident_thread", open_thread)
-
-    # First poll: endpoint is up. No alerts because there is no previous state.
-    monkeypatch.setattr(
-        monitor, "check_endpoint", AsyncMock(return_value={"reachable": True, "status_code": 200})
-    )
-    asyncio.run(monitor._poll_once(bot))
-    send_alert.assert_not_awaited()
-    run_workflow.assert_not_awaited()
-
-    # Second poll: endpoint goes down. Should post status-change + critical alert + incident.
-    monkeypatch.setattr(
-        monitor, "check_endpoint", AsyncMock(return_value={"reachable": False, "status_code": None})
-    )
-    asyncio.run(monitor._poll_once(bot))
-
-    assert send_alert.await_count == 2
-    assert send_alert.await_args.kwargs["severity"] == "critical"
-    run_workflow.assert_awaited_once()
-    open_thread.assert_awaited_once()
-
-
 def test_poll_containers_alerts_on_filtered_container_stopping(monkeypatch):
     """A container matching docker_name_filter transitioning running -> stopped
-    sends a critical alert AND opens an incident. This is the 'prometheus went
-    down' case: alerting is Docker-only, so no PromQL scrape gap can mis-fire.
+    sends a critical alert. This is the 'prometheus went down' case: alerting
+    is Docker-only, so no PromQL scrape gap can mis-fire.
     """
     settings = Settings(
         docker_monitor=True,
@@ -105,19 +64,14 @@ def test_poll_containers_alerts_on_filtered_container_stopping(monkeypatch):
     running = [{"Names": ["/marconi-agent-prometheus"], "State": "running", "Status": "Up 1h"}]
     monkeypatch.setattr(monitor.docker, "list_containers", AsyncMock(return_value=running))
     monkeypatch.setattr(monitor.discord_alert, "send_alert", AsyncMock())
-    run_workflow = AsyncMock(return_value={"incident_id": "inc1", "summary": "down"})
-    monkeypatch.setattr(monitor, "run_incident_workflow", run_workflow)
 
     asyncio.run(monitor._poll_containers(bot))  # baseline: running, no alert
     monitor.discord_alert.send_alert.assert_not_awaited()
-    run_workflow.assert_not_awaited()
 
     stopped = [{"Names": ["/marconi-agent-prometheus"], "State": "exited", "Status": "Exited"}]
     monkeypatch.setattr(monitor.docker, "list_containers", AsyncMock(return_value=stopped))
-    asyncio.run(monitor._poll_containers(bot))  # running -> stopped: alert + incident
+    asyncio.run(monitor._poll_containers(bot))  # running -> stopped: alert
     monitor.discord_alert.send_alert.assert_awaited_once()
-    run_workflow.assert_awaited_once()
-    assert "marconi-agent-prometheus" in run_workflow.await_args.args[0]
 
 
 def test_poll_containers_no_alert_on_first_poll_after_restart(monkeypatch):
@@ -133,11 +87,9 @@ def test_poll_containers_no_alert_on_first_poll_after_restart(monkeypatch):
     already_down = [{"Names": ["/marconi-agent-prometheus"], "State": "exited", "Status": "Exited"}]
     monkeypatch.setattr(monitor.docker, "list_containers", AsyncMock(return_value=already_down))
     monkeypatch.setattr(monitor.discord_alert, "send_alert", AsyncMock())
-    monkeypatch.setattr(monitor, "run_incident_workflow", AsyncMock())
 
     asyncio.run(monitor._poll_containers(MagicMock()))
     monitor.discord_alert.send_alert.assert_not_awaited()  # baseline, no false edge
-    monitor.run_incident_workflow.assert_not_awaited()
 
 
 def test_poll_containers_recovery_alert_to_status_channel(monkeypatch):

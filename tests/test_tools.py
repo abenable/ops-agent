@@ -3,11 +3,11 @@
 import asyncio
 from unittest.mock import AsyncMock
 
-from agent.tools import docker
-from agent.tools.logs import get_recent_logs
-from agent.tools.metrics import _escape_label_value, get_service_metrics
-from agent.tools.services import get_service_status
-from agent.tools.sources import loki, prometheus
+from agent.helpers import docker
+from agent.helpers.logs import get_recent_logs
+from agent.helpers.metrics import _escape_label_value, get_service_metrics
+from agent.helpers.services import get_service_status
+from agent.helpers.sources import loki, prometheus
 
 
 def test_escape_label_value_escapes_quotes_and_backslashes():

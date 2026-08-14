@@ -23,8 +23,7 @@ _NOTES_MARKER = "\U0001F4D3 **Project notes — Marconi ops agent**"  # 📓
 
 # Channel id -> human label, only those that are configured.
 _CHANNELS = [
-    ("alerts", "discord_alert_channel_id", "\U0001F6A8 down-alerts and incidents"),
-    ("incidents", "discord_incident_channel_id", "\U0001F4CB one thread per incident (Resolve/Fix)"),
+    ("alerts", "discord_alert_channel_id", "\U0001F6A8 down-alerts"),
     ("status-updates", "discord_status_channel_id", "\U0001F4CA up/down transitions + status snapshot"),
     ("agent-logs", "discord_log_channel_id", "\U0001F4DD live agent activity (tool calls, workflow)"),
     ("test-tasks", "discord_test_tasks_channel_id", "\U0001F9EA clickable task runner panel"),
@@ -44,9 +43,9 @@ def build_welcome_embed(bot_user: discord.ClientUser | None) -> discord.Embed:
     embed = discord.Embed(
         title=f"{name} \u2014 Infrastructure Ops Agent",
         description=(
-            "An LLM-driven ops agent for this Docker stack. It monitors endpoints "
-            "and containers, runs agentic incident investigations, and proposes "
-            "human-gated remediations. Tag me or use a command."
+            "An LLM-driven ops agent for this Docker stack. It monitors "
+            "containers and answers agentic investigation questions. Tag me "
+            "or use a command."
         ),
         color=0x3498DB,
     )
@@ -55,8 +54,7 @@ def build_welcome_embed(bot_user: discord.ClientUser | None) -> discord.Embed:
         inline=False,
         value=(
             "`status <svc>` `containers` `logs <svc>` `metrics <svc>` "
-            "`health <url>` `ask <question>` `incident <svc>` `task <name>` "
-            "`ack/resolve <id>` `remediate <id>` `watch <name>` `info`"
+            "`ask <question>` `task <name>` `watch <name>` `info`"
         ),
     )
     embed.add_field(name="Channels", inline=False, value="\n".join(_configured_channels()))
@@ -76,8 +74,8 @@ def build_project_notes_embed() -> discord.Embed:
         title="Project notes \u2014 Marconi ops agent",
         description=(
             "Self-hosted infrastructure-operations agent: a Discord bot + FastAPI "
-            "service that investigates incidents in its own Docker stack using a "
-            "bounded ReAct tool-calling loop, then proposes human-gated fixes."
+            "service that investigates its own Docker stack using a bounded "
+            "ReAct tool-calling loop."
         ),
         color=0x2ECC71,
     )
@@ -88,9 +86,8 @@ def build_project_notes_embed() -> discord.Embed:
             "**bot** (discord.py) and **api** (FastAPI, port 8123) share one loop "
             "(`run_agentic_investigation`): the model calls read-only tools, each "
             "result becomes a ToolMessage, capped at N steps; a guided fallback "
-            "synthesises prose if the cap is hit. **remediation** is a second, "
-            "gated agent whose restart proposals need a human Approve. State lives "
-            "in a SQLite store (incidents, pending approvals, watched containers)."
+            "synthesises prose if the cap is hit. State lives in a SQLite store "
+            "(watched containers)."
         ),
     )
     embed.add_field(

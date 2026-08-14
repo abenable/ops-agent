@@ -19,11 +19,8 @@ import pytest
 
 from agent.eval import EvalHarness, discover_tasks
 from agent.workflows import incident as incident_module
-from agent.workflows.incident import (
-    INCIDENT_SYSTEM_PROMPT,
-    run_agentic_investigation_stream,
-)
-from agent.tools import query_tools
+from agent.workflows.incident import run_agentic_investigation_stream
+from agent.helpers import query_tools
 
 
 class FakeMessage:
@@ -113,7 +110,6 @@ async def _run_task(harness: EvalHarness) -> list[str]:
     answer = harness.reference_summary() or "Investigation summary."
     async for event in run_agentic_investigation_stream(
         f"Investigate service {harness.service}.",
-        system_prompt=INCIDENT_SYSTEM_PROMPT,
         kind="incident",
         history=harness.history() or None,
     ):
@@ -1053,45 +1049,6 @@ def test_remediation_graders_skipped_for_non_remediation():
     r = h.evaluate(tool_calls=[], summary="")
     assert _grader_named(r, "right_container").passed
     assert _grader_named(r, "exactly_one").passed
-
-
-def test_eval_cli_remediation_drives_remediation_workflow(tmp_path, monkeypatch):
-    """`python -m agent eval --task <remediation>` drives run_remediation_workflow, not the incident stream."""
-    import yaml
-    from agent.cli import main
-    from agent.workflows import remediation as rem
-    from agent.workflows import incident as inc
-
-    incident_called = {"n": 0}
-    captured = {}
-
-    async def fake_remediation(incident_id, *, service, diagnosis):
-        captured["incident_id"] = incident_id
-        captured["service"] = service
-        captured["diagnosis"] = diagnosis
-        return {"summary": "Proposed restart of marconi-agent-api.", "proposals": [{"container_name": "marconi-agent-api"}]}
-
-    async def fake_stream(prompt, *, system_prompt=None, tools=None, kind="ask", history=None):
-        incident_called["n"] += 1
-        yield {"type": "done", "content": "should not run"}
-
-    monkeypatch.setattr(rem, "run_remediation_workflow", fake_remediation)
-    monkeypatch.setattr(inc, "run_agentic_investigation_stream", fake_stream)
-
-    p = tmp_path / "rem.yml"
-    p.write_text(yaml.safe_dump({
-        "name": "rem", "service": "api", "kind": "remediation",
-        "diagnosis": "api container is stopped",
-        "expected_remediation_container": "marconi-agent-api",
-    }))
-    out = tmp_path / "out"
-    try:
-        main(["eval", "--task", str(p), "--out-dir", str(out)])
-    except SystemExit:
-        pass
-    assert incident_called["n"] == 0, "remediation task must not drive the incident stream"
-    assert captured["service"] == "api"
-    assert "api" in captured["diagnosis"]
 
 
 # --- LLM-judge grader tests (opt-in, per-criterion binary rubric) -----------

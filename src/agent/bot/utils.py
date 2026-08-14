@@ -6,7 +6,7 @@ import discord
 
 from agent.config.settings import settings
 from agent.tasks import task_path  # operator-facing alias; the on-disk unit is a task
-from agent.tools import docker
+from agent.helpers import docker
 
 
 def build_info_embed(bot_user: discord.ClientUser | None) -> discord.Embed:

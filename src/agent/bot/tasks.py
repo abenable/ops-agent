@@ -1,8 +1,8 @@
 """Clickable task runner for the #test-tasks channel.
 
 A persistent Discord message carries one button per ``agent/eval/tasks/*.yml`` file;
-clicking a button runs that task's incident workflow (with the task's
-symptom as a hint) and posts the diagnosis into the channel, so an operator
+clicking a button runs the agentic investigation loop for that task's service
+(with the task's symptom as a hint) and posts the summary into the channel, so an operator
 can run a reproducible test with a single click instead of typing
 ``/task <name>``. The on-disk unit is a *task*; the operator verb is a
 *task*.
@@ -22,7 +22,7 @@ from agent.bot.summarize import discordify
 from agent.bot.utils import task_path, split_discord_text
 from agent.config.settings import settings
 from agent.tasks import available_tasks
-from agent.workflows.incident import run_incident_workflow
+from agent.workflows.incident import run_ask_workflow
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ _PANEL_MARKER = "\U0001F9EA **Task runner**"  # 🧪
 
 
 async def _run_and_post(name: str, send) -> None:
-    """Load a task, run its incident workflow, and post the result via *send*.
+    """Load a task, run the agentic investigation loop for it, and post the result via *send*.
 
     *send* is an awaitable that takes a string and posts it (``ctx.send`` or
     ``interaction.followup.send``), so the button and the command share one path.
@@ -43,8 +43,11 @@ async def _run_and_post(name: str, send) -> None:
 
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     await send(f"\u25b6 Simulating: {data['name']} \u2014 {data.get('symptom', '')}")
-    result = await run_incident_workflow(data["service"], hint=data.get("symptom"))
-    for chunk in split_discord_text(discordify(result["summary"])):
+    prompt = f"Investigate service {data['service']}."
+    if data.get("symptom"):
+        prompt += f" Reported symptom: {data['symptom']}"
+    summary = await run_ask_workflow(prompt)
+    for chunk in split_discord_text(discordify(summary)):
         await send(chunk)
 
 

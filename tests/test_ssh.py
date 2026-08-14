@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from agent.tools.ssh import restart_service, run_ssh_command
+from agent.helpers.ssh import restart_service, run_ssh_command
 
 
 def fake_process(stdout=b"hello\n", stderr=b"", returncode=0):

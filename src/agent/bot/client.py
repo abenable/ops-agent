@@ -104,7 +104,7 @@ async def _environment_context() -> str:
     # call tools; this just seeds the context with the truth, the way the
     # monitored-endpoint and channel lines already do. Degrades to "(unreachable)"
     # when the Docker socket is absent.
-    from agent.tools import docker as _docker
+    from agent.helpers import docker as _docker
 
     try:
         containers = await _docker.list_containers(all_containers=True)
@@ -119,11 +119,10 @@ async def _environment_context() -> str:
         f"Container-down alerting: docker_name_filter={settings.docker_name_filter or '(all containers)'}\n"
         f"Alert channel: {settings.discord_alert_channel_id or 'not set'}\n"
         f"Status channel: {settings.discord_status_channel_id or 'not set'}\n"
-        f"Incident channel: {settings.discord_incident_channel_id or 'not set'}\n"
         f"Prometheus: {settings.prometheus_url}\n"
         f"Loki: {settings.loki_url}\n"
         f"Model: {model} (provider={settings.llm_provider or 'legacy'}, base_url={base_url})\n"
-        "Available tools: menu, status, containers, logs, metrics, health, incident, task, ack, resolve, watching, remediate, approve, reject"
+        "Available tools: menu, status, containers, logs, metrics, task, watching"
     )
 
 

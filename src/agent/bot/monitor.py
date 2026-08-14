@@ -1,33 +1,15 @@
-"""Background endpoint monitoring loop for Discord alerts and status updates."""
+"""Background container monitoring loop for Discord alerts and status updates."""
 
-import asyncio
 from datetime import datetime, time, timedelta, timezone
 
 from discord.ext import tasks
 
 from agent.alerting import discord as discord_alert
 from agent.config.settings import settings
-from agent.storage.repository import list_watched_containers
-from agent.tools import docker
-from agent.tools.health import check_endpoint
-from agent.workflows.incident import run_incident_workflow
+from agent.memory.repository import list_watched_containers
+from agent.helpers import docker
 from agent.workflows.reporting import daily_report, weekly_report
 
-
-async def _open_incident(bot, name: str):
-    """Run the incident workflow and open a Discord thread without blocking the monitor loop."""
-    result = await run_incident_workflow(name)
-    await discord_alert.open_incident_thread(bot, name, result["summary"], result["incident_id"])
-    if settings.discord_dm_user_id is not None:
-        await discord_alert.send_dm(
-            bot,
-            settings.discord_dm_user_id,
-            f"Incident {result['incident_id']} for `{name}`\n\n{result['summary'][:1500]}",
-        )
-
-
-# url -> reachable (in-memory; fine for an MVP)
-_last_state: dict[str, bool] = {}
 
 # container name -> last state (in-memory; fine for an MVP)
 _container_state: dict[str, str] = {}
@@ -89,7 +71,6 @@ async def _poll_containers(bot) -> None:
                 severity="critical",
                 title="Container down",
             )
-            asyncio.create_task(_open_incident(bot, name))
         elif prev is not None and prev != "running" and state == "running" and settings.discord_status_channel_id:
             await discord_alert.send_alert(
                 settings.discord_status_channel_id,
@@ -127,38 +108,8 @@ async def _post_container_snapshot(bot) -> None:
 
 
 async def _poll_once(bot) -> None:
-    """Run one poll iteration across all monitored endpoints."""
+    """Run one poll iteration (container monitoring; see ``_poll_containers``)."""
     from agent.metrics import MONITOR_CYCLES_TOTAL
-
-    for name, url in _endpoints().items():
-        res = await check_endpoint(url)
-        up = res["reachable"] and (res["status_code"] or 599) < 500
-        prev = _last_state.get(url)
-
-        # #status-updates: post every observed transition
-        if prev is not None and prev != up and settings.discord_status_channel_id:
-            await discord_alert.send_alert(
-                settings.discord_status_channel_id,
-                f"{name} is now {'UP' if up else 'DOWN'}",
-                bot,
-                severity="info",
-                title="Status change",
-            )
-
-        # #alerts: only escalate on healthy -> down transitions
-        if prev is True and not up and settings.discord_alert_channel_id:
-            await discord_alert.send_alert(
-                settings.discord_alert_channel_id,
-                f"{name} ({url}) is unreachable",
-                bot,
-                severity="critical",
-                title="Service down",
-            )
-            # Create a threaded incident for the escalation in the background so a
-            # slow LLM call doesn't stall the gateway heartbeat.
-            asyncio.create_task(_open_incident(bot, name))
-
-        _last_state[url] = up
 
     MONITOR_CYCLES_TOTAL.labels(kind="endpoint").inc()
     await _poll_containers(bot)

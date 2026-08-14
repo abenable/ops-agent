@@ -115,11 +115,7 @@ def run(args) -> None:
     from pathlib import Path
 
     from agent.eval.harness import EvalHarness, discover_tasks, aggregate_trials
-    from agent.workflows.incident import (
-        INCIDENT_SYSTEM_PROMPT,
-        run_agentic_investigation_stream,
-    )
-    from agent.workflows.remediation import run_remediation_workflow
+    from agent.workflows.incident import run_agentic_investigation_stream
     from agent.llm.client import _resolve
     from agent.config.settings import settings
 
@@ -148,26 +144,13 @@ def run(args) -> None:
         usage: dict = {}
         t0 = time.monotonic()
         if harness.kind == "remediation":
-            try:
-                incident_id = f"eval-{ts}"
-                res = await run_remediation_workflow(
-                    incident_id=incident_id, service=harness.service, diagnosis=harness.diagnosis()
-                )
-                summary = res.get("summary", "")
-                proposals = res.get("proposals", [])
-                usage = res.get("usage", {}) or {}
-                transcript.append({"type": "remediation", "incident_id": incident_id, "proposals": proposals})
-                if proposals:
-                    calls.append("propose_restart")
-            except Exception as exc:
-                error = str(exc)
+            # ponytail: remediation workflow was removed; report a clean failure
+            # instead of crashing. Remove `kind: remediation` tasks if this suite
+            # is being kept around.
             duration = time.monotonic() - t0
-            result = harness.evaluate(tool_calls=calls, summary=summary, error=error, transcript=transcript, proposals=proposals)
-            if args.judge and harness.judge_applicable():
-                from agent.eval.graders import llm_judge
-                j = await llm_judge(harness, summary=summary, transcript=transcript)
-                result.graders.append(j)
-                result.passed = result.passed and j.passed
+            result = harness.evaluate(
+                tool_calls=[], summary="", error="remediation feature removed", proposals=[]
+            )
             return result, transcript, duration, usage
         prompt = f"Investigate service {harness.service}."
         if harness.symptom:
@@ -175,7 +158,6 @@ def run(args) -> None:
         try:
             async for event in run_agentic_investigation_stream(
                 prompt,
-                system_prompt=INCIDENT_SYSTEM_PROMPT,
                 kind="incident",
                 history=harness.history() or None,
             ):
