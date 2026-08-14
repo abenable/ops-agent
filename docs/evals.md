@@ -75,6 +75,46 @@ directory passed to `--out-dir`):
 - `<task>__summary.json` — pass@k, pass^k, per-grader pass rates (when `--trials > 1`)
 - `../trials.jsonl` — one append-only row per trial (the long-term comparison log)
 
+## Notebooks
+
+`python -m agent eval` runs the whole set and prints a PASS/FAIL line per task.
+That is the regression gate. It is a poor way to *read* a single trial, so the
+same machinery is also exposed as notebooks under `notebooks/`.
+
+| Notebook | What it does |
+| --- | --- |
+| `notebooks/00_tools.ipynb` | Each of the eleven tools, one section apiece: first a direct `await tool.ainvoke({...})` with no LLM in the loop, then the agent bound to *only* that tool |
+| `notebooks/tasks/<task>.ipynb` | One notebook per task YAML — the task's expectations, one graded trial, the tool path and per-grader breakdown |
+
+The single-tool sections are the point of `00_tools.ipynb`: they separate "the
+tool is broken" from "the agent cannot drive the tool". Step 0 of the agentic
+loop binds `tool_choice="required"`, so with one tool bound the model is
+*forced* to call it — the signal worth reading is the **arguments it chose**,
+not the fact that it called something.
+
+Task notebooks are not a second grading path. They call
+`agent.eval.cli.run_trial`, the same function `python -m agent eval` calls, so
+a verdict in a notebook is the verdict the CLI would print. They deliberately
+do **not** append to `trials.jsonl` — the baselines stay a CLI artifact.
+
+Both sets are generated, not hand-written:
+
+```bash
+uv sync --group nb                              # ipykernel + jupyterlab
+uv run python scripts/gen_notebooks.py          # write anything missing
+uv run python scripts/gen_notebooks.py --force  # regenerate, discarding hand-edits
+```
+
+Adding a task YAML and re-running the generator produces its notebook. The
+per-tool probe arguments live in the `PROBES` table at the top of
+`scripts/gen_notebooks.py` — when the stack renames a service or a metric, fix
+them there and regenerate rather than editing cells.
+
+Shared setup and the display helpers live in `agent/eval/notebook.py` (inside
+the package, so `from agent.eval.notebook import *` resolves from any
+directory; importing it chdirs to the repo root, because `.env` and the SQLite
+path are both CWD-relative).
+
 ## Suites
 
 Five suites, four tasks each. Each suite shares one broad goal; the four

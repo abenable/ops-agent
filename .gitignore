@@ -30,3 +30,7 @@ docs/speaker-notes.md
 
 # Env backups (secrets)
 .env*
+
+# Notebook scratch state (the notebooks themselves are tracked, with outputs)
+notebooks/.ipynb_checkpoints/
+notebooks/**/.ipynb_checkpoints/

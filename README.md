@@ -42,7 +42,9 @@ Built during the Implementation Phase (Weeks 5–8) of the Marconi industrial tr
   agent through simulated failures, grades each trial with multiple code-based
   graders (tool selection, summary grounding, no false alarms, no leaked markup),
   and with `--trials N` reports pass@k / pass^k. Full transcripts are saved per
-  trial. See [docs/evals.md](docs/evals.md).
+  trial. The same machinery is also exposed as notebooks under `notebooks/` —
+  one per task, plus a tools notebook that binds the agent to a single tool at a
+  time. See [docs/evals.md](docs/evals.md).
 
 ## Quick start
 
@@ -140,10 +142,12 @@ inactive when its channel id is unset). See [docs/discord-channels.md](docs/disc
 │   │   ├── graders.py       # Code-based graders (tool_calls, groundedness, claims, no_mutation, ...)
 │   │   ├── harness.py       # EvalHarness: loads task YAML, grades a trial
 │   │   ├── cli.py           # `agent eval` subcommand (drives the workflow, writes runs)
+│   │   ├── notebook.py      # Setup + display helpers imported by the notebooks
 │   │   └── tasks/           # Simulated infrastructure issues (yml)
 │   ├── metrics.py            # Prometheus self-metrics for the agent
 │   └── config/              # Environment-based settings
 ├── tests/                   # Test suite
+├── notebooks/               # Generated: 00_tools.ipynb + one per eval task
 ├── web/                     # React SPA dashboard (bun build → nginx)
 ├── docs/                    # setup, usage, architecture, workflows, tools, channels
 └── data/                    # SQLite database
@@ -158,6 +162,11 @@ uv run pytest -m integration   # live checks (needs a real LLM / Discord token)
 # Task evaluation (requires a running LLM)
 python -m agent eval                         # run all tasks against the live LLM
 python -m agent eval --trials 5 --label qwen  # pass@k / pass^k per task
+
+# The same trials, one notebook at a time (jupyter, one task per notebook)
+uv sync --group nb
+uv run python scripts/gen_notebooks.py       # generate notebooks/ (idempotent)
+uv run jupyter lab notebooks/
 ```
 
 ## Documentation
