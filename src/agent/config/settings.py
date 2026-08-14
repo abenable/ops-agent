@@ -1,9 +1,16 @@
 """Pydantic settings loaded from environment and `.env`."""
 
+from dotenv import find_dotenv, load_dotenv
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from agent.config.dotenv_loader import load_env
+
+def load_env() -> None:
+    """Load environment variables from the nearest `.env` file."""
+    env_file = find_dotenv()
+    if env_file:
+        load_dotenv(env_file, override=False)
+
 
 load_env()
 
@@ -48,23 +55,13 @@ class Settings(BaseSettings):
     weekly_report_day: int = 6
 
     # Self-hosted LLM (OpenAI-compatible)
-    llm_base_url: str = "http://localhost:11434/v1"
-    llm_model: str = "mistral"
+    llm_provider: str = ""
+    llm_base_url: str = "http://100.64.0.7:4000/v1"
+    llm_model: str = "marconi-llm"
     llm_api_key: str = Field(
         default="",
         validation_alias="LLM_API_KEY",
     )
-
-    # Local LLM provider selection for A/B switching. Empty = use the legacy
-    # LLM_BASE_URL / LLM_MODEL above; "ollama" or "vllm" = use the matching presets.
-    llm_provider: str = ""
-    ollama_base_url: str = "http://localhost:11434/v1"
-    ollama_model: str = "gemma4:e4b"
-    vllm_base_url: str = "http://localhost:8001/v1"
-    vllm_model: str = "Qwen/Qwen2.5-1.5B-Instruct"
-    # Disable the reasoning/thinking trace for Qwen3-style models served by vLLM
-    # (passes chat_template_kwargs.enable_thinking=false). An alert bot should be
-    # fast, not spend minutes thinking per call. No-op for non-reasoning models.
     llm_disable_thinking: bool = False
 
     # API server
@@ -110,7 +107,11 @@ class Settings(BaseSettings):
             for name, field in cls.model_fields.items():
                 if field.annotation is not str:
                     continue
-                alias = field.validation_alias if isinstance(field.validation_alias, str) else None
+                alias = (
+                    field.validation_alias
+                    if isinstance(field.validation_alias, str)
+                    else None
+                )
                 for key in (name, alias):
                     if key in data and data[key] is None:
                         data[key] = ""
