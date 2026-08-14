@@ -1,7 +1,7 @@
 """Metrics retrieval tools."""
 
-from agent.tools import docker
-from agent.tools.sources import prometheus
+from agent.helpers import docker
+from agent.helpers.sources import prometheus
 
 
 def _escape_label_value(value: str) -> str:

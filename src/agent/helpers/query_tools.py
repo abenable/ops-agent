@@ -3,8 +3,8 @@
 from langchain_core.tools import tool
 
 from agent.config.settings import settings
-from agent.tools import docker
-from agent.tools.sources import loki, prometheus
+from agent.helpers import docker
+from agent.helpers.sources import loki, prometheus
 
 
 @tool
@@ -97,8 +97,8 @@ async def get_collected_logs(container: str, hours: int = 24, limit: int = 100) 
     from datetime import datetime, timedelta, timezone
 
     from agent.logstore.reader import iter_lines
-    from agent.storage.repository import list_watched_containers
-    from agent.tools.normalize import normalize as _normalize
+    from agent.memory.repository import list_watched_containers
+    from agent.helpers.normalize import normalize as _normalize
 
     hours = max(1, min(hours, 7 * 24))
     limit = max(1, min(limit, 500))

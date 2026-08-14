@@ -1,9 +1,9 @@
 """Log retrieval tools."""
 
 from agent.bot.utils import format_loki
-from agent.tools import docker
-from agent.tools.normalize import regex_parts
-from agent.tools.sources import loki
+from agent.helpers import docker
+from agent.helpers.normalize import regex_parts
+from agent.helpers.sources import loki
 
 
 async def get_recent_logs(service: str, lines: int = 10) -> str:
@@ -35,8 +35,8 @@ async def get_recent_logs(service: str, lines: int = 10) -> str:
         from datetime import datetime, timedelta, timezone
 
         from agent.logstore.reader import iter_lines
-        from agent.storage.repository import list_watched_containers
-        from agent.tools.normalize import normalize as _normalize
+        from agent.memory.repository import list_watched_containers
+        from agent.helpers.normalize import normalize as _normalize
 
         for name in list_watched_containers():
             if _normalize(name) == _normalize(service):
@@ -54,7 +54,7 @@ async def get_recent_logs(service: str, lines: int = 10) -> str:
     try:
         container = await docker.find_container(service)
         if container is not None:
-            from agent.tools.docker import container_logs
+            from agent.helpers.docker import container_logs
 
             cid = container.get("Id") or docker.container_name(container)
             raw = await container_logs(cid, tail=lines)

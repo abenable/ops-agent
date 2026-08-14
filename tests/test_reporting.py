@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from agent.logstore import collector
-from agent.storage.repository import store_incident
+from agent.memory.repository import store_incident
 from agent.workflows import reporting
 from agent.workflows.reporting import run_report_workflow
 

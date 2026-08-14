@@ -1,6 +1,6 @@
 """Tests for the incident repository."""
 
-from agent.storage.repository import (
+from agent.memory.repository import (
     get_incident,
     list_incidents,
     store_incident,
@@ -35,7 +35,7 @@ def test_update_status_and_list(tmp_database):
 
 
 def test_update_thread_id(tmp_database):
-    from agent.storage.repository import update_incident_thread_id
+    from agent.memory.repository import update_incident_thread_id
 
     incident_id = store_incident("test-svc", "summary text")
     updated = update_incident_thread_id(incident_id, 123456789)
@@ -45,7 +45,7 @@ def test_update_thread_id(tmp_database):
 
 
 def test_watch_list_roundtrip(tmp_database):
-    from agent.storage.repository import (
+    from agent.memory.repository import (
         add_watched_container,
         find_watched_container,
         is_watched,
@@ -66,7 +66,7 @@ def test_watch_list_roundtrip(tmp_database):
 
 
 def test_find_watched_container_matches_variants(tmp_database):
-    from agent.storage.repository import add_watched_container, find_watched_container
+    from agent.memory.repository import add_watched_container, find_watched_container
 
     add_watched_container("marconi-agent-api")
     assert find_watched_container("agent_api") == "marconi-agent-api"

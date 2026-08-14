@@ -9,8 +9,8 @@ small and the agent sees more log events per token. The reader is the single
 query path over that store, used by the daily/weekly report generator and (as
 a middle fallback) by the agent's live log tool when Loki has no data.
 
-Reuses ``agent.tools.docker`` (Engine API, no shell-out) and
-``agent.storage.repository.list_watched_containers`` (the ``/watch`` set) so
+Reuses ``agent.helpers.docker`` (Engine API, no shell-out) and
+``agent.memory.repository.list_watched_containers`` (the ``/watch`` set) so
 there is no second source of truth for which containers to track.
 """
 

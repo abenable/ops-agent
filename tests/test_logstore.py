@@ -25,7 +25,7 @@ def test_demux_docker_stream_strips_frame_header():
     (e.g. length=86 -> b'V'), corrupting the collector's <ts> <message>
     parsing. The real fix reads the length field and skips exactly the
     header + payload, regardless of what those bytes look like as text."""
-    from agent.tools.docker import _demux_docker_stream
+    from agent.helpers.docker import _demux_docker_stream
 
     line1 = b"2026-08-10T12:00:00Z hello\n"
     line2 = ("x" * 82 + "\n").encode()  # length 83; low byte 0x53 = 'S', printable
@@ -37,7 +37,7 @@ def test_demux_docker_stream_strips_frame_header():
 
 def test_container_logs_since_forces_tail_all_and_adds_timestamps():
     """A `since` cursor must force tail='all' and pass timestamps through."""
-    from agent.tools import docker
+    from agent.helpers import docker
 
     fake = AsyncMock()
     fake.raise_for_status = lambda: None
@@ -47,7 +47,7 @@ def test_container_logs_since_forces_tail_all_and_adds_timestamps():
     client.__aexit__ = AsyncMock(return_value=False)
     client.get = AsyncMock(return_value=fake)
 
-    with patch("agent.tools.docker._docker_client", return_value=client):
+    with patch("agent.helpers.docker._docker_client", return_value=client):
         asyncio.run(docker.container_logs("cid", since="2026-08-09T00:00:00Z", timestamps=True))
 
     params = client.get.call_args.kwargs["params"]
@@ -57,7 +57,7 @@ def test_container_logs_since_forces_tail_all_and_adds_timestamps():
 
 
 def test_container_logs_default_tail_preserved_without_since():
-    from agent.tools import docker
+    from agent.helpers import docker
 
     fake = AsyncMock()
     fake.raise_for_status = lambda: None
@@ -67,7 +67,7 @@ def test_container_logs_default_tail_preserved_without_since():
     client.__aexit__ = AsyncMock(return_value=False)
     client.get = AsyncMock(return_value=fake)
 
-    with patch("agent.tools.docker._docker_client", return_value=client):
+    with patch("agent.helpers.docker._docker_client", return_value=client):
         asyncio.run(docker.container_logs("cid", tail=50))
 
     params = client.get.call_args.kwargs["params"]
@@ -192,8 +192,8 @@ def test_reader_missing_container_yields_nothing(isolated_store):
 
 def test_get_recent_logs_jsonl_middle_fallback(isolated_store, monkeypatch):
     """Loki empty + store has data → JSONL store serves (Docker never hit)."""
-    from agent.tools import logs as logs_mod
-    from agent.tools.sources import loki as loki_mod
+    from agent.helpers import logs as logs_mod
+    from agent.helpers.sources import loki as loki_mod
 
     # get_recent_logs's local-store fallback windows to the last 24h (matching
     # the Loki path's minutes=1440), so the record must be recent relative to
@@ -209,8 +209,8 @@ def test_get_recent_logs_jsonl_middle_fallback(isolated_store, monkeypatch):
     # Loki returns empty (no result), Docker must NOT be reached.
     monkeypatch.setattr(logs_mod, "format_loki", lambda *a, **k: "")
     monkeypatch.setattr(loki_mod, "query_loki_range", AsyncMock(return_value={"data": {"result": []}}))
-    monkeypatch.setattr("agent.storage.repository.list_watched_containers", lambda: ["svc"])
-    from agent.tools.logs import get_recent_logs
+    monkeypatch.setattr("agent.memory.repository.list_watched_containers", lambda: ["svc"])
+    from agent.helpers.logs import get_recent_logs
     out = asyncio.run(get_recent_logs("svc", lines=10))
     assert "stored boom" in out
     assert f"[{ts}]" in out

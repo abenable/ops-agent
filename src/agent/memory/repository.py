@@ -6,7 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from agent.config.settings import settings
-from agent.tools.normalize import normalize
+from agent.helpers.normalize import normalize
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DB_PATH = Path(settings.database_url.replace("sqlite:///", ""))

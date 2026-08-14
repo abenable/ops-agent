@@ -16,8 +16,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from agent.config.settings import settings
-from agent.storage.repository import list_watched_containers
-from agent.tools import docker
+from agent.memory.repository import list_watched_containers
+from agent.helpers import docker
 
 LOG_ROOT = Path(settings.database_url.replace("sqlite:///", "")).parent / "logs"
 CURSORS_PATH = LOG_ROOT.parent / "log_cursors.json"

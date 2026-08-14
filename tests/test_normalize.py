@@ -3,8 +3,8 @@
 import asyncio
 from unittest.mock import patch
 
-from agent.tools import docker
-from agent.tools.normalize import normalize, regex_parts
+from agent.helpers import docker
+from agent.helpers.normalize import normalize, regex_parts
 
 
 def test_normalize_collapses_separators():
@@ -32,7 +32,7 @@ def test_find_container_matches_across_separators():
     from unittest.mock import AsyncMock
 
     fake = [{"Id": "x", "Names": ["/marconi-agent-api"], "State": "running"}]
-    with patch("agent.tools.docker.list_containers", new=AsyncMock(return_value=fake)):
+    with patch("agent.helpers.docker.list_containers", new=AsyncMock(return_value=fake)):
         result = asyncio.run(docker.find_container("agent_api"))
     assert result is not None
     assert result["Id"] == "x"
@@ -41,5 +41,5 @@ def test_find_container_matches_across_separators():
 def test_find_container_returns_none_when_no_match():
     from unittest.mock import AsyncMock
 
-    with patch("agent.tools.docker.list_containers", new=AsyncMock(return_value=[])):
+    with patch("agent.helpers.docker.list_containers", new=AsyncMock(return_value=[])):
         assert asyncio.run(docker.find_container("agent_api")) is None

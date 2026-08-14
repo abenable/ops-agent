@@ -15,7 +15,7 @@ from pathlib import Path
 
 from agent.config.settings import settings
 from agent.logstore.reader import iter_lines, iter_lines_for_day
-from agent.storage.repository import get_incident, list_watched_containers
+from agent.memory.repository import get_incident, list_watched_containers
 
 REPORT_ROOT = Path(settings.database_url.replace("sqlite:///", "")).parent / "reports"
 DAILY_DIR = REPORT_ROOT / "daily"

@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 
 import httpx2 as httpx
 
-from agent.tools.normalize import normalize
+from agent.helpers.normalize import normalize
 
 
 def _docker_client():

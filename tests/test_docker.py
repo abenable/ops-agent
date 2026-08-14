@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import httpx2 as httpx
 
-from agent.tools.docker import list_containers
+from agent.helpers.docker import list_containers
 
 
 def test_list_containers_returns_empty_without_socket():
@@ -17,7 +17,7 @@ def test_list_containers_returns_empty_without_socket():
 
 def test_docker_available_with_tcp_host():
     with patch.dict(os.environ, {"DOCKER_HOST": "tcp://localhost:2375"}):
-        from agent.tools.docker import _docker_available
+        from agent.helpers.docker import _docker_available
 
         assert _docker_available() is True
 
@@ -27,8 +27,8 @@ def test_list_containers_parses_response():
     fake_response = Mock()
     fake_response.json.return_value = [{"Id": "abc123", "Names": ["/web"]}]
 
-    with patch("agent.tools.docker._docker_available", return_value=True):
-        with patch("agent.tools.docker.httpx.AsyncClient") as mock_client_class:
+    with patch("agent.helpers.docker._docker_available", return_value=True):
+        with patch("agent.helpers.docker.httpx.AsyncClient") as mock_client_class:
             mock_client = mock_client_class.return_value
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)

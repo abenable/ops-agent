@@ -53,10 +53,10 @@
   Exposes `GET /metrics` (Prometheus self-metrics) and SSE streaming for the agentic loop.
 - `agent.workflows` — incident investigation (agentic tool-calling loop), remediation
   (proposes restarts behind human approval), and report generation.
-- `agent.tools` — controlled tools: status, logs, metrics, HTTP health, Docker, SSH.
-- `agent.tools.normalize` — separator-agnostic service-name matching.
-- `agent.tools.sources` — Prometheus (metrics) and Loki (logs) query helpers.
-- `agent.tools.query_tools` — read-only LangChain tools the LLM calls during an investigation:
+- `agent.helpers` — controlled tools: status, logs, metrics, HTTP health, Docker, SSH.
+- `agent.helpers.normalize` — separator-agnostic service-name matching.
+- `agent.helpers.sources` — Prometheus (metrics) and Loki (logs) query helpers.
+- `agent.helpers.query_tools` — read-only LangChain tools the LLM calls during an investigation:
   service discovery (`list_services`), Prometheus/Loki metric/label discovery and queries, and
   read-only Docker container status/logs.
 - `agent.eval` — task evaluation harness, split into focused modules:
@@ -70,7 +70,7 @@
 - `agent.metrics` — Prometheus counters and histograms for the agent itself (tool calls,
   investigations, LLM calls, monitor cycles, alerts, API requests).
 - `agent.llm` — OpenAI-compatible client wrapper (`ChatOpenAI`) for a self-hosted model.
-- `agent.storage` — SQLite repository for incidents, watched containers, and remediation
+- `agent.memory` — SQLite repository for incidents, watched containers, and remediation
   pending-approvals.
 - `agent.alerting` — Discord alert embeds and incident-thread creation.
 - `agent.config` — Pydantic settings loaded from environment and `.env`.
