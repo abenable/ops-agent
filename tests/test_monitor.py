@@ -114,48 +114,6 @@ def test_poll_containers_recovery_alert_to_status_channel(monkeypatch):
     assert send_alert.await_args.args[0] == 2
 
 
-def test_container_snapshot_posts_when_containers_watched(monkeypatch):
-    settings = Settings(discord_status_channel_id=1)
-    monkeypatch.setattr(monitor, "settings", settings)
-    monitor._container_state.clear()
-    monitor._container_state.update({"api": "running", "db": "exited"})
-
-    bot = MagicMock()
-    send_alert = AsyncMock()
-    monkeypatch.setattr(monitor.discord_alert, "send_alert", send_alert)
-
-    asyncio.run(monitor._post_container_snapshot(bot))
-
-    send_alert.assert_awaited_once()
-    desc = send_alert.await_args.args[1]
-    assert "api" in desc and "running" in desc
-    assert "db" in desc and "exited" in desc
-    assert send_alert.await_args.kwargs["title"] == "Container status"
-
-
-def test_container_snapshot_quiet_when_nothing_watched(monkeypatch):
-    settings = Settings(discord_status_channel_id=1)
-    monkeypatch.setattr(monitor, "settings", settings)
-    monitor._container_state.clear()
-
-    send_alert = AsyncMock()
-    monkeypatch.setattr(monitor.discord_alert, "send_alert", send_alert)
-    asyncio.run(monitor._post_container_snapshot(MagicMock()))
-    send_alert.assert_not_awaited()
-
-
-def test_container_snapshot_quiet_when_no_status_channel(monkeypatch):
-    monkeypatch.delenv("DISCORD_STATUS_CHANNEL_ID", raising=False)
-    monkeypatch.setattr(monitor, "settings", Settings(_env_file=None))
-    monitor._container_state.clear()
-    monitor._container_state.update({"api": "running"})
-
-    send_alert = AsyncMock()
-    monkeypatch.setattr(monitor.discord_alert, "send_alert", send_alert)
-    asyncio.run(monitor._post_container_snapshot(MagicMock()))
-    send_alert.assert_not_awaited()
-
-
 def test_poll_containers_tracks_filtered_and_watched(monkeypatch):
     """Tracked = containers matching docker_name_filter ∪ explicitly watched.
     With a name_filter set, an out-of-filter container is tracked only if watched.
@@ -285,3 +243,88 @@ def test_demo_incident_scenario_end_to_end(monkeypatch):
     assert args[0] == 2
     assert kwargs["severity"] == "info"
     assert "marconi-agent-loki" in args[1]
+
+
+def _endpoint_settings():
+    return Settings(
+        monitored_endpoints="loki=http://localhost:3100/ready",
+        discord_alert_channel_id=1,
+        discord_status_channel_id=2,
+        _env_file=None,
+    )
+
+
+def test_poll_endpoints_alerts_on_down_then_recovery(monkeypatch):
+    """Baseline poll is silent; unreachable -> critical, reachable again -> info."""
+    monkeypatch.setattr(monitor, "settings", _endpoint_settings())
+    monkeypatch.setattr(monitor, "_endpoint_state", {})
+    send_alert = AsyncMock()
+    monkeypatch.setattr(monitor.discord_alert, "send_alert", send_alert)
+    bot = MagicMock()
+
+    # 1. First observation only baselines.
+    monkeypatch.setattr(monitor, "_probe", AsyncMock(return_value=True))
+    asyncio.run(monitor._poll_endpoints(bot))
+    send_alert.assert_not_awaited()
+
+    # 2. Endpoint stops answering -> critical alert to #alerts.
+    monkeypatch.setattr(monitor, "_probe", AsyncMock(return_value=False))
+    asyncio.run(monitor._poll_endpoints(bot))
+    send_alert.assert_awaited_once()
+    args, kwargs = send_alert.await_args
+    assert args[0] == 1
+    assert kwargs["severity"] == "critical"
+    assert "loki" in args[1]
+
+    # 3. Endpoint answers again -> recovery note to #status-updates.
+    send_alert.reset_mock()
+    monkeypatch.setattr(monitor, "_probe", AsyncMock(return_value=True))
+    asyncio.run(monitor._poll_endpoints(bot))
+    send_alert.assert_awaited_once()
+    args, kwargs = send_alert.await_args
+    assert args[0] == 2
+    assert kwargs["severity"] == "info"
+
+    # 4. Still up -> no repeat alert.
+    send_alert.reset_mock()
+    asyncio.run(monitor._poll_endpoints(bot))
+    send_alert.assert_not_awaited()
+
+
+def test_poll_endpoints_prunes_removed_endpoints(monkeypatch):
+    monkeypatch.setattr(monitor, "settings", Settings(monitored_endpoints="", _env_file=None))
+    monkeypatch.setattr(monitor, "_endpoint_state", {"gone": True})
+    asyncio.run(monitor._poll_endpoints(MagicMock()))
+    assert monitor._endpoint_state == {}
+
+
+def test_probe_treats_error_status_and_exceptions_as_down(monkeypatch):
+    """A 5xx/4xx or a connection failure both mean 'down', never an exception."""
+    class FakeResponse:
+        def __init__(self, code):
+            self.status_code = code
+            self.is_server_error = code >= 500
+
+    class FakeClient:
+        def __init__(self, response=None, exc=None):
+            self._response, self._exc = response, exc
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *a):
+            return False
+        async def get(self, _url):
+            if self._exc:
+                raise self._exc
+            return self._response
+
+    for code, expected in ((200, True), (301, True), (404, False), (503, False)):
+        monkeypatch.setattr(
+            monitor.httpx, "AsyncClient", lambda *a, _c=code, **kw: FakeClient(FakeResponse(_c))
+        )
+        assert asyncio.run(monitor._probe("http://x")) is expected
+
+    monkeypatch.setattr(
+        monitor.httpx, "AsyncClient",
+        lambda *a, **kw: FakeClient(exc=monitor.httpx.ConnectError("refused")),
+    )
+    assert asyncio.run(monitor._probe("http://x")) is False

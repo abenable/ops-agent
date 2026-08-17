@@ -1,5 +1,7 @@
-"""Background container monitoring loop for Discord alerts and status updates."""
+"""Background monitoring loop: polls containers and HTTP endpoints, and posts
+Discord alerts on down/recovery transitions."""
 
+import httpx2 as httpx
 from discord.ext import tasks
 
 from agent.alerting import discord as discord_alert
@@ -9,6 +11,8 @@ from agent.tools import docker
 
 # container name -> last state (in-memory; fine for an MVP)
 _container_state: dict[str, str] = {}
+# endpoint name -> last reachability (in-memory, same lifetime as above)
+_endpoint_state: dict[str, bool] = {}
 
 
 def _endpoints() -> dict[str, str]:
@@ -31,9 +35,9 @@ def get_monitored_endpoints() -> dict[str, str]:
 async def _poll_containers(bot) -> None:
     """Track containers each cycle and alert when one stops running.
 
-    Alerting is Docker-only — Prometheus is kept for metrics, not alerting — so a
-    container stopping is observed straight from the Docker socket: no scrape gap
-    and no PromQL edge to mis-fire on a Prometheus restart. A container is in
+    Container alerting reads the Docker socket directly rather than PromQL —
+    Prometheus is kept for metrics, not alerting — so there is no scrape gap and
+    no PromQL edge to mis-fire on a Prometheus restart. A container is in
     scope if it matches ``docker_name_filter`` (empty filter = every container)
     or is explicitly watched via ``/watch``. A running -> not-running transition
     sends a critical alert; not-running -> running sends a recovery note to
@@ -83,36 +87,60 @@ async def _poll_containers(bot) -> None:
             del _container_state[name]
 
 
-async def _post_container_snapshot(bot) -> None:
-    """Post a compact status snapshot of tracked containers to #status-updates.
+async def _probe(url: str) -> bool:
+    """True when the endpoint answers with a non-error status."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            response = await client.get(url)
+        return response.status_code < 400
+    except (httpx.HTTPError, OSError):
+        return False
 
-    Reuses ``_container_state`` (refreshed every monitor cycle, so at most ~60s
-    stale) rather than re-querying Docker. Quiet when no containers are tracked
-    or no status channel is configured.
+
+async def _poll_endpoints(bot) -> None:
+    """Probe each configured endpoint and alert on down/recovery transitions.
+
+    Covers the systems that are not containers on this host (a URL on another
+    box, a service behind a proxy), which the Docker poll cannot see. Like the
+    container poll, the first observation of an endpoint only baselines it
+    (``prev`` is None), so a restart never produces a false alarm.
     """
-    if not settings.discord_status_channel_id or not _container_state:
-        return
-    lines = [f"- `{name}`: {state}" for name, state in sorted(_container_state.items())]
-    body = "Container status:\n" + "\n".join(lines)
-    await discord_alert.send_alert(
-        settings.discord_status_channel_id,
-        body[:4000],
-        bot,
-        severity="info",
-        title="Container status",
-    )
+    endpoints = _endpoints()
+    for name, url in endpoints.items():
+        up = await _probe(url)
+        prev = _endpoint_state.get(name)
+        _endpoint_state[name] = up
+        if prev is None or prev == up:
+            continue
+        if not up and settings.discord_alert_channel_id:
+            await discord_alert.send_alert(
+                settings.discord_alert_channel_id,
+                f"Endpoint `{name}` is unreachable (<{url}>)",
+                bot,
+                severity="critical",
+                title="Endpoint down",
+            )
+        elif up and settings.discord_status_channel_id:
+            await discord_alert.send_alert(
+                settings.discord_status_channel_id,
+                f"Endpoint `{name}` is reachable again (<{url}>)",
+                bot,
+                severity="info",
+                title="Endpoint up",
+            )
+
+    # Forget endpoints removed from the configuration.
+    for name in list(_endpoint_state):
+        if name not in endpoints:
+            del _endpoint_state[name]
 
 
 def start_monitor(bot):
-    """Start the periodic container poll and the container-status snapshot loop."""
+    """Start the periodic poll that drives container and endpoint alerts."""
 
     @tasks.loop(seconds=max(settings.monitor_interval_seconds, 10))
     async def _poll():
         await _poll_containers(bot)
-
-    @tasks.loop(seconds=max(settings.status_snapshot_interval_seconds, 60))
-    async def _snapshot():
-        await _post_container_snapshot(bot)
+        await _poll_endpoints(bot)
 
     _poll.start()
-    _snapshot.start()
