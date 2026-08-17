@@ -1,147 +1,77 @@
 # Architecture
 
+The agent is a single Python process: a Discord bot with an embedded
+LLM-driven investigation loop. There is no separate backend service.
+
 ```
-   Discord users                              HTTP clients
-        │                                          │
-        ▼                                          ▼
-┌───────────────┐   ┌──────────────┐      ┌──────────────────┐
-│ Bot commands  │   │   Monitor    │      │   FastAPI routes │
-│(/ status…)    │   │  (poll loop) │      │  (+ API key dep) │
-└───────┬───────┘   └──────┬───────┘      └────────┬─────────┘
-        │                  │                       │
-        └──────────────────┼───────────────────────┘
-                           ▼
-                ┌─────────────────────┐
-                │   Agent workflows   │
-                │ (incident / report) │
-                └──────────┬──────────┘
-             ┌─────────────┼──────────────┬───────────────┐
-             ▼             ▼              ▼               ▼
-      ┌────────────┐ ┌──────────┐  ┌──────────┐   ┌──────────────┐
-      │   Tools    │ │   LLM    │  │  SQLite  │   │  Alerting /  │
-      │status/logs │ │ (OpenAI- │  │  store   │   │  Discord     │
-      │metrics/http│ │ compat.) │  │incidents │   │ channels     │
-      │docker/ssh  │ └──────────┘  └──────────┘   └──────────────┘
-      │+ discovery │
-      └─────┬──────┘
-            ▼
-    ┌────────────────┐
-    │ Prometheus /   │
-    │ Loki sources   │
-    └────────────────┘
+Discord user
+   │  /status · /investigate · /report · @mention · DM
+   ▼
+┌────────────────────────────────────────────────────┐
+│ bot (discord.py)                                   │
+│   slash.py      — slash commands                   │
+│   client.py     — connection, DM/mention handler,  │
+│                   Discord log forwarding           │
+│   monitor.py    — background container poll loop   │
+│   summarize.py  — LLM cleanup of raw tool output   │
+└──────┬───────────────────────────────┬─────────────┘
+       │ /investigate, /report, chat   │ container transitions
+       ▼                               ▼
+┌────────────────────┐          ┌────────────────────┐
+│ investigate.py     │          │ alerting/discord.py│
+│ tool-calling loop  │          │ alert embeds       │
+└──────┬─────────────┘          └────────────────────┘
+       │ bind_tools(ALL_TOOLS)
+       ▼
+┌────────────────────────────────────────────────────┐
+│ tools/ (all read-only)                             │
+│   docker.py      — Engine API: list/status/logs    │
+│   prometheus.py  — instant + range PromQL,         │
+│                    metric/label discovery          │
+│   loki.py        — LogQL range queries, labels     │
+└──────┬───────────────┬───────────────┬─────────────┘
+       ▼               ▼               ▼
+   Docker socket   Prometheus      Loki
 ```
 
-## Components
+The LLM (any OpenAI-compatible self-hosted endpoint, configured via
+`LLM_BASE_URL`/`LLM_MODEL`) drives the loop in `investigate.py`: it receives
+the question, calls tools, reads the results, and answers — at most
+`MAX_TOOL_STEPS` tool rounds, after which it must summarize what it has.
 
-- `agent.bot.client` — Discord client bootstrap; on ready it starts the monitor, syncs the
-  slash-command tree, and, if configured, a Discord log handler.
-- `agent.bot.slash` — slash (`/`) command handlers via the `CommandTree`.
-- `agent.bot.menu` — interactive container picker and action buttons.
-- `agent.bot.views` — service panel view and persistent incident action buttons.
-- `agent.bot.summarize` — LLM reply summarisation of verbose output, with a `raw` opt-out.
-- `agent.bot.history` — per-channel conversational memory. The `conversation_history` SQLite
-  table stores the last 20 turns per channel; the 10 most recent are passed as structured
-  `HumanMessage`/`AIMessage` turns into the agentic loop so the agent resolves vague references
-  (`logs`, `the web container`, `that one`) from prior context. `ask_with_memory` wraps the
-  fetch-record-run-store cycle for the @mention and `/ask` paths.
-- `agent.bot.monitor` — background poll loop; each cycle checks HTTP endpoint liveness
-  (`MONITORED_ENDPOINTS`) and inspects Docker containers when `DOCKER_MONITOR` is
-  enabled, alerting on a running→stopped transition (Docker-only alerting —
-  Prometheus is kept for metrics, not alerting) — driving alerts, status updates,
-  and escalation to threaded incidents.
-- `agent.api` — FastAPI app and routes, with an optional `X-API-Key` dependency.
-  Exposes `GET /metrics` (Prometheus self-metrics) and SSE streaming for the agentic loop.
-- `agent.workflows` — incident investigation (agentic tool-calling loop), remediation
-  (proposes restarts behind human approval), and report generation.
-- `agent.helpers` — controlled tools: status, logs, metrics, HTTP health, Docker, SSH.
-- `agent.helpers.normalize` — separator-agnostic service-name matching.
-- `agent.helpers.sources` — Prometheus (metrics) and Loki (logs) query helpers.
-- `agent.helpers.query_tools` — read-only LangChain tools the LLM calls during an investigation:
-  service discovery (`list_services`), Prometheus/Loki metric/label discovery and queries, and
-  read-only Docker container status/logs.
-- `agent.eval` — task evaluation harness, split into focused modules:
-  `agent.eval.graders` (code-based graders: tool_calls, no_raw_markup,
-  groundedness, claims, no_false_alarm, no_hallucination, no_mutation,
-  path_efficiency, right_container, exactly_one), `agent.eval.harness` (`EvalHarness` loads a
-  task YAML and grades a trial; action-to-tool mapping; `aggregate_trials`),
-  `agent.eval.cli` (the `agent eval` subcommand that drives the workflow and
-  writes run output), and `agent.eval.tasks/` (the task YAMLs). See
-  [evals.md](evals.md).
-- `agent.metrics` — Prometheus counters and histograms for the agent itself (tool calls,
-  investigations, LLM calls, monitor cycles, alerts, API requests).
-- `agent.llm` — OpenAI-compatible client wrapper (`ChatOpenAI`) for a self-hosted model.
-- `agent.memory` — SQLite repository for incidents, watched containers, and remediation
-  pending-approvals.
-- `agent.alerting` — Discord alert embeds and incident-thread creation.
-- `agent.config` — Pydantic settings loaded from environment and `.env`.
+Supporting stores:
 
-## Data flow (incident)
+- **SQLite** (`data/agent.db`, via `memory/repository.py`) — the watched-container
+  list managed with `/watch`, `/unwatch`, `/watchlist`.
+- **In-memory monitor state** (`bot/monitor.py`) — last known container state,
+  used to fire down/recovery alerts on transitions. Rebuilt on every restart;
+  the first poll baselines without alerting.
 
-1. A trigger arrives — `/incident <service>`, `POST /incidents/{service}`, the
-   CLI, or the monitor escalating a down endpoint / stopped container.
-2. The workflow runs a bounded agentic loop: the LLM calls `list_services` to learn the real
-   names, discovers metrics/labels, writes its own PromQL/LogQL through the read-only query
-   tools, and can inspect containers with `docker_status`/`docker_logs`, up to `MAX_TOOL_STEPS`
-   calls.
-3. The model returns a summary. If it does not support tool calls, fails, or produces nothing,
-   the workflow falls back to a static status+metrics+logs summary (which itself falls back to
-   raw context if the LLM is offline).
-4. The incident is persisted to SQLite and its id returned.
-5. For Discord triggers, a thread is opened in the incidents channel with persistent
-   Acknowledge/Resolve buttons, and an alert is posted.
+## Data flow per feature
 
-## Storage schema
+- **`/status`** — gather container states (Docker) + configured endpoints →
+  `summarize.clean()` asks the LLM for a concise health summary → reply.
+- **`/investigate` / mention / DM** — the question goes into the tool-calling
+  loop; the final answer is normalized for Discord markdown and replied,
+  chunked to the 2000-char limit.
+- **`/report <service>`** — same loop, fixed incident template (Summary →
+  What happened → Evidence → Likely cause → Recommended next steps).
+- **Alerts** — the monitor loop compares container states across polls;
+  running→down posts a critical embed to `#alerts`, down→running posts a
+  recovery note to `#status-updates`. Scope: containers matching
+  `DOCKER_NAME_FILTER` plus the watch list.
 
-`incidents` table:
+## Safety boundaries
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| `id` | TEXT PK | 8-char short uuid |
-| `service` | TEXT | service / endpoint name |
-| `summary` | TEXT | LLM (or fallback) summary |
-| `status` | TEXT | `open` / `acknowledged` / `resolved` |
-| `thread_id` | INTEGER | Discord thread id, if one was opened |
-| `created_at` | TEXT | ISO timestamp |
+- Every tool exposed to the LLM is **read-only**: container list/status/logs,
+  Prometheus queries, Loki queries. There is no restart/config-change tool,
+  so the model cannot affect infrastructure; it can only recommend actions.
+- Tool outputs and loop length are capped (`MAX_TOOL_STEPS`, `LOKI_MAX_LIMIT`,
+  `RANGE_MAX_HOURS`, per-tool output truncation) to bound cost and prompt size.
+- User-supplied service names never reach a shell; Docker access is via the
+  Engine API over the local socket, and Prometheus/Loki via HTTP GET only.
 
-`watched_containers` table:
+## Known limitations
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| `name` | TEXT PK | exact container name |
-| `created_at` | TEXT | ISO timestamp |
-
-`pending_approvals` table:
-
-| Column | Type | Notes |
-| --- | --- | --- |
-| `id` | TEXT PK | 8-char short uuid |
-| `incident_id` | TEXT FK | parent incident |
-| `container_name` | TEXT | target container |
-| `container_id` | TEXT | Docker container id (optional) |
-| `action` | TEXT | proposed action (e.g. `restart`) |
-| `status` | TEXT | `pending` / `running` / `approved` / `rejected` / `expired` / `failed` |
-| `created_at` | TEXT | ISO timestamp |
-
-A pending approval transitions to `running` via an atomic conditional UPDATE
-(`claim_pending_approval`) when a human approves, so a concurrent approval
-(button + `/approve`, or a double-click) cannot double-execute the restart —
-only the first caller wins the row. On restart success it becomes `approved`;
-on restart error, `failed`.
-
-`conversation_history` table (created lazily by `agent.bot.history`):
-
-| Column | Type | Notes |
-| --- | --- | --- |
-| `id` | INTEGER PK | autoincrement |
-| `channel_id` | INTEGER | Discord channel id (history is per-channel) |
-| `role` | TEXT | `user` or `assistant` |
-| `content` | TEXT | trimmed to 4,000 chars; tool outputs are not stored |
-| `created_at` | TEXT | ISO timestamp, indexed with `channel_id` |
-
-The table is scoped **per channel**, not per user, so operators in a shared commands channel
-see one shared conversational context. Each channel keeps the 20 most recent turns; the 10
-most recent are passed as structured message turns into the agentic loop. Tool-call results
-are not stored — history carries conversational context only.
-
-The database path is resolved relative to the repository root, so every entry point (bot, API,
-CLI, tests) shares one database.
+See the README's Limitations section — in short: tool-calling model required,
+Docker-only alerting, in-memory monitor state, no RBAC, single-node SQLite.
