@@ -1,1 +1,1 @@
-"""Memory for services, alerts, incidents, and reports."""
+"""SQLite-backed watch-list storage."""
