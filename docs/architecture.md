@@ -1,7 +1,15 @@
 # Architecture
 
 The agent is a single Python process: a Discord bot with an embedded
-LLM-driven investigation loop. There is no separate backend service.
+LLM-driven investigation loop.
+
+**The bot process is the backend.** The tools, the LLM client, and the SQLite
+store all live in-process; Discord is the only transport and the only client.
+An earlier iteration also exposed the same operations over a FastAPI service,
+but its only consumer was the web dashboard — once the dashboard was cut, the
+HTTP layer was an interface with zero callers, so it was removed rather than
+maintained. If a non-Discord client ever appears, `investigate.py` and
+`tools/` are plain async functions that a thin API can reuse unchanged.
 
 ```
 Discord user

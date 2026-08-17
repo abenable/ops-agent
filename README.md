@@ -98,6 +98,11 @@ uv run pytest -m integration   # live checks (needs a real LLM / Discord token)
 ## Documentation
 
 - [Architecture](docs/architecture.md) — components, data flow, safety boundaries
+- [Setup](docs/setup.md) — Discord app, configuration, compose/local runs
+- [Usage](docs/usage.md) — command reference with worked examples
+- [Tools](docs/tools.md) — the ten read-only agent tools and the safety boundary
+- [Testing](docs/testing.md) — what the suite covers and how to run it
+- [Demo](docs/demo.md) — scripted incident scenario for the final demonstration
 
 ## Limitations
 
