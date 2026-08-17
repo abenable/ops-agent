@@ -17,9 +17,5 @@ data/logs/
 data/log_cursors.json
 .pytest_cache/
 
-# Local presentation docs (keep untracked)
-docs/demo-evaluation-actions.md
-docs/speaker-notes.md
-
 # Env backups (secrets)
 .env*
