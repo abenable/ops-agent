@@ -12,12 +12,13 @@ from agent import investigate as investigator
 from agent.bot.monitor import get_monitored_endpoints
 from agent.bot.summarize import clean
 from agent.bot.utils import format_container_list, split_discord_text
-from agent.memory.repository import (
+from agent.normalize import AmbiguousName
+from agent.tools import docker
+from agent.watchlist.repository import (
     add_watched_container,
     list_watched_containers,
     remove_watched_container,
 )
-from agent.tools import docker
 
 
 async def _send_chunks(interaction: discord.Interaction, text: str) -> None:
@@ -53,7 +54,7 @@ def setup_slash_commands(bot: commands.Bot) -> None:
     @app_commands.describe(question="What to look into, e.g. 'why is the api container restarting?'")
     async def slash_investigate(interaction: discord.Interaction, question: str):
         await interaction.response.defer()
-        answer = await investigator.investigate(question)
+        answer = await investigator.investigate(question, thread_id=str(interaction.channel_id))
         await _send_chunks(interaction, f"**Question:** {question}\n\n{answer}")
 
     @bot.tree.command(name="report", description="Generate a structured incident report for a service")
@@ -96,7 +97,11 @@ def setup_slash_commands(bot: commands.Bot) -> None:
     @app_commands.describe(container="Container name (partial or separator-variant ok)")
     async def slash_watch(interaction: discord.Interaction, container: str):
         await interaction.response.defer(ephemeral=True)
-        exact = await docker.resolve_container_name(container)
+        try:
+            exact = await docker.resolve_container_name(container)
+        except AmbiguousName as exc:
+            await interaction.followup.send(str(exc), ephemeral=True)
+            return
         if exact is None:
             await interaction.followup.send(f"No container matching '{container}'.", ephemeral=True)
             return
@@ -111,7 +116,11 @@ def setup_slash_commands(bot: commands.Bot) -> None:
     @bot.tree.command(name="unwatch", description="Remove a container from the watch list")
     @app_commands.describe(container="Container name to stop watching")
     async def slash_unwatch(interaction: discord.Interaction, container: str):
-        removed = remove_watched_container(container)
+        try:
+            removed = remove_watched_container(container)
+        except AmbiguousName as exc:
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return
         if removed:
             await interaction.response.send_message(
                 f"Stopped watching `{container}`.", ephemeral=True

@@ -10,6 +10,7 @@ dependencies = [
     "pydantic-settings>=2.6.0",
     "python-dotenv>=1.0.0",
     "httpx2>=2.7.0",
+    "langgraph>=1.2.11",
 ]
 
 [project.scripts]

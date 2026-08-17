@@ -76,10 +76,11 @@ simply inactive when its channel id is unset).
 ├── src/agent/
 │   ├── bot/                 # Discord client, slash commands, monitor loop, summarize
 │   ├── tools/               # Docker/Prometheus/Loki clients + read-only LangChain tools
-│   ├── investigate.py       # The agentic tool-calling loop (/investigate, /report, mentions)
-│   ├── normalize.py         # Separator-agnostic service-name matching
+│   ├── investigate.py       # The LangGraph agent loop (/investigate, /report, mentions)
+│   ├── memory.py            # Shared conversation memory: checkpointer, thread config, trimming
+│   ├── normalize.py         # Separator-agnostic name matching (one resolver for every lookup)
 │   ├── llm/                 # Self-hosted LLM client (OpenAI-compatible)
-│   ├── memory/              # SQLite repository for the container watch list
+│   ├── watchlist/           # SQLite repository for the container watch list
 │   ├── alerting/            # Discord alert embeds
 │   └── config/              # Environment-based settings
 ├── tests/                   # Test suite
@@ -115,6 +116,9 @@ This is an MVP built for a controlled environment. Known limitations:
 - **Monitor state is in memory** — alert de-duplication resets when the bot
   restarts (the first poll after a restart baselines state without alerting, so
   a restart never produces a false alarm).
+- **Conversation state is in memory** — the LangGraph checkpointer is an
+  `InMemorySaver` keyed by channel id, so a channel's follow-up context is lost
+  on restart. Swap it for `SqliteSaver` if that matters.
 - **No RBAC** — any member who can see the bot's channel can run any command.
   All LLM-reachable tools are read-only by construction.
 - **The bot process holds the Docker socket** — which is root-equivalent on the

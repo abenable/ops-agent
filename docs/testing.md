@@ -14,14 +14,15 @@ those boundaries are mocked.
 
 | File | Tests | Covers |
 | --- | --- | --- |
-| `test_investigate.py` | 6 | The agentic loop: tool execution, direct answers, tool errors fed back to the model, the `MAX_TOOL_STEPS` cap + final-summary fallback, LLM outage handling, the `/report` incident template |
+| `test_investigate.py` | 7 | The LangGraph loop: tool execution, direct answers, tool errors fed back to the model, the `MAX_TOOL_STEPS` cap + final-summary fallback, LLM outage handling, the `/report` incident template, per-`thread_id` conversation state |
 | `test_monitor.py` | 13 | The alert loop: endpoint parsing, endpoint probing and down/recovery alerts, running→down and down→running transitions, no false alert on the first poll after a restart, watch-list/filter scoping, state pruning, the end-to-end demo scenario |
 | `test_services.py` | 7 | The minimal clients: bearer-token headers for Prometheus/Loki, invalid-label rejection, Loki's range-endpoint regression, Docker log-stream demuxing |
 | `test_docker_tools.py` | 6 | The Docker LangChain tools: status/logs output, tail cap, control-byte stripping, empty `DOCKER_HOST` fallback |
 | `test_summarize.py` | 12 | LLM output cleanup: Discord markdown normalization (headings, tables→bullets), length caps, raw-output fallback when the LLM fails |
 | `test_alerting.py` | 4 | Alert embeds, channel-cache miss → API fetch fallback, Discord errors never raising into the monitor loop |
-| `test_normalize.py` | 3 | Separator-agnostic name matching and container resolution |
-| `test_memory.py` | 2 | Watch-list SQLite roundtrip and fuzzy removal |
+| `test_normalize.py` | 7 | `resolve_one`: separator-agnostic matching, exact-name precedence, and ambiguous-partial rejection for containers and the watch list |
+| `test_memory.py` | 2 | Conversation memory: thread history/forget roundtrip, thread config |
+| `test_watchlist.py` | 2 | Watch-list SQLite roundtrip and fuzzy removal |
 | `test_bot.py` | 3 | Message chunking, slash-command registration, Discord log forwarding |
 | `test_llm.py` | 2 | Client construction + a live ping (integration-marked) |
 | `test_discord_token.py` | 1 | Token sanity check (integration-marked) |

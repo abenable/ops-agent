@@ -2,7 +2,7 @@
 
 
 def test_watch_list_roundtrip(tmp_database):
-    from agent.memory.repository import (
+    from agent.watchlist.repository import (
         add_watched_container,
         list_watched_containers,
         remove_watched_container,
@@ -20,7 +20,7 @@ def test_watch_list_roundtrip(tmp_database):
 
 
 def test_find_watched_container_matches_variants(tmp_database):
-    from agent.memory.repository import add_watched_container, find_watched_container
+    from agent.watchlist.repository import add_watched_container, find_watched_container
 
     add_watched_container("marconi-agent-api")
     assert find_watched_container("agent_api") == "marconi-agent-api"

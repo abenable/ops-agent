@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     # "0 samples scraped") complete within the loop; the guided prose fallback
     # handles anything that still hits the cap.
     max_tool_steps: int = 10
+    max_context_tokens: int = 12000
     loki_max_limit: int = 500
     range_max_hours: int = 6
 

@@ -43,14 +43,20 @@ Discord user
 ```
 
 The LLM (any OpenAI-compatible self-hosted endpoint, configured via
-`LLM_BASE_URL`/`LLM_MODEL`) drives the loop in `investigate.py`: it receives
-the question, calls tools, reads the results, and answers — at most
+`LLM_BASE_URL`/`LLM_MODEL`) drives the LangGraph state machine in
+`investigate.py` (`model` node -> `tools` node -> back): it receives the
+question, calls tools, reads the results, and answers — at most
 `MAX_TOOL_STEPS` tool rounds, after which it must summarize what it has.
 
 Supporting stores:
 
-- **SQLite** (`data/agent.db`, via `memory/repository.py`) — the watched-container
+- **SQLite** (`data/agent.db`, via `watchlist/repository.py`) — the watched-container
   list managed with `/watch`, `/unwatch`, `/watchlist`.
+- **LangGraph checkpointer** (`memory.py`, `InMemorySaver`) — conversation
+  state keyed by `thread_id`, which is the Discord channel id, so follow-up
+  questions in a channel keep their context. Lost on restart. Each turn is
+  trimmed to `MAX_CONTEXT_TOKENS` so a long-lived channel cannot outgrow the
+  model's context.
 - **In-memory monitor state** (`bot/monitor.py`) — last known container and endpoint state,
   used to fire down/recovery alerts on transitions. Rebuilt on every restart;
   the first poll baselines without alerting.

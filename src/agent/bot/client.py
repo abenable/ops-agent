@@ -138,7 +138,8 @@ def run_bot():
                 await message.reply("What should I look into? Try `/status` or `/investigate`.")
                 return
             async with message.channel.typing():
-                answer = await investigator.investigate(question)
+                # Thread per channel (per DM), so follow-up questions keep context.
+                answer = await investigator.investigate(question, thread_id=str(message.channel.id))
             chunks = split_discord_text(answer) or ["(empty answer)"]
             await message.reply(chunks[0])
             for chunk in chunks[1:]:

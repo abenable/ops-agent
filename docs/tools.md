@@ -10,7 +10,7 @@ docstrings the model actually sees when deciding what to call.
 | Tool | What the model is told |
 | --- | --- |
 | `list_services()` | List known infrastructure targets by their real names: Docker container names and configured monitored endpoints. Called FIRST when the exact service name is unknown. |
-| `docker_status(container)` | State of a container: state, status, image. Matching is separator-agnostic (`agent_api` matches `marconi-agent-api`). |
+| `docker_status(container)` | State of a container: state, status, image. Matching is separator-agnostic (`agent_api` matches `marconi-agent-api`); a partial name matching several containers is rejected with the candidate list instead of guessing. |
 | `docker_logs(container, tail=50)` | Last `tail` lines of a container's stdout/stderr; `tail` capped at 200. Fallback when Loki has no logs for the container. |
 
 ## Prometheus (`tools/prometheus.py`, against `PROMETHEUS_URL`)

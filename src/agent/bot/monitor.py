@@ -6,8 +6,8 @@ from discord.ext import tasks
 
 from agent.alerting import discord as discord_alert
 from agent.config.settings import settings
-from agent.memory.repository import list_watched_containers
 from agent.tools import docker
+from agent.watchlist.repository import list_watched_containers
 
 # container name -> last state (in-memory; fine for an MVP)
 _container_state: dict[str, str] = {}

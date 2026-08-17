@@ -1,1 +1,1 @@
-"""SQLite-backed watch-list storage."""
+"""SQLite-backed container watch list (`/watch`), not agent memory."""

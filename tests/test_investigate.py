@@ -115,3 +115,26 @@ def test_report_uses_incident_template(monkeypatch):
     out = asyncio.run(investigate.report("marconi-agent-api"))
     assert "healthy" in out
     assert any("incident report" in s and "marconi-agent-api" in s for s in seen)
+
+
+def test_thread_id_keeps_history_and_isolates_threads(monkeypatch):
+    """Same thread_id sees the earlier turn; a different one starts clean."""
+    seen: list[list] = []
+
+    class _RecordingLLM:
+        def bind_tools(self, _tools):
+            return self
+
+        async def ainvoke(self, messages):
+            seen.append([str(m.content) for m in messages])
+            return AIMessage(content="ok")
+
+    monkeypatch.setattr(investigate, "get_llm", lambda **kw: _RecordingLLM())
+
+    asyncio.run(investigate.investigate("first question", thread_id="chan-1"))
+    asyncio.run(investigate.investigate("second question", thread_id="chan-1"))
+    asyncio.run(investigate.investigate("other channel", thread_id="chan-2"))
+
+    assert seen[0][1:] == ["first question"]  # first turn: system prompt + the question
+    assert "first question" in seen[1]  # same thread carries the earlier turn
+    assert "first question" not in seen[2]  # a different thread does not

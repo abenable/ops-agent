@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 
 from agent.config.settings import settings
-from agent.normalize import normalize
+from agent.normalize import resolve_one
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DB_PATH = Path(settings.database_url.replace("sqlite:///", ""))
@@ -53,8 +53,7 @@ def add_watched_container(name: str) -> bool:
 def remove_watched_container(name: str) -> bool:
     """Remove a watched container (separator-agnostic). Returns True if one was removed."""
     init_db()
-    watched = list_watched_containers()
-    target = find_watched_container(name) if name not in watched else name
+    target = find_watched_container(name)
     if target is None:
         return False
     with _connect() as conn:
@@ -63,9 +62,8 @@ def remove_watched_container(name: str) -> bool:
 
 
 def find_watched_container(name: str) -> str | None:
-    """Resolve a partial/separator-variant name to an exact watched container name."""
-    needle = normalize(name)
-    for candidate in list_watched_containers():
-        if needle in normalize(candidate):
-            return candidate
-    return None
+    """Resolve a partial/separator-variant name to an exact watched container name.
+
+    Raises ``AmbiguousName`` when the partial name matches several entries.
+    """
+    return resolve_one(name, list_watched_containers(), kind="watched containers")

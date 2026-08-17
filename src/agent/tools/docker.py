@@ -7,7 +7,7 @@ import httpx2 as httpx
 from langchain_core.tools import tool
 
 from agent.config.settings import settings
-from agent.normalize import normalize
+from agent.normalize import AmbiguousName, resolve_one
 
 # ---------------------------------------------------------------------------
 # Client
@@ -71,12 +71,13 @@ def container_name(container: dict) -> str:
 
 
 async def find_container(service: str) -> dict | None:
-    """Match a container by name, separator-agnostic. None if not found."""
-    needle = normalize(service)
-    for c in await list_containers(all_containers=True):
-        if needle in normalize(container_name(c)):
-            return c
-    return None
+    """Match a container by name, separator-agnostic. None if not found.
+
+    Raises ``AmbiguousName`` when a partial name matches several containers —
+    see ``normalize.resolve_one`` for the rule.
+    """
+    containers = await list_containers(all_containers=True)
+    return resolve_one(service, containers, container_name, kind="containers")
 
 
 async def resolve_container_name(service: str) -> str | None:
@@ -145,7 +146,10 @@ async def docker_status(container: str) -> str:
     """Return the state of a Docker container (read-only): state, status, image.
     Use a container name returned by list_services. Matching is separator-agnostic
     so 'agent_api' matches 'marconi-agent-api'."""
-    target = await find_container(container)
+    try:
+        target = await find_container(container)
+    except AmbiguousName as exc:
+        return f"({exc})"
     if target is None:
         return f"(no container matching '{container}')"
     name = container_name(target)
@@ -162,7 +166,10 @@ async def docker_logs(container: str, tail: int = 50) -> str:
     container's own output directly. Use a container name from list_services;
     `tail` is capped at 200."""
     tail = max(1, min(tail, 200))
-    target = await find_container(container)
+    try:
+        target = await find_container(container)
+    except AmbiguousName as exc:
+        return f"({exc})"
     if target is None:
         return f"(no container matching '{container}')"
     raw = await container_logs(target.get("Id") or container_name(target), tail=tail)
