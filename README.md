@@ -20,6 +20,9 @@ Built during the Implementation Phase (Weeks 5–8) of the Marconi industrial tr
 - **Incident reports** — `/report <service>` runs the same loop with a fixed
   incident template: Summary → What happened → Evidence → Likely cause →
   Recommended next steps.
+- **Scheduled digests** — a daily report at `REPORT_HOUR_UTC` (05:00 UTC) and a
+  weekly roll-up on `WEEKLY_REPORT_WEEKDAY`, both to the status channel, covering
+  the watched containers and endpoints plus every transition logged since.
 - **Background alerts** — a monitor loop polls containers and the configured
   HTTP endpoints, posting a critical alert when one goes down and a recovery
   note when it comes back. Containers are tracked when they match
@@ -50,6 +53,7 @@ python -m agent bot        # run the Discord bot
 | `/investigate <question>` | Free-form agentic investigation using read-only tools |
 | `/report <service>` | Structured incident report for one service |
 | `/containers` | List Docker containers grouped by state |
+| `/digest [daily\|weekly]` | Render a scheduled report on demand |
 | `/watching` | List the HTTP endpoints polled by the background monitor |
 | `/watch <container>` | Add a container to the watch list (status updates + down-alerts) |
 | `/unwatch <container>` | Remove a container from the watch list |
@@ -74,7 +78,7 @@ simply inactive when its channel id is unset).
 ```
 .
 ├── src/agent/
-│   ├── bot/                 # Discord client, slash commands, monitor loop, summarize
+│   ├── bot/                 # Discord client, slash commands, monitor loop, digests, summarize
 │   ├── tools/               # Docker/Prometheus/Loki clients + read-only LangChain tools
 │   ├── investigate.py       # The LangGraph agent loop (/investigate, /report, mentions)
 │   ├── memory.py            # Shared conversation memory: checkpointer, thread config, trimming
@@ -125,8 +129,8 @@ This is an MVP built for a controlled environment. Known limitations:
   host. The `:ro` flag in compose restricts the socket file, not the Engine API.
   The model is constrained by the tool surface (no mutating tool exists), not by
   the mount, so treat the bot process itself as privileged.
-- **Single-node SQLite** — stores the watched-container list; fine for one bot
-  instance.
+- **Single-node SQLite** — stores the watched-container list and the monitor's
+  transition log (trimmed to 90 days); fine for one bot instance.
 
 ## Future improvements
 

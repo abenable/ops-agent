@@ -8,6 +8,7 @@ import sys
 import discord
 from discord.ext import commands
 
+from agent.bot.digest import start_digests
 from agent.bot.monitor import start_monitor
 from agent.bot.slash import setup_slash_commands
 from agent.config.settings import settings
@@ -106,6 +107,7 @@ def run_bot():
         _setup_done = True
 
         start_monitor(bot)
+        start_digests(bot)
         # Sync slash commands once on startup. Guild sync is faster during testing;
         # global sync is used when no guild id is configured.
         try:

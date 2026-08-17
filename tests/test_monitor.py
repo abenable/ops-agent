@@ -263,12 +263,12 @@ def test_poll_endpoints_alerts_on_down_then_recovery(monkeypatch):
     bot = MagicMock()
 
     # 1. First observation only baselines.
-    monkeypatch.setattr(monitor, "_probe", AsyncMock(return_value=True))
+    monkeypatch.setattr(monitor, "probe", AsyncMock(return_value=True))
     asyncio.run(monitor._poll_endpoints(bot))
     send_alert.assert_not_awaited()
 
     # 2. Endpoint stops answering -> critical alert to #alerts.
-    monkeypatch.setattr(monitor, "_probe", AsyncMock(return_value=False))
+    monkeypatch.setattr(monitor, "probe", AsyncMock(return_value=False))
     asyncio.run(monitor._poll_endpoints(bot))
     send_alert.assert_awaited_once()
     args, kwargs = send_alert.await_args
@@ -278,7 +278,7 @@ def test_poll_endpoints_alerts_on_down_then_recovery(monkeypatch):
 
     # 3. Endpoint answers again -> recovery note to #status-updates.
     send_alert.reset_mock()
-    monkeypatch.setattr(monitor, "_probe", AsyncMock(return_value=True))
+    monkeypatch.setattr(monitor, "probe", AsyncMock(return_value=True))
     asyncio.run(monitor._poll_endpoints(bot))
     send_alert.assert_awaited_once()
     args, kwargs = send_alert.await_args
@@ -321,10 +321,47 @@ def test_probe_treats_error_status_and_exceptions_as_down(monkeypatch):
         monkeypatch.setattr(
             monitor.httpx, "AsyncClient", lambda *a, _c=code, **kw: FakeClient(FakeResponse(_c))
         )
-        assert asyncio.run(monitor._probe("http://x")) is expected
+        assert asyncio.run(monitor.probe("http://x")) is expected
 
     monkeypatch.setattr(
         monitor.httpx, "AsyncClient",
         lambda *a, **kw: FakeClient(exc=monitor.httpx.ConnectError("refused")),
     )
-    assert asyncio.run(monitor._probe("http://x")) is False
+    assert asyncio.run(monitor.probe("http://x")) is False
+
+
+def test_poll_containers_logs_transitions_but_not_the_baseline(monkeypatch):
+    """The digest reads what the monitor logs, so a transition must be recorded
+    even when no alert channel is configured — and a baseline must not be."""
+    from datetime import UTC, datetime, timedelta
+
+    from agent.watchlist.repository import events_since
+
+    # Channels must be nulled explicitly: load_env() has already put the real
+    # .env values in os.environ, so _env_file=None alone does not isolate.
+    settings = Settings(
+        docker_monitor=True,
+        discord_alert_channel_id=None,
+        discord_status_channel_id=None,
+        _env_file=None,
+    )
+    monkeypatch.setattr(monitor, "settings", settings)
+    monkeypatch.setattr(monitor, "list_watched_containers", list)
+    monkeypatch.setattr(monitor.discord_alert, "send_alert", AsyncMock())
+    monitor._container_state.clear()
+    since = datetime.now(UTC) - timedelta(minutes=1)
+
+    running = [{"Names": ["/marconi-agent-api"], "State": "running", "Status": "Up 1h"}]
+    monkeypatch.setattr(monitor.docker, "list_containers", AsyncMock(return_value=running))
+    asyncio.run(monitor._poll_containers(MagicMock()))
+    assert events_since(since) == []  # baseline logs nothing
+
+    stopped = [{"Names": ["/marconi-agent-api"], "State": "exited", "Status": "Exited"}]
+    monkeypatch.setattr(monitor.docker, "list_containers", AsyncMock(return_value=stopped))
+    asyncio.run(monitor._poll_containers(MagicMock()))
+
+    logged = events_since(since)
+    assert [(e["target"], e["kind"], e["state"]) for e in logged] == [
+        ("marconi-agent-api", "container", "down")
+    ]
+    monitor.discord_alert.send_alert.assert_not_awaited()  # no channel configured

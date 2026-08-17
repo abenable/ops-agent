@@ -9,6 +9,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from agent import investigate as investigator
+from agent.bot.digest import build_daily, build_weekly
 from agent.bot.monitor import get_monitored_endpoints
 from agent.bot.summarize import clean
 from agent.bot.utils import format_container_list, split_discord_text
@@ -63,6 +64,19 @@ def setup_slash_commands(bot: commands.Bot) -> None:
         await interaction.response.defer()
         text = await investigator.report(service)
         await _send_chunks(interaction, f"**Incident report — `{service}`**\n\n{text}")
+
+    @bot.tree.command(name="digest", description="Render the daily or weekly infra report now")
+    @app_commands.describe(period="Which report to render (default: daily)")
+    @app_commands.choices(
+        period=[
+            app_commands.Choice(name="daily", value="daily"),
+            app_commands.Choice(name="weekly", value="weekly"),
+        ]
+    )
+    async def slash_digest(interaction: discord.Interaction, period: str = "daily"):
+        await interaction.response.defer()
+        body = await (build_weekly() if period == "weekly" else build_daily())
+        await _send_chunks(interaction, f"**{period.capitalize()} report**\n\n{body}")
 
     @bot.tree.command(name="containers", description="List Docker containers grouped by status")
     async def slash_containers(interaction: discord.Interaction):

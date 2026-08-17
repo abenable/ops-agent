@@ -51,7 +51,9 @@ question, calls tools, reads the results, and answers — at most
 Supporting stores:
 
 - **SQLite** (`data/agent.db`, via `watchlist/repository.py`) — the watched-container
-  list managed with `/watch`, `/unwatch`, `/watchlist`.
+  list managed with `/watch`, `/unwatch`, `/watchlist`, and the `events` table the
+  monitor appends a row to on every down/up transition (trimmed to 90 days). The
+  digests are the only reader.
 - **LangGraph checkpointer** (`memory.py`, `InMemorySaver`) — conversation
   state keyed by `thread_id`, which is the Discord channel id, so follow-up
   questions in a channel keep their context. Lost on restart. Each turn is
@@ -70,6 +72,11 @@ Supporting stores:
   chunked to the 2000-char limit.
 - **`/report <service>`** — same loop, fixed incident template (Summary →
   What happened → Evidence → Likely cause → Recommended next steps).
+- **Digests** — one `tasks.loop` fires at `REPORT_HOUR_UTC`: the daily body is the
+  current watched state plus the last 24h of transitions; on `WEEKLY_REPORT_WEEKDAY`
+  a weekly roll-up adds per-target outage counts and downtime over
+  `DIGEST_LOOKBACK_DAYS`, and hands any flapping target to the investigation loop
+  for a short cause paragraph. `/digest` renders either on demand.
 - **Alerts** — the monitor loop compares container states and endpoint
   reachability across polls; a down transition posts a critical embed to
   `#alerts`, a recovery posts a note to `#status-updates`. Scope: containers

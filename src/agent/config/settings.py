@@ -56,6 +56,13 @@ class Settings(BaseSettings):
     loki_max_limit: int = 500
     range_max_hours: int = 6
 
+    # Scheduled digests. One task fires at REPORT_HOUR_UTC every day; on
+    # WEEKLY_REPORT_WEEKDAY (0 = Monday) it also posts the weekly roll-up.
+    # Both go to DISCORD_STATUS_CHANNEL_ID and are skipped if it is unset.
+    report_hour_utc: int = 5
+    weekly_report_weekday: int = 0
+    digest_lookback_days: int = 7
+
     # Docker container discovery (DOCKER_HOST is read from the env by tools/docker.py)
     docker_monitor: bool = False
     docker_name_filter: str = ""

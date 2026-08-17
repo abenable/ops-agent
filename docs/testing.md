@@ -22,6 +22,7 @@ those boundaries are mocked.
 | `test_alerting.py` | 4 | Alert embeds, channel-cache miss → API fetch fallback, Discord errors never raising into the monitor loop |
 | `test_normalize.py` | 7 | `resolve_one`: separator-agnostic matching, exact-name precedence, and ambiguous-partial rejection for containers and the watch list |
 | `test_memory.py` | 2 | Conversation memory: thread history/forget roundtrip, thread config |
+| `test_digest.py` | 9 | Daily/weekly bodies, outage pairing and downtime totals, weekday gating, the flapping narrative, unset status channel |
 | `test_watchlist.py` | 2 | Watch-list SQLite roundtrip and fuzzy removal |
 | `test_bot.py` | 3 | Message chunking, slash-command registration, Discord log forwarding |
 | `test_llm.py` | 2 | Client construction + a live ping (integration-marked) |

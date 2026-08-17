@@ -7,7 +7,7 @@ from discord.ext import tasks
 from agent.alerting import discord as discord_alert
 from agent.config.settings import settings
 from agent.tools import docker
-from agent.watchlist.repository import list_watched_containers
+from agent.watchlist.repository import list_watched_containers, record_event
 
 # container name -> last state (in-memory; fine for an MVP)
 _container_state: dict[str, str] = {}
@@ -32,6 +32,13 @@ def get_monitored_endpoints() -> dict[str, str]:
     return _endpoints()
 
 
+def in_scope(name: str, watched: set[str]) -> bool:
+    """True when a container is alerted on: it matches ``docker_name_filter``
+    (empty filter = every container) or is explicitly watched via ``/watch``."""
+    name_filter = settings.docker_name_filter.lower()
+    return (not name_filter) or (name_filter in name.lower()) or (name in watched)
+
+
 async def _poll_containers(bot) -> None:
     """Track containers each cycle and alert when one stops running.
 
@@ -53,32 +60,34 @@ async def _poll_containers(bot) -> None:
     except Exception:  # noqa: BLE001 - one bad poll must not kill the monitor loop
         return
 
-    name_filter = settings.docker_name_filter.lower()
     seen: set[str] = set()
     for c in containers:
         name = docker.container_name(c)
-        in_scope = (not name_filter) or (name_filter in name.lower()) or (name in watched)
-        if not in_scope:
+        if not in_scope(name, watched):
             continue
         seen.add(name)
         state = c.get("State", "unknown")
         prev = _container_state.get(name)
-        if prev == "running" and state != "running" and settings.discord_alert_channel_id:
-            await discord_alert.send_alert(
-                settings.discord_alert_channel_id,
-                f"Container `{name}` is now {state} ({c.get('Status', '')})",
-                bot,
-                severity="critical",
-                title="Container down",
-            )
-        elif prev is not None and prev != "running" and state == "running" and settings.discord_status_channel_id:
-            await discord_alert.send_alert(
-                settings.discord_status_channel_id,
-                f"Container `{name}` is back running (was {prev})",
-                bot,
-                severity="info",
-                title="Container up",
-            )
+        if prev == "running" and state != "running":
+            record_event(name, "container", "down")
+            if settings.discord_alert_channel_id:
+                await discord_alert.send_alert(
+                    settings.discord_alert_channel_id,
+                    f"Container `{name}` is now {state} ({c.get('Status', '')})",
+                    bot,
+                    severity="critical",
+                    title="Container down",
+                )
+        elif prev is not None and prev != "running" and state == "running":
+            record_event(name, "container", "up")
+            if settings.discord_status_channel_id:
+                await discord_alert.send_alert(
+                    settings.discord_status_channel_id,
+                    f"Container `{name}` is back running (was {prev})",
+                    bot,
+                    severity="info",
+                    title="Container up",
+                )
         _container_state[name] = state
 
     # Forget containers no longer present or out of scope.
@@ -87,7 +96,7 @@ async def _poll_containers(bot) -> None:
             del _container_state[name]
 
 
-async def _probe(url: str) -> bool:
+async def probe(url: str) -> bool:
     """True when the endpoint answers with a non-error status."""
     try:
         async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
@@ -107,11 +116,12 @@ async def _poll_endpoints(bot) -> None:
     """
     endpoints = _endpoints()
     for name, url in endpoints.items():
-        up = await _probe(url)
+        up = await probe(url)
         prev = _endpoint_state.get(name)
         _endpoint_state[name] = up
         if prev is None or prev == up:
             continue
+        record_event(name, "endpoint", "up" if up else "down")
         if not up and settings.discord_alert_channel_id:
             await discord_alert.send_alert(
                 settings.discord_alert_channel_id,
