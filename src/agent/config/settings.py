@@ -27,14 +27,10 @@ class Settings(BaseSettings):
     discord_bot_token: str = Field(default="", validation_alias="DISCORD_BOT_TOKEN")
     discord_guild_id: int | None = None
     discord_alert_channel_id: int | None = None
-    discord_incident_channel_id: int | None = None
     discord_status_channel_id: int | None = None
     discord_log_channel_id: int | None = None
-    discord_test_tasks_channel_id: int | None = None
     discord_welcome_channel_id: int | None = None
     discord_project_notes_channel_id: int | None = None
-    # User ID to DM when incidents are created (optional).
-    discord_dm_user_id: int | None = None
 
     # Bot info / support links shown by /info (all optional)
     bot_creators: str = ""
@@ -48,14 +44,7 @@ class Settings(BaseSettings):
     # Cadence for the periodic container-status snapshot posted to #status-updates.
     status_snapshot_interval_seconds: int = 3600
 
-    # Structured log collector (agent.logstore) → ``.log`` store under data/logs/.
-    log_collect_interval_seconds: int = 600
-    log_retention_days: int = 30
-    daily_report_hour: int = 23
-    weekly_report_day: int = 6
-
     # Self-hosted LLM (OpenAI-compatible)
-    llm_provider: str = ""
     llm_base_url: str = "http://100.64.0.7:4000/v1"
     llm_model: str = "marconi-llm"
     llm_api_key: str = Field(
@@ -63,13 +52,6 @@ class Settings(BaseSettings):
         validation_alias="LLM_API_KEY",
     )
     llm_disable_thinking: bool = False
-
-    # API server
-    api_key: str = Field(default="", validation_alias="API_KEY")
-    api_host: str = "127.0.0.1"
-    api_port: int = 8000
-    # Origin allowed by CORS for the web UI. Defaults to the Vite dev server.
-    web_origin: str = "http://localhost:5173"
 
     # Monitoring / logging integrations
     prometheus_url: str = "http://localhost:9090"
@@ -83,13 +65,6 @@ class Settings(BaseSettings):
     max_tool_steps: int = 10
     loki_max_limit: int = 500
     range_max_hours: int = 6
-
-    # Human-in-the-loop remediation: seconds a proposed action stays approvable
-    # before it is auto-expired. Lazy check at execute time; no background sweeper.
-    remediation_approval_ttl_seconds: int = 300
-    # Global kill switch for the remediation agent. When false, the remediator will
-    # not propose actions and pending approvals cannot be executed. Reject still works.
-    remediation_enabled: bool = True
 
     # Docker container discovery (DOCKER_HOST is read from the env by tools/docker.py)
     docker_monitor: bool = False
