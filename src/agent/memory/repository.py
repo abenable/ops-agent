@@ -62,11 +62,6 @@ def remove_watched_container(name: str) -> bool:
     return cursor.rowcount > 0
 
 
-def is_watched(name: str) -> bool:
-    """Check whether a container name is in the watch list."""
-    return name in list_watched_containers()
-
-
 def find_watched_container(name: str) -> str | None:
     """Resolve a partial/separator-variant name to an exact watched container name."""
     needle = normalize(name)

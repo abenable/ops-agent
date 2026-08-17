@@ -15,14 +15,7 @@ data/*.db
 data/*.db-journal
 data/logs/
 data/log_cursors.json
-data/reports/
 .pytest_cache/
-specs/
-eval_runs/
-src/agent/eval/runs/
-
-# Web bundle published by the compose `web` service (served by Caddy)
-web-dist/
 
 # Local presentation docs (keep untracked)
 docs/demo-evaluation-actions.md
@@ -30,7 +23,3 @@ docs/speaker-notes.md
 
 # Env backups (secrets)
 .env*
-
-# Notebook scratch state (the notebooks themselves are tracked, with outputs)
-notebooks/.ipynb_checkpoints/
-notebooks/**/.ipynb_checkpoints/

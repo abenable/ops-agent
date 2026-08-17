@@ -5,7 +5,6 @@ def test_watch_list_roundtrip(tmp_database):
     from agent.memory.repository import (
         add_watched_container,
         find_watched_container,
-        is_watched,
         list_watched_containers,
         remove_watched_container,
     )
@@ -13,7 +12,6 @@ def test_watch_list_roundtrip(tmp_database):
     assert list_watched_containers() == []
     assert add_watched_container("marconi-agent-api") is True
     assert add_watched_container("marconi-agent-api") is False
-    assert is_watched("marconi-agent-api") is True
     assert list_watched_containers() == ["marconi-agent-api"]
 
     # Separator-agnostic resolution on remove.

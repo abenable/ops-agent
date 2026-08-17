@@ -75,7 +75,6 @@ simply inactive when its channel id is unset).
 
 ```
 .
-├── main.py                  # Backwards-compatible launcher (python -m agent preferred)
 ├── src/agent/
 │   ├── bot/                 # Discord client, slash commands, monitor loop, onboarding, summarize
 │   ├── tools/               # Docker/Prometheus/Loki clients + read-only LangChain tools
@@ -84,11 +83,8 @@ simply inactive when its channel id is unset).
 │   ├── llm/                 # Self-hosted LLM client (OpenAI-compatible)
 │   ├── memory/              # SQLite repository for the container watch list
 │   ├── alerting/            # Discord alert embeds
-│   ├── metrics.py           # Prometheus self-metrics for the agent
 │   └── config/              # Environment-based settings
 ├── tests/                   # Test suite
-├── eval/                    # Scratch notebooks (not part of the running system)
-├── web/                     # Discontinued dashboard prototype (no backend anymore)
 └── data/                    # SQLite database
 ```
 

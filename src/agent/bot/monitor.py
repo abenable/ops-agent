@@ -5,7 +5,6 @@ from discord.ext import tasks
 from agent.alerting import discord as discord_alert
 from agent.config.settings import settings
 from agent.memory.repository import list_watched_containers
-from agent.metrics import MONITOR_CYCLES_TOTAL
 from agent.tools import docker
 
 # container name -> last state (in-memory; fine for an MVP)
@@ -109,7 +108,6 @@ def start_monitor(bot):
 
     @tasks.loop(seconds=max(settings.monitor_interval_seconds, 10))
     async def _poll():
-        MONITOR_CYCLES_TOTAL.labels(kind="endpoint").inc()
         await _poll_containers(bot)
 
     @tasks.loop(seconds=max(settings.status_snapshot_interval_seconds, 60))
