@@ -238,3 +238,50 @@ def test_poll_containers_prunes_out_of_scope_state(monkeypatch):
     asyncio.run(monitor._poll_containers(MagicMock()))
     assert "old" not in monitor._container_state
     assert monitor._container_state == {"marconi-agent-api": "running"}
+
+
+@pytest.mark.integration
+def test_demo_incident_scenario_end_to_end(monkeypatch):
+    """The scripted demo from docs/demo.md, driven with fake Docker responses:
+    loki running (baseline) -> stopped (critical alert to #alerts) ->
+    running again (recovery note to #status-updates).
+    """
+    settings = Settings(
+        docker_monitor=True,
+        discord_alert_channel_id=1,
+        discord_status_channel_id=2,
+        _env_file=None,
+    )
+    monkeypatch.setattr(monitor, "settings", settings)
+    monkeypatch.setattr(monitor, "list_watched_containers", list)
+    monitor._container_state.clear()
+    send_alert = AsyncMock()
+    monkeypatch.setattr(monitor.discord_alert, "send_alert", send_alert)
+    bot = MagicMock()
+
+    running = [{"Names": ["/marconi-agent-loki"], "State": "running", "Status": "Up 2h"}]
+    stopped = [{"Names": ["/marconi-agent-loki"], "State": "exited", "Status": "Exited (1)"}]
+
+    # 1. Baseline poll: no alert.
+    monkeypatch.setattr(monitor.docker, "list_containers", AsyncMock(return_value=running))
+    asyncio.run(monitor._poll_containers(bot))
+    send_alert.assert_not_awaited()
+
+    # 2. `docker stop marconi-agent-loki` -> critical alert to #alerts.
+    monkeypatch.setattr(monitor.docker, "list_containers", AsyncMock(return_value=stopped))
+    asyncio.run(monitor._poll_containers(bot))
+    send_alert.assert_awaited_once()
+    args, kwargs = send_alert.await_args
+    assert args[0] == 1
+    assert kwargs["severity"] == "critical"
+    assert "marconi-agent-loki" in args[1]
+
+    # 3. `docker start marconi-agent-loki` -> recovery note to #status-updates.
+    send_alert.reset_mock()
+    monkeypatch.setattr(monitor.docker, "list_containers", AsyncMock(return_value=running))
+    asyncio.run(monitor._poll_containers(bot))
+    send_alert.assert_awaited_once()
+    args, kwargs = send_alert.await_args
+    assert args[0] == 2
+    assert kwargs["severity"] == "info"
+    assert "marconi-agent-loki" in args[1]

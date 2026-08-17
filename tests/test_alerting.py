@@ -23,8 +23,6 @@ def test_send_alert_uses_embed():
 
 def test_send_alert_falls_back_to_fetch_channel():
     """get_channel() returns None before the cache fills; fetch via API instead."""
-    import discord
-
     channel = AsyncMock()
     bot = MagicMock()
     bot.get_channel.return_value = None

@@ -4,7 +4,6 @@
 def test_watch_list_roundtrip(tmp_database):
     from agent.memory.repository import (
         add_watched_container,
-        find_watched_container,
         list_watched_containers,
         remove_watched_container,
     )
