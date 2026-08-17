@@ -17,6 +17,7 @@ agent = "agent.cli:main"
 
 [dependency-groups]
 dev = [
+    "ipykernel>=7.3.0",
     "pytest>=8.0",
 ]
 
