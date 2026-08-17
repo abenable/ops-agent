@@ -157,7 +157,7 @@ export function Chat() {
                 </EmptyMedia>
                 <EmptyTitle>Ask anything</EmptyTitle>
                 <EmptyDescription>
-                  Example: "Why is the agent_api service slow?" or "Investigate the n8n endpoint."
+                  Example: "Why is the agent_api service slow?""
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
