@@ -9,7 +9,6 @@ import discord
 from discord.ext import commands
 
 from agent.bot.monitor import start_monitor
-from agent.bot.onboarding import post_project_notes, post_welcome
 from agent.bot.slash import setup_slash_commands
 from agent.config.settings import settings
 
@@ -121,8 +120,6 @@ def run_bot():
             logger.warning("Slash-command sync failed: %s", exc)
 
         _attach_discord_log_handler(bot)
-        asyncio.create_task(post_welcome(bot))
-        asyncio.create_task(post_project_notes(bot))
 
     @bot.event
     async def on_message(message: discord.Message):
@@ -138,7 +135,7 @@ def run_bot():
 
             question = re.sub(r"<@!?\d+>", "", message.content).strip()
             if not question:
-                await message.reply("What should I look into? Try `/info` for commands.")
+                await message.reply("What should I look into? Try `/status` or `/investigate`.")
                 return
             async with message.channel.typing():
                 answer = await investigator.investigate(question)

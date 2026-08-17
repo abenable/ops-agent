@@ -10,10 +10,8 @@ from discord.ext import commands
 
 from agent import investigate as investigator
 from agent.bot.monitor import get_monitored_endpoints
-from agent.bot.onboarding import post_project_notes
 from agent.bot.summarize import clean
-from agent.bot.utils import build_info_embed, format_container_list, split_discord_text
-from agent.config.settings import settings
+from agent.bot.utils import format_container_list, split_discord_text
 from agent.memory.repository import (
     add_watched_container,
     list_watched_containers,
@@ -30,12 +28,6 @@ async def _send_chunks(interaction: discord.Interaction, text: str) -> None:
 
 def setup_slash_commands(bot: commands.Bot) -> None:
     """Register slash commands on the bot's application-command tree."""
-
-    @bot.tree.command(name="info", description="Show bot info and support links")
-    async def slash_info(interaction: discord.Interaction):
-        await interaction.response.send_message(
-            embed=build_info_embed(bot.user), ephemeral=True
-        )
 
     @bot.tree.command(name="status", description="Summarize current infrastructure health")
     async def slash_status(interaction: discord.Interaction):
@@ -72,18 +64,13 @@ def setup_slash_commands(bot: commands.Bot) -> None:
         await _send_chunks(interaction, f"**Incident report — `{service}`**\n\n{text}")
 
     @bot.tree.command(name="containers", description="List Docker containers grouped by status")
-    @app_commands.describe(raw="Show the full raw list instead of a summary")
-    async def slash_containers(interaction: discord.Interaction, raw: bool = False):
+    async def slash_containers(interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         items = await docker.list_containers(all_containers=True)
         if not items:
             await interaction.followup.send(
                 "No containers found (is the Docker socket mounted?).", ephemeral=True
             )
-            return
-        if raw:
-            for chunk in split_discord_text(format_container_list(items)):
-                await interaction.followup.send(chunk)
             return
         summary = await clean(
             format_container_list(items),
@@ -92,7 +79,7 @@ def setup_slash_commands(bot: commands.Bot) -> None:
         )
         await interaction.followup.send(summary)
 
-    @bot.tree.command(name="watching", description="List configured monitoring endpoints")
+    @bot.tree.command(name="watching", description="List the HTTP endpoints polled by the monitor")
     async def slash_watching(interaction: discord.Interaction):
         endpoints = get_monitored_endpoints()
         if not endpoints:
@@ -100,7 +87,7 @@ def setup_slash_commands(bot: commands.Bot) -> None:
                 "No endpoints are configured for monitoring.", ephemeral=True
             )
             return
-        lines = ["**Monitored endpoints**"] + [
+        lines = ["**Monitored endpoints** (polled every cycle)"] + [
             f"- {name}: <{url}>" for name, url in endpoints.items()
         ]
         await interaction.response.send_message("\n".join(lines), ephemeral=True)
@@ -145,18 +132,6 @@ def setup_slash_commands(bot: commands.Bot) -> None:
             return
         lines = ["**Watched containers**"] + [f"- `{name}`" for name in names]
         await interaction.response.send_message("\n".join(lines), ephemeral=True)
-
-    @bot.tree.command(name="project-notes", description="Post or refresh the project-notes embed in #project-notes")
-    async def slash_project_notes(interaction: discord.Interaction):
-        if settings.discord_project_notes_channel_id is None:
-            await interaction.response.send_message(
-                "No #project-notes channel configured.", ephemeral=True
-            )
-            return
-        await post_project_notes(bot)
-        await interaction.response.send_message(
-            "Posted the project-notes embed to #project-notes.", ephemeral=True
-        )
 
     async def on_app_command_error(
         interaction: discord.Interaction, error: app_commands.AppCommandError

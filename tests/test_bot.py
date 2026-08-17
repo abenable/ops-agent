@@ -39,8 +39,8 @@ def test_slash_commands_registered():
     bot = FakeBot()
     setup_slash_commands(bot)
     for name in (
-        "info", "status", "investigate", "report", "containers",
-        "watching", "watch", "unwatch", "watchlist", "project-notes",
+        "status", "investigate", "report", "containers",
+        "watching", "watch", "unwatch", "watchlist",
     ):
         assert name in bot.tree.commands
 

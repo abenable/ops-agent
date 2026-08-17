@@ -29,20 +29,10 @@ class Settings(BaseSettings):
     discord_alert_channel_id: int | None = None
     discord_status_channel_id: int | None = None
     discord_log_channel_id: int | None = None
-    discord_welcome_channel_id: int | None = None
-    discord_project_notes_channel_id: int | None = None
-
-    # Bot info / support links shown by /info (all optional)
-    bot_creators: str = ""
-    bot_support_server: str = ""
-    bot_website: str = ""
-    bot_contact: str = ""
 
     # Endpoint monitoring loop
     monitored_endpoints: str = ""
     monitor_interval_seconds: int = 60
-    # Cadence for the periodic container-status snapshot posted to #status-updates.
-    status_snapshot_interval_seconds: int = 3600
 
     # Self-hosted LLM (OpenAI-compatible)
     llm_base_url: str = "http://100.64.0.7:4000/v1"
