@@ -35,12 +35,11 @@ Optional but recommended:
 | Variable | Purpose |
 | --- | --- |
 | `DISCORD_GUILD_ID` | Guild-scoped slash-command sync (faster while testing) |
-| `DISCORD_ALERT_CHANNEL_ID` | Where container-down alerts land |
-| `DISCORD_STATUS_CHANNEL_ID` | Recovery notes + periodic status snapshot |
+| `DISCORD_ALERT_CHANNEL_ID` | Where container-down and endpoint-down alerts land |
+| `DISCORD_STATUS_CHANNEL_ID` | Container and endpoint recovery notes |
 | `DISCORD_LOG_CHANNEL_ID` | The bot's own INFO+ log stream |
-| `DISCORD_WELCOME_CHANNEL_ID` / `DISCORD_PROJECT_NOTES_CHANNEL_ID` | Onboarding embeds |
-| `DOCKER_MONITOR` | `true` to enable the container poll loop |
-| `MONITORED_ENDPOINTS` | Comma-separated `name=url` pairs shown by `/watching` and `/status` |
+| `DOCKER_MONITOR` | `true` to enable the container poll (endpoint polling is always on when `MONITORED_ENDPOINTS` is set) |
+| `MONITORED_ENDPOINTS` | Comma-separated `name=url` pairs polled by the monitor for down/recovery alerts |
 
 See `.env.example` for the full list with comments. Every field maps to a
 setting in `src/agent/config/settings.py`.
@@ -61,5 +60,4 @@ uv sync
 python -m agent bot
 ```
 
-A successful start logs `Bot logged in as ...`, `Synced N slash command(s)`,
-and posts the welcome/project-notes embeds if those channels are configured.
+A successful start logs `Bot logged in as ...` and `Synced N slash command(s)`.

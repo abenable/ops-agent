@@ -10,13 +10,11 @@ browse the commands, or @mention / DM the bot with a plain question.
 | `/status` | LLM-cleaned summary of container + endpoint health |
 | `/investigate <question>` | Free-form agentic investigation using read-only tools |
 | `/report <service>` | Structured incident report for one service |
-| `/containers [raw]` | List Docker containers grouped by state |
-| `/watching` | List endpoints configured for background monitoring |
+| `/containers` | List Docker containers grouped by state |
+| `/watching` | List the HTTP endpoints polled by the background monitor |
 | `/watch <container>` | Add a container to the watch list (status updates + down-alerts) |
 | `/unwatch <container>` | Remove a container from the watch list |
 | `/watchlist` | List the containers currently being watched |
-| `/project-notes` | Post/refresh the project-notes embed |
-| `/info` | Bot info and support links |
 
 ## Worked examples
 

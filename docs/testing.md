@@ -5,7 +5,8 @@ uv run pytest                  # full suite — no external services needed
 uv run pytest -m integration   # only the live checks (real LLM / Discord token)
 ```
 
-The suite is 60 tests, all offline except the two integration-marked ones.
+The default run is 56 offline tests; the three integration-marked ones are
+excluded by `addopts` and run only via `pytest -m integration`.
 Nothing in the default run needs Docker, Discord, Prometheus, Loki, or an LLM —
 those boundaries are mocked.
 
@@ -14,7 +15,7 @@ those boundaries are mocked.
 | File | Tests | Covers |
 | --- | --- | --- |
 | `test_investigate.py` | 6 | The agentic loop: tool execution, direct answers, tool errors fed back to the model, the `MAX_TOOL_STEPS` cap + final-summary fallback, LLM outage handling, the `/report` incident template |
-| `test_monitor.py` | 12 | The alert loop: endpoint parsing, running→down and down→running transitions, no false alert on the first poll after a restart, watch-list/filter scoping, state pruning, status snapshots |
+| `test_monitor.py` | 13 | The alert loop: endpoint parsing, endpoint probing and down/recovery alerts, running→down and down→running transitions, no false alert on the first poll after a restart, watch-list/filter scoping, state pruning, the end-to-end demo scenario |
 | `test_services.py` | 7 | The minimal clients: bearer-token headers for Prometheus/Loki, invalid-label rejection, Loki's range-endpoint regression, Docker log-stream demuxing |
 | `test_docker_tools.py` | 6 | The Docker LangChain tools: status/logs output, tail cap, control-byte stripping, empty `DOCKER_HOST` fallback |
 | `test_summarize.py` | 12 | LLM output cleanup: Discord markdown normalization (headings, tables→bullets), length caps, raw-output fallback when the LLM fails |
@@ -22,7 +23,6 @@ those boundaries are mocked.
 | `test_normalize.py` | 3 | Separator-agnostic name matching and container resolution |
 | `test_memory.py` | 2 | Watch-list SQLite roundtrip and fuzzy removal |
 | `test_bot.py` | 3 | Message chunking, slash-command registration, Discord log forwarding |
-| `test_onboarding.py` | 2 | Welcome / project-notes embeds |
 | `test_llm.py` | 2 | Client construction + a live ping (integration-marked) |
 | `test_discord_token.py` | 1 | Token sanity check (integration-marked) |
 

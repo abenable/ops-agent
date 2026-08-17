@@ -15,8 +15,10 @@ Prerequisites: the compose stack is up (`docker compose up --build`),
 /status
 ```
 
-Shows all containers running (bot, prometheus, loki, promtail, node-exporter,
-cadvisor) and the monitored endpoints.
+Shows every container on the host — this stack's are `marconi-agent-bot`,
+`marconi-agent-prometheus`, `marconi-agent-loki`, `marconi-agent-promtail` —
+plus the monitored endpoints. (node-exporter and cadvisor run on the host
+outside this compose project; they appear only if deployed there.)
 
 ## 2. Break something
 

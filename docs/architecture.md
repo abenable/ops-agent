@@ -51,7 +51,7 @@ Supporting stores:
 
 - **SQLite** (`data/agent.db`, via `memory/repository.py`) — the watched-container
   list managed with `/watch`, `/unwatch`, `/watchlist`.
-- **In-memory monitor state** (`bot/monitor.py`) — last known container state,
+- **In-memory monitor state** (`bot/monitor.py`) — last known container and endpoint state,
   used to fire down/recovery alerts on transitions. Rebuilt on every restart;
   the first poll baselines without alerting.
 
@@ -64,10 +64,12 @@ Supporting stores:
   chunked to the 2000-char limit.
 - **`/report <service>`** — same loop, fixed incident template (Summary →
   What happened → Evidence → Likely cause → Recommended next steps).
-- **Alerts** — the monitor loop compares container states across polls;
-  running→down posts a critical embed to `#alerts`, down→running posts a
-  recovery note to `#status-updates`. Scope: containers matching
-  `DOCKER_NAME_FILTER` plus the watch list.
+- **Alerts** — the monitor loop compares container states and endpoint
+  reachability across polls; a down transition posts a critical embed to
+  `#alerts`, a recovery posts a note to `#status-updates`. Scope: containers
+  matching `DOCKER_NAME_FILTER` plus the watch list, and every
+  `MONITORED_ENDPOINTS` entry. The first observation of anything only
+  baselines it, so a restart never alerts.
 
 ## Safety boundaries
 
@@ -82,4 +84,4 @@ Supporting stores:
 ## Known limitations
 
 See the README's Limitations section — in short: tool-calling model required,
-Docker-only alerting, in-memory monitor state, no RBAC, single-node SQLite.
+no PromQL alert rules, in-memory monitor state, no RBAC, single-node SQLite.

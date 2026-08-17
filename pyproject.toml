@@ -31,6 +31,9 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.pytest.ini_options]
+# Integration tests hit the real LLM endpoint and Discord API, so they are
+# excluded by default; `pytest -m integration` overrides this.
+addopts = "-m 'not integration'"
 markers = [
     "integration: live external API checks (LLM, Discord, etc.)",
 ]
