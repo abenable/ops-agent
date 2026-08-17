@@ -41,7 +41,6 @@ class Settings(BaseSettings):
         default="",
         validation_alias="LLM_API_KEY",
     )
-    llm_disable_thinking: bool = False
 
     # Monitoring / logging integrations
     prometheus_url: str = "http://localhost:9090"
