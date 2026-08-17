@@ -152,32 +152,6 @@ services:
       - loki
     restart: unless-stopped
 
-  # Host-level metrics (CPU, memory, disk) for Prometheus.
-  node-exporter:
-    container_name: marconi-agent-node-exporter
-    image: prom/node-exporter:latest
-    pid: host
-    volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
-    command:
-      - --path.procfs=/host/proc
-      - --path.sysfs=/host/sys
-      - --path.rootfs=/rootfs
-    restart: unless-stopped
-
-  # Per-container metrics (CPU, memory, network) for Prometheus.
-  cadvisor:
-    container_name: marconi-agent-cadvisor
-    image: gcr.io/cadvisor/cadvisor:latest
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker:/var/lib/docker:ro
-    restart: unless-stopped
-
 volumes:
   prom_data:
   loki_data:
