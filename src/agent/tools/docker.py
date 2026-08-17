@@ -14,9 +14,19 @@ from agent.normalize import normalize
 # ---------------------------------------------------------------------------
 
 
+def _docker_host() -> str:
+    """DOCKER_HOST from the env, falling back to the local socket.
+
+    ``os.environ.get(..., default)`` alone is not enough: docker-compose and
+    ``.env`` files often set ``DOCKER_HOST=`` explicitly, and an empty string
+    would otherwise reach the transport layer and kill every Docker call.
+    """
+    return os.environ.get("DOCKER_HOST") or "unix:///var/run/docker.sock"
+
+
 def _docker_client() -> httpx.AsyncClient:
     """Build an httpx client for the local Docker socket or TCP host."""
-    docker_host = os.environ.get("DOCKER_HOST", "unix:///var/run/docker.sock")
+    docker_host = _docker_host()
     if docker_host.startswith("unix://"):
         transport = httpx.AsyncHTTPTransport(uds=docker_host[7:])
         # Docker API over a Unix socket expects a localhost Host header.
@@ -30,7 +40,7 @@ def _docker_client() -> httpx.AsyncClient:
 
 def _docker_available() -> bool:
     """Best-effort check for a usable Docker socket."""
-    docker_host = os.environ.get("DOCKER_HOST", "unix:///var/run/docker.sock")
+    docker_host = _docker_host()
     if docker_host.startswith("tcp://"):
         return True
     if docker_host.startswith("unix://"):

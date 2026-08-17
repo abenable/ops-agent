@@ -59,3 +59,15 @@ def test_docker_logs_strips_control_bytes():
         out = asyncio.run(docker_logs.ainvoke({"container": "agent_api", "tail": 5}))
     assert "\x02" not in out
     assert "abc" in out
+
+
+def test_empty_docker_host_env_falls_back_to_default_socket(monkeypatch):
+    """Regression: DOCKER_HOST='' (a common .env/compose placeholder) must behave
+    as unset, not reach the transport layer and kill every Docker call."""
+    from agent.tools import docker
+
+    monkeypatch.setenv("DOCKER_HOST", "")
+    assert docker._docker_host() == "unix:///var/run/docker.sock"
+
+    monkeypatch.setenv("DOCKER_HOST", "tcp://docker:2375")
+    assert docker._docker_host() == "tcp://docker:2375"
