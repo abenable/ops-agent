@@ -12,11 +12,11 @@ configs:
 
         - job_name: 'node-exporter'
           static_configs:
-            - targets: ['host.docker.internal:9100']
+            - targets: ['node-exporter:9100']
 
         - job_name: 'cadvisor'
           static_configs:
-            - targets: ['host.docker.internal:8080']
+            - targets: ['cadvisor:8080']
 
   loki-config:
     content: |
@@ -104,7 +104,7 @@ services:
     image: prom/prometheus:latest
     ports:
       - "9090:9090"
-    # api/bot run on network_mode: host, so they're reachable from this
+    # The bot runs on network_mode: host, so it's reachable from this
     # bridge-networked container only via the host gateway, not by service name.
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -146,6 +146,32 @@ services:
     command: -config.file=/etc/promtail/config.yml
     depends_on:
       - loki
+    restart: unless-stopped
+
+  # Host-level metrics (CPU, memory, disk) for Prometheus.
+  node-exporter:
+    container_name: marconi-agent-node-exporter
+    image: prom/node-exporter:latest
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+    restart: unless-stopped
+
+  # Per-container metrics (CPU, memory, network) for Prometheus.
+  cadvisor:
+    container_name: marconi-agent-cadvisor
+    image: gcr.io/cadvisor/cadvisor:latest
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
     restart: unless-stopped
 
 volumes:
