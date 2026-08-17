@@ -56,7 +56,7 @@ def test_poll_containers_alerts_on_filtered_container_stopping(monkeypatch):
         _env_file=None,
     )
     monkeypatch.setattr(monitor, "settings", settings)
-    monkeypatch.setattr(monitor, "list_watched_containers", lambda: [])
+    monkeypatch.setattr(monitor, "list_watched_containers", list)
     monitor._container_state.clear()
 
     bot = MagicMock()
@@ -80,7 +80,7 @@ def test_poll_containers_no_alert_on_first_poll_after_restart(monkeypatch):
     """
     settings = Settings(docker_monitor=True, discord_alert_channel_id=1, _env_file=None)
     monkeypatch.setattr(monitor, "settings", settings)
-    monkeypatch.setattr(monitor, "list_watched_containers", lambda: [])
+    monkeypatch.setattr(monitor, "list_watched_containers", list)
     monitor._container_state.clear()
 
     already_down = [{"Names": ["/marconi-agent-prometheus"], "State": "exited", "Status": "Exited"}]
@@ -98,7 +98,7 @@ def test_poll_containers_recovery_alert_to_status_channel(monkeypatch):
         discord_alert_channel_id=1, discord_status_channel_id=2, _env_file=None,
     )
     monkeypatch.setattr(monitor, "settings", settings)
-    monkeypatch.setattr(monitor, "list_watched_containers", lambda: [])
+    monkeypatch.setattr(monitor, "list_watched_containers", list)
     monitor._container_state.clear()
     monitor._container_state["marconi-agent-api"] = "exited"
 
@@ -166,7 +166,7 @@ def test_poll_containers_empty_filter_tracks_all(monkeypatch):
     """
     settings = Settings(docker_monitor=True, docker_name_filter="", _env_file=None)
     monkeypatch.setattr(monitor, "settings", settings)
-    monkeypatch.setattr(monitor, "list_watched_containers", lambda: [])
+    monkeypatch.setattr(monitor, "list_watched_containers", list)
     monitor._container_state.clear()
     containers = [
         {"Names": ["/vllm"], "State": "running", "Status": "Up"},
@@ -185,7 +185,7 @@ def test_poll_containers_prunes_out_of_scope_state(monkeypatch):
         _env_file=None,
     )
     monkeypatch.setattr(monitor, "settings", settings)
-    monkeypatch.setattr(monitor, "list_watched_containers", lambda: [])
+    monkeypatch.setattr(monitor, "list_watched_containers", list)
     monitor._container_state.clear()
     monitor._container_state.update({"marconi-agent-api": "running", "old": "running"})
 

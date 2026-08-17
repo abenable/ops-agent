@@ -29,8 +29,8 @@ def _sanitize(value: str) -> str:
 
 def _split_row(line: str) -> list[str]:
     s = line.strip()
-    s = s[1:] if s.startswith("|") else s
-    s = s[:-1] if s.endswith("|") else s
+    s = s.removeprefix("|")
+    s = s.removesuffix("|")
     return [c.strip() for c in s.split("|")]
 
 
@@ -46,8 +46,7 @@ def _convert_tables(text: str) -> str:
     i = 0
     while i < len(lines):
         if i + 1 < len(lines) and _ROW_RE.match(lines[i].strip()) and _SEP_RE.match(lines[i + 1].strip()):
-            header = _split_row(lines[i])
-            i += 2
+            i += 2  # skip the header row and its --- separator
             rows: list[list[str]] = []
             while i < len(lines) and _ROW_RE.match(lines[i].strip()):
                 rows.append(_split_row(lines[i]))
@@ -118,7 +117,7 @@ async def clean(raw: str, *, service: str, action: str) -> str:
 
     try:
         result = (await get_llm(temperature=0.0).ainvoke(prompt)).content.strip()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - the LLM call can fail in many ways
         return _fit(
             f"*LLM clean unavailable ({exc}); showing raw output:*\n"
             f"```\n{raw[:_MAX_DISPLAY]}\n```"

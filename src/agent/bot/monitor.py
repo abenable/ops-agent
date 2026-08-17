@@ -50,7 +50,7 @@ async def _poll_containers(bot) -> None:
     watched = set(list_watched_containers())
     try:
         containers = await docker.list_containers(all_containers=True)
-    except Exception:
+    except Exception:  # noqa: BLE001 - one bad poll must not kill the monitor loop
         return
 
     name_filter = settings.docker_name_filter.lower()

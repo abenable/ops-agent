@@ -33,8 +33,8 @@ class DiscordLogHandler(logging.Handler):
             return
         try:
             self.queue.put_nowait(self.format(record))
-        except Exception:  # pragma: no cover
-            pass
+        except Exception:  # noqa: BLE001, S110 - logging.Handler.emit() must never raise
+            pass  # pragma: no cover
 
     async def pump(self) -> None:
         # Resolve via cache, falling back to an API fetch — get_channel() is often
@@ -43,7 +43,7 @@ class DiscordLogHandler(logging.Handler):
         if channel is None:
             try:
                 channel = await self.bot.fetch_channel(self.channel_id)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - discord.py can raise many types here
                 print(
                     f"Discord log channel {self.channel_id} unreachable: {exc}",
                     file=sys.stderr,
@@ -53,7 +53,7 @@ class DiscordLogHandler(logging.Handler):
         # Confirm the wiring loudly so an empty channel means "nothing happening", not "broken".
         try:
             await channel.send("Log forwarding active (INFO and above).")
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - discord.py can raise many types here
             print(f"Cannot send to Discord log channel: {exc}", file=sys.stderr)
             return
 
@@ -61,7 +61,7 @@ class DiscordLogHandler(logging.Handler):
             msg = await self.queue.get()
             try:
                 await channel.send(f"```{msg[:1900]}```")
-            except Exception as exc:  # pragma: no cover
+            except Exception as exc:  # noqa: BLE001 -- discord.py can raise many types here  # pragma: no cover
                 # Write to stderr, not the root logger, to avoid re-entering this handler.
                 print(f"Failed to send log to Discord: {exc}", file=sys.stderr)
 
@@ -116,7 +116,7 @@ def run_bot():
             else:
                 synced = await bot.tree.sync()
             logger.info("Synced %d slash command(s)", len(synced))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - discord.py can raise many types here
             logger.warning("Slash-command sync failed: %s", exc)
 
         _attach_discord_log_handler(bot)

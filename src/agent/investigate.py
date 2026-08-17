@@ -75,7 +75,7 @@ async def _run_loop(question: str) -> str:
             else:
                 try:
                     output = await tool.ainvoke(call["args"])
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 - tool can raise anything
                     output = f"(tool '{call['name']}' failed: {exc})"
             messages.append(ToolMessage(content=str(output), tool_call_id=call["id"]))
 
