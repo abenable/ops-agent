@@ -36,8 +36,14 @@ docstrings the model actually sees when deciding what to call.
   tool, so the model cannot affect infrastructure — it can only recommend
   actions for a human operator.
 - Names never reach a shell: Docker access goes through the Engine API over
-  the local socket (mounted read-only in compose), Prometheus/Loki through
-  HTTP GET only. Label names are validated against `[A-Za-z_][A-Za-z0-9_]*`
-  before they enter a URL path.
+  the local socket, Prometheus/Loki through HTTP GET only. Label names are
+  validated against `[A-Za-z_][A-Za-z0-9_]*` before they enter a URL path.
+  This matters because tool arguments are chosen by the model, from content
+  the model just read — an argv would be an injection path, a URL path is not.
+- The Docker socket mount is **not** what makes this safe. `:ro` in compose
+  only makes the socket file read-only; the Engine API behind it stays
+  writable, and socket access is root-equivalent on the host. The boundary is
+  that `ALL_TOOLS` contains no mutating call — anything with that socket could
+  do more, so keep it off any component that does not need it.
 - Outputs are truncated (≈4 KB per call) and the loop is bounded by
   `MAX_TOOL_STEPS`, so a confused model cannot runaway-query the backends.

@@ -117,6 +117,10 @@ This is an MVP built for a controlled environment. Known limitations:
   a restart never produces a false alarm).
 - **No RBAC** — any member who can see the bot's channel can run any command.
   All LLM-reachable tools are read-only by construction.
+- **The bot process holds the Docker socket** — which is root-equivalent on the
+  host. The `:ro` flag in compose restricts the socket file, not the Engine API.
+  The model is constrained by the tool surface (no mutating tool exists), not by
+  the mount, so treat the bot process itself as privileged.
 - **Single-node SQLite** — stores the watched-container list; fine for one bot
   instance.
 

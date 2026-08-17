@@ -80,6 +80,15 @@ Supporting stores:
   `RANGE_MAX_HOURS`, per-tool output truncation) to bound cost and prompt size.
 - User-supplied service names never reach a shell; Docker access is via the
   Engine API over the local socket, and Prometheus/Loki via HTTP GET only.
+  Tool arguments come from the model, so keeping them out of an argv removes
+  the injection path entirely rather than relying on correct quoting.
+- **The socket mount is not a boundary.** Mounting `/var/run/docker.sock:ro`
+  restricts the socket file, not the Engine API — a process holding it can
+  still stop containers or start privileged ones, which is root-equivalent on
+  the host. What actually constrains the model is the tool surface: `tools/`
+  implements only GET-shaped calls and `ALL_TOOLS` exposes no mutating one.
+  Any future write action must sit behind human approval in the Discord layer,
+  never as a tool the loop can reach.
 
 ## Known limitations
 

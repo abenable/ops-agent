@@ -87,8 +87,11 @@ services:
     network_mode: host
     volumes:
       - ./data:/app/data
-      # Read-only host daemon access so /status, /containers, and the Docker
-      # tools see host containers.
+      # Host daemon access so /status, /containers, and the Docker tools see
+      # host containers. NOTE: `:ro` only makes the socket *file* read-only —
+      # the Engine API behind it is still fully writable, and socket access is
+      # root-equivalent on the host. The read-only guarantee comes from the
+      # tool surface (agent/tools/ exposes no mutating call), not this flag.
       - /var/run/docker.sock:/var/run/docker.sock:ro
     command: ["python", "-m", "agent", "bot"]
     restart: unless-stopped
@@ -138,7 +141,8 @@ services:
     container_name: marconi-agent-promtail
     image: grafana/promtail:latest
     volumes:
-      # Read-only Docker Engine API access for the docker_sd_configs job below.
+      # Docker Engine API access for the docker_sd_configs job below. As above,
+      # `:ro` does not restrict the API; promtail only ever reads from it.
       - /var/run/docker.sock:/var/run/docker.sock:ro
     configs:
       - source: promtail-config
