@@ -3,31 +3,8 @@
 from agent.bot.utils import (
     format_loki,
     format_prometheus,
-    format_status,
-    task_path,
     split_discord_text,
 )
-
-
-def test_task_path_rejects_traversal():
-    """task_path must refuse names that escape the tasks/ directory,
-    so /task ../../etc/passwd cannot read arbitrary files."""
-    assert task_path("../../etc/passwd") is None
-    assert task_path("foo/bar") is None
-    assert task_path("foo\\bar") is None
-    assert task_path("") is None
-
-
-def test_task_path_accepts_real_task():
-    """A real task name resolves to its .yml file in the package tasks dir."""
-    resolved = task_path("s1_status_healthy")
-    assert resolved is not None
-    assert resolved.name == "s1_status_healthy.yml"
-    assert resolved.exists()
-
-
-def test_task_path_returns_none_for_missing():
-    assert task_path("no-such-task") is None
 
 
 def test_split_discord_text_chunks_at_limit_and_prefers_newlines():
@@ -62,13 +39,6 @@ def test_format_loki_renders_plain_log_lines():
     assert format_loki({"data": {"result": []}}) == "No logs."
 
 
-def test_format_status_running_and_missing():
-    running = {"service": "web", "container": "web-1", "status": "running",
-               "detail": "Up 2 hours", "image": "nginx"}
-    assert "🟢 web-1 — running" in format_status(running)
-    assert format_status({"service": "ghost", "status": "not found"}) == "No container matching 'ghost'."
-
-
 def test_slash_commands_registered():
     from agent.bot.slash import setup_slash_commands
 
@@ -89,7 +59,10 @@ def test_slash_commands_registered():
 
     bot = FakeBot()
     setup_slash_commands(bot)
-    for name in ("status", "logs", "metrics", "incident", "ask", "info", "watch", "remediate"):
+    for name in (
+        "info", "status", "investigate", "report", "containers",
+        "watching", "watch", "unwatch", "watchlist", "project-notes",
+    ):
         assert name in bot.tree.commands
 
 

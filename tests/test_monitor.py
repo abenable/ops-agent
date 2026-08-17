@@ -1,13 +1,12 @@
-"""Tests for the background Discord endpoint monitor."""
+"""Tests for the background container monitor."""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from agent.bot import monitor
 from agent.config.settings import Settings
-from agent.helpers.sources import loki, prometheus
 
 
 @pytest.fixture
@@ -115,119 +114,6 @@ def test_poll_containers_recovery_alert_to_status_channel(monkeypatch):
     assert send_alert.await_args.args[0] == 2
 
 
-def _assert_source_client_headers(module, token_setting, monkeypatch):
-    """Helper: assert the source client sends Bearer <token> when configured."""
-    monkeypatch.setattr(module.settings, token_setting, "secret")
-    captured = {}
-
-    class FakeResponse:
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {}
-
-    fake_client = MagicMock()
-    fake_client.get = AsyncMock(return_value=FakeResponse())
-
-    fake_cm = MagicMock()
-    fake_cm.__aenter__ = AsyncMock(return_value=fake_client)
-    fake_cm.__aexit__ = AsyncMock(return_value=False)
-
-    with patch.object(module.httpx, "AsyncClient", return_value=fake_cm) as Client:
-        asyncio.run(module.query_prometheus("up") if hasattr(module, "query_prometheus") else module.query_loki("{app=\"x\"}"))
-        captured["kwargs"] = Client.call_args.kwargs
-
-    assert captured["kwargs"]["headers"] == {"Authorization": "Bearer secret"}
-
-
-def test_prometheus_token_sent_when_set(monkeypatch):
-    # Ensure no token leakage from global settings.
-    monkeypatch.setattr(prometheus.settings, "prometheus_token", "")
-    captured = {}
-
-    class FakeResponse:
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {}
-
-    fake_client = MagicMock()
-    fake_client.get = AsyncMock(return_value=FakeResponse())
-    fake_cm = MagicMock()
-    fake_cm.__aenter__ = AsyncMock(return_value=fake_client)
-    fake_cm.__aexit__ = AsyncMock(return_value=False)
-
-    with patch.object(prometheus.httpx, "AsyncClient", return_value=fake_cm) as Client:
-        asyncio.run(prometheus.query_prometheus("up"))
-        captured["kwargs"] = Client.call_args.kwargs
-
-    assert captured["kwargs"]["timeout"] == 10.0
-    assert captured["kwargs"]["headers"] == {}
-
-    # Now with a token set.
-    monkeypatch.setattr(prometheus.settings, "prometheus_token", "secret")
-    with patch.object(prometheus.httpx, "AsyncClient", return_value=fake_cm) as Client:
-        asyncio.run(prometheus.query_prometheus("up"))
-        assert Client.call_args.kwargs["headers"] == {"Authorization": "Bearer secret"}
-
-
-def test_query_loki_uses_range_endpoint_not_instant():
-    """Regression: Loki's instant /query endpoint rejects plain log-stream
-    selectors ("log queries are not supported as an instant query type"), so
-    query_loki must delegate to /query_range, not /query."""
-    class FakeResponse:
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {"status": "success"}
-
-    fake_client = MagicMock()
-    fake_client.get = AsyncMock(return_value=FakeResponse())
-    fake_cm = MagicMock()
-    fake_cm.__aenter__ = AsyncMock(return_value=fake_client)
-    fake_cm.__aexit__ = AsyncMock(return_value=False)
-
-    with patch.object(loki.httpx, "AsyncClient", return_value=fake_cm):
-        asyncio.run(loki.query_loki('{container="x"}'))
-
-    url = fake_client.get.call_args.args[0]
-    assert url.endswith("/loki/api/v1/query_range")
-    assert "start" in fake_client.get.call_args.kwargs["params"]
-
-
-def test_loki_token_sent_when_set(monkeypatch):
-    monkeypatch.setattr(loki.settings, "loki_token", "")
-    captured = {}
-
-    class FakeResponse:
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {}
-
-    fake_client = MagicMock()
-    fake_client.get = AsyncMock(return_value=FakeResponse())
-    fake_cm = MagicMock()
-    fake_cm.__aenter__ = AsyncMock(return_value=fake_client)
-    fake_cm.__aexit__ = AsyncMock(return_value=False)
-
-    with patch.object(loki.httpx, "AsyncClient", return_value=fake_cm) as Client:
-        asyncio.run(loki.query_loki('{app="x"}'))
-        captured["kwargs"] = Client.call_args.kwargs
-
-    assert captured["kwargs"]["timeout"] == 10.0
-    assert captured["kwargs"]["headers"] == {}
-
-    monkeypatch.setattr(loki.settings, "loki_token", "secret")
-    with patch.object(loki.httpx, "AsyncClient", return_value=fake_cm) as Client:
-        asyncio.run(loki.query_loki('{app="x"}'))
-        assert Client.call_args.kwargs["headers"] == {"Authorization": "Bearer secret"}
-
-
 def test_container_snapshot_posts_when_containers_watched(monkeypatch):
     settings = Settings(discord_status_channel_id=1)
     monkeypatch.setattr(monitor, "settings", settings)
@@ -287,7 +173,7 @@ def test_poll_containers_tracks_filtered_and_watched(monkeypatch):
 
     containers = [
         {"Names": ["/marconi-agent-api"], "State": "running", "Status": "Up 1 hour"},
-        {"Names": ["/marconi-agent-n8n"], "State": "running", "Status": "Up 1 hour"},
+        {"Names": ["/marconi-agent-db"], "State": "running", "Status": "Up 1 hour"},
         {"Names": ["/extra-app"], "State": "running", "Status": "Up 1 hour"},  # watched, not filtered
         {"Names": ["/untracked-sidecar"], "State": "exited", "Status": "Exited"},  # neither
     ]
@@ -298,14 +184,14 @@ def test_poll_containers_tracks_filtered_and_watched(monkeypatch):
     assert "untracked-sidecar" not in monitor._container_state
     assert monitor._container_state == {
         "marconi-agent-api": "running",
-        "marconi-agent-n8n": "running",
+        "marconi-agent-db": "running",
         "extra-app": "running",
     }
 
     # A tracked (filtered) container stops -> alert fires once.
     stopped = [
         {"Names": ["/marconi-agent-api"], "State": "exited", "Status": "Exited"},
-        {"Names": ["/marconi-agent-n8n"], "State": "running", "Status": "Up 1 hour"},
+        {"Names": ["/marconi-agent-db"], "State": "running", "Status": "Up 1 hour"},
         {"Names": ["/extra-app"], "State": "running", "Status": "Up 1 hour"},
     ]
     monkeypatch.setattr(monitor.docker, "list_containers", AsyncMock(return_value=stopped))

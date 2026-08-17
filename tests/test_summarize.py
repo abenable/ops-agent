@@ -93,7 +93,7 @@ def test_clean_runs_discordify_on_llm_output():
         "agent.bot.summarize.get_llm",
         return_value=FakeLLM("#### Build Workflow Index\nFinished processing 0 workflows."),
     ):
-        out = asyncio.run(summarize.clean("raw", service="n8n", action="show logs"))
+        out = asyncio.run(summarize.clean("raw", service="api", action="show logs"))
     assert "####" not in out
     assert "**Build Workflow Index**" in out
 

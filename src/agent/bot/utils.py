@@ -1,12 +1,9 @@
 """Discord-specific helpers."""
 
-from pathlib import Path
-
 import discord
 
 from agent.config.settings import settings
-from agent.tasks import task_path  # operator-facing alias; the on-disk unit is a task
-from agent.helpers import docker
+from agent.tools.docker import container_name
 
 
 def build_info_embed(bot_user: discord.ClientUser | None) -> discord.Embed:
@@ -44,7 +41,7 @@ def format_container_list(items: list[dict]) -> str:
         containers = groups[state]
         lines.append(f"**{state.capitalize()}** ({len(containers)})")
         for c in containers:
-            lines.append(f"- `{docker.container_name(c)}` — {c.get('Status', '')}")
+            lines.append(f"- `{container_name(c)}` — {c.get('Status', '')}")
         lines.append("")
     return "\n".join(lines).strip()
 
@@ -86,17 +83,6 @@ def format_prometheus(result: dict) -> str:
         value = s.get("value", [None, "?"])[1]
         lines.append(f"{name}: {value}")
     return "\n".join(lines)
-
-
-def format_status(result: dict) -> str:
-    """Render a get_service_status() dict as a one-line human summary."""
-    if result["status"] == "not found":
-        return f"No container matching '{result['service']}'."
-    dot = "🟢" if result["status"] == "running" else "🔴"
-    return (
-        f"{dot} {result['container']} — {result['status']} "
-        f"({result['detail']}) · {result['image']}"
-    )
 
 
 def format_loki(result: dict, limit: int = 25) -> str:

@@ -1,10 +1,9 @@
 """Startup messages for the #welcome and #project-notes channels.
 
-On connect the bot posts a help embed to #welcome (commands, channels, the
-task panel) and an architecture/design note to #project-notes. Both are
-pinned and refreshed in place: the bot edits its existing pinned message if it
-already posted one, so the channels don't accumulate stale copies across
-redeploys.
+On connect the bot posts a help embed to #welcome (commands, channels) and an
+architecture/design note to #project-notes. Both are pinned and refreshed in
+place: the bot edits its existing pinned message if it already posted one, so
+the channels don't accumulate stale copies across redeploys.
 """
 
 from __future__ import annotations
@@ -13,7 +12,6 @@ import logging
 
 import discord
 
-from agent.bot.tasks import available_tasks
 from agent.config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -26,7 +24,6 @@ _CHANNELS = [
     ("alerts", "discord_alert_channel_id", "\U0001F6A8 down-alerts"),
     ("status-updates", "discord_status_channel_id", "\U0001F4CA up/down transitions + status snapshot"),
     ("agent-logs", "discord_log_channel_id", "\U0001F4DD live agent activity (tool calls, workflow)"),
-    ("test-tasks", "discord_test_tasks_channel_id", "\U0001F9EA clickable task runner panel"),
 ]
 
 
@@ -43,9 +40,8 @@ def build_welcome_embed(bot_user: discord.ClientUser | None) -> discord.Embed:
     embed = discord.Embed(
         title=f"{name} \u2014 Infrastructure Ops Agent",
         description=(
-            "An LLM-driven ops agent for this Docker stack. It monitors "
-            "containers and answers agentic investigation questions. Tag me "
-            "or use a command."
+            "An AI-assisted monitor for this Docker stack. Ask it questions, "
+            "check service health, or get incident summaries."
         ),
         color=0x3498DB,
     )
@@ -53,18 +49,15 @@ def build_welcome_embed(bot_user: discord.ClientUser | None) -> discord.Embed:
         name="Commands (slash `/`)",
         inline=False,
         value=(
-            "`status <svc>` `containers` `logs <svc>` `metrics <svc>` "
-            "`ask <question>` `task <name>` `watch <name>` `info`"
+            "`status` `investigate <question>` `report <service>` `containers` "
+            "`watch <name>` `watchlist` `unwatch <name>` `watching` `info`"
         ),
     )
     embed.add_field(name="Channels", inline=False, value="\n".join(_configured_channels()))
     embed.add_field(
         name="Try it",
         inline=False,
-        value=(
-            "In `#test-tasks` click a task button, or ask me a question "
-            "with `/ask`. Watch `#agent-logs` to see the tools I call."
-        ),
+        value="Run `/status` for a health summary, or mention the bot with a question.",
     )
     return embed
 
@@ -73,9 +66,8 @@ def build_project_notes_embed() -> discord.Embed:
     embed = discord.Embed(
         title="Project notes \u2014 Marconi ops agent",
         description=(
-            "Self-hosted infrastructure-operations agent: a Discord bot + FastAPI "
-            "service that investigates its own Docker stack using a bounded "
-            "ReAct tool-calling loop."
+            "Self-hosted infrastructure-operations agent: a Discord bot that "
+            "monitors this Docker stack and answers ops questions."
         ),
         color=0x2ECC71,
     )
@@ -83,36 +75,17 @@ def build_project_notes_embed() -> discord.Embed:
         name="Architecture",
         inline=False,
         value=(
-            "**bot** (discord.py) and **api** (FastAPI, port 8123) share one loop "
-            "(`run_agentic_investigation`): the model calls read-only tools, each "
-            "result becomes a ToolMessage, capped at N steps; a guided fallback "
-            "synthesises prose if the cap is hit. State lives in a SQLite store "
-            "(watched containers)."
-        ),
-    )
-    embed.add_field(
-        name="Tools (read-only to the investigator)",
-        inline=False,
-        value=(
-            "`list_services` `docker_status` `docker_logs` `query_prometheus` "
-            "`query_prometheus_range` `list_metric_names` `get_label_values` "
-            "`query_loki` `query_loki_range`"
+            "**bot** (discord.py) runs a LangChain investigation loop with "
+            "read-only Docker/Prometheus/Loki tools, backed by the self-hosted "
+            "LLM. A background monitor loop polls containers and posts alerts; "
+            "a SQLite store keeps the watched-container list."
         ),
     )
     embed.add_field(name="Channels", inline=False, value="\n".join(_configured_channels()))
-    tasks = available_tasks() or ["(none)"]
-    embed.add_field(
-        name="Tasks",
-        inline=False,
-        value="\n".join(f"`{s}`" for s in tasks),
-    )
     embed.add_field(
         name="LLM",
         inline=False,
-        value=(
-            f"Provider `{settings.llm_provider or 'legacy'}`, model "
-            f"`{settings.llm_model}`. Switchable at runtime via `set_llm_provider`."
-        ),
+        value=f"Model `{settings.llm_model}`.",
     )
     return embed
 

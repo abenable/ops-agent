@@ -8,15 +8,13 @@ def test_welcome_embed_has_commands_and_channels():
     assert "Infrastructure Ops Agent" in embed.title
     fields = {f.name: f.value for f in embed.fields}
     assert "Commands (slash `/`)" in fields
-    assert "ask <question>" in fields["Commands (slash `/`)"]
+    assert "containers" in fields["Commands (slash `/`)"]
     assert "Channels" in fields
 
 
-def test_project_notes_embed_lists_architecture_tools_tasks():
+def test_project_notes_embed_lists_architecture_and_llm():
     embed = build_project_notes_embed()
     fields = {f.name: f.value for f in embed.fields}
     assert "Architecture" in fields
-    assert "list_services" in fields["Tools (read-only to the investigator)"]
-    assert "Tasks" in fields
-    assert "s1_status_healthy" in fields["Tasks"]
+    assert "Channels" in fields
     assert "LLM" in fields

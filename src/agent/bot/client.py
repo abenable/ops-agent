@@ -2,21 +2,16 @@
 
 import asyncio
 import logging
+import re
 import sys
 
 import discord
 from discord.ext import commands
 
-from agent.bot.monitor import get_monitored_endpoints, start_monitor
+from agent.bot.monitor import start_monitor
 from agent.bot.onboarding import post_project_notes, post_welcome
-from agent.bot.tasks import ensure_task_panel
-from agent.bot.summarize import discordify
-from agent.bot.utils import split_discord_text
-from agent.config.settings import settings
-from agent.bot.history import ask_with_memory
 from agent.bot.slash import setup_slash_commands
-from agent.llm.client import _resolve
-from agent.workflows.incident import llm_supports_tool_calls
+from agent.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -95,37 +90,6 @@ def _attach_discord_log_handler(bot: discord.Client) -> None:
     asyncio.create_task(handler.pump())
 
 
-async def _environment_context() -> str:
-    endpoints = get_monitored_endpoints()
-    endpoint_lines = [f"- {name}: {url}" for name, url in endpoints.items()]
-    base_url, model = _resolve(settings.llm_provider)
-    # Ground the agent in the live container list so it answers questions about
-    # containers from real data, not memory. The agent still decides whether to
-    # call tools; this just seeds the context with the truth, the way the
-    # monitored-endpoint and channel lines already do. Degrades to "(unreachable)"
-    # when the Docker socket is absent.
-    from agent.helpers import docker as _docker
-
-    try:
-        containers = await _docker.list_containers(all_containers=True)
-        names = [_docker.container_name(c) for c in containers]
-    except Exception:
-        names = []
-    container_line = ", ".join(names) if names else "(none / docker unreachable)"
-    return (
-        "Environment context:\n"
-        f"Running containers: {container_line}\n"
-        f"Monitored endpoints:\n{'\n'.join(endpoint_lines) if endpoint_lines else '- none configured'}\n"
-        f"Container-down alerting: docker_name_filter={settings.docker_name_filter or '(all containers)'}\n"
-        f"Alert channel: {settings.discord_alert_channel_id or 'not set'}\n"
-        f"Status channel: {settings.discord_status_channel_id or 'not set'}\n"
-        f"Prometheus: {settings.prometheus_url}\n"
-        f"Loki: {settings.loki_url}\n"
-        f"Model: {model} (provider={settings.llm_provider or 'legacy'}, base_url={base_url})\n"
-        "Available tools: menu, status, containers, logs, metrics, task, watching"
-    )
-
-
 def run_bot():
     intents = discord.Intents.default()
     intents.message_content = True
@@ -157,20 +121,8 @@ def run_bot():
             logger.warning("Slash-command sync failed: %s", exc)
 
         _attach_discord_log_handler(bot)
-        asyncio.create_task(ensure_task_panel(bot))
         asyncio.create_task(post_welcome(bot))
         asyncio.create_task(post_project_notes(bot))
-
-        # Check LLM capability in the background; a slow LLM probe should not delay
-        # the gateway heartbeat/ready acknowledgement.
-        async def _check_tools():
-            if not await llm_supports_tool_calls():
-                logger.warning(
-                    "Configured LLM does not appear to support OpenAI-style tool calls. "
-                    "Investigations will fall back to static summaries; tool-calling will not work."
-                )
-
-        asyncio.create_task(_check_tools())
 
     @bot.event
     async def on_message(message: discord.Message):
@@ -178,48 +130,19 @@ def run_bot():
         if message.author == bot.user or message.author.bot:
             return
 
-        # Respond to DMs and @mentions via the agentic loop.
+        # DMs and mentions go to the agentic investigation loop.
         is_dm = message.guild is None
         if is_dm or bot.user in message.mentions:
-            cleaned = (
-                message.content.replace(f"<@!{bot.user.id}>", "")
-                .replace(f"<@{bot.user.id}>", "")
-                .strip()
-            )
-            if not cleaned:
-                await message.reply(
-                    "Hey! Ask me anything about the infrastructure, or type `/info` for commands."
-                )
-                return
+            from agent import investigate as investigator
+            from agent.bot.utils import split_discord_text
 
-            channel_id = message.channel.id
-            context = await _environment_context()
-            prompt = (
-                "You are Oracle, a friendly infrastructure-operations assistant. "
-                "Use the environment context below, and the read-only Prometheus/Loki tools if needed. "
-                "Be brief and conversational; if you don't know, say so.\n\n"
-                "Answer the user's question directly; do not change the topic unless asked. "
-                "If the user asks what model or LLM powers you, use the Model line in the context. "
-                "For questions about containers, services, or endpoints, use the 'Running containers' "
-                "line in the context or call list_services — never list containers from memory. "
-                "Use the conversation history to resolve vague references such as 'logs', 'status', 'the web container', or 'that one' by reusing the exact container or service name mentioned earlier. "
-                "Only ask for clarification when no matching name exists in the history. "
-                "When a query returns results for several services or jobs, report on "
-                "every one of them, even the unremarkable ones — be brief per item, not "
-                "selective about which items you mention.\n\n"
-                f"{context}\n\n"
-                f"Question: {cleaned}"
-            )
-            try:
-                answer = await ask_with_memory(channel_id, cleaned, prompt=prompt)
-            except Exception as exc:  # pragma: no cover
-                logger.warning("Mention response failed: %s", exc)
-                answer = "My agent is unreachable right now — try a `/` command instead."
-
-            chunks = split_discord_text(discordify(answer))
-            if not chunks:
-                await message.reply("(no response)")
+            question = re.sub(r"<@!?\d+>", "", message.content).strip()
+            if not question:
+                await message.reply("What should I look into? Try `/info` for commands.")
                 return
+            async with message.channel.typing():
+                answer = await investigator.investigate(question)
+            chunks = split_discord_text(answer) or ["(empty answer)"]
             await message.reply(chunks[0])
             for chunk in chunks[1:]:
                 await message.channel.send(chunk)
