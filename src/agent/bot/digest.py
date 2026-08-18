@@ -5,10 +5,12 @@ daily digest, and on ``WEEKLY_REPORT_WEEKDAY`` it also posts the weekly
 roll-up. ``tasks.loop(time=...)`` has no missed-tick catch-up, so a bot that is
 down at 05:00 skips that day rather than posting late.
 
-The body is rendered from the monitor's own data, not summarized by the LLM —
-the numbers are already exact, and a paraphrase could only lose or invent
-detail. The one exception is the weekly narrative: when something flapped, the
-agent is asked to go read its logs and metrics, which no template can do.
+The **Details** section is rendered from the monitor's own data, never
+paraphrased by the LLM — the numbers are already exact, and a paraphrase could
+only lose or invent detail. A **Summary** section is generated on top of it
+for a fast read. The one exception in the details themselves is the weekly
+narrative: when something flapped, the agent is asked to go read its logs and
+metrics, which no template can do.
 """
 
 import logging
@@ -18,6 +20,7 @@ from discord.ext import tasks
 
 from agent.alerting import discord as discord_alert
 from agent.bot.monitor import get_monitored_endpoints, in_scope, probe
+from agent.bot.summarize import clean
 from agent.config.settings import settings
 from agent.tools import docker
 from agent.watchlist.repository import events_since, list_watched_containers
@@ -100,6 +103,16 @@ def _transitions(events: list[dict]) -> list[str]:
     ]
 
 
+async def _with_summary(body: str) -> str:
+    summary = await clean(
+        body,
+        service="today's infrastructure",
+        action="write a 2-3 sentence natural-language summary of this report, "
+        "highlighting anything noteworthy",
+    )
+    return f"**Summary**\n{summary}\n\n**Details**\n{body}"
+
+
 async def build_daily(now: datetime | None = None) -> str:
     """The last 24 hours: current state plus every transition since."""
     now = now or datetime.now(UTC)
@@ -107,7 +120,7 @@ async def build_daily(now: datetime | None = None) -> str:
     events = events_since(cutoff)
     lines = [*await _snapshot(), "", f"**Since {cutoff:%Y-%m-%d %H:%M} UTC**"]
     lines.extend(_transitions(events) or ["- no changes"])
-    return "\n".join(lines)
+    return await _with_summary("\n".join(lines))
 
 
 async def build_weekly(now: datetime | None = None) -> str:
@@ -128,7 +141,7 @@ async def build_weekly(now: datetime | None = None) -> str:
     flapping = sorted(t for t, s in stats.items() if s["outages"] >= _FLAP_THRESHOLD)
     if flapping:
         lines.extend(["", "**Why**", await _explain(flapping, days)])
-    return "\n".join(lines)
+    return await _with_summary("\n".join(lines))
 
 
 async def _explain(flapping: list[str], days: int) -> str:
@@ -162,7 +175,11 @@ async def post(bot, kind: str = "daily", now: datetime | None = None) -> None:
         title = f"Daily report — {now:%Y-%m-%d}"
     # Embed descriptions cap at 4096; a long weekly is posted as several chunks.
     chunks = [body[i : i + 3900] for i in range(0, len(body), 3900)] or [body]
-    await discord_alert.post_report(channel_id, title, chunks, bot)
+    thread_id = await discord_alert.post_report(channel_id, title, chunks, bot)
+    if thread_id is not None:
+        from agent.engine import seed
+
+        await seed(str(thread_id), body)
 
 
 async def run_tick(bot, now: datetime | None = None) -> None:

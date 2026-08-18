@@ -63,13 +63,14 @@ def test_post_report_forum_channel_opens_one_thread_with_all_chunks():
     import discord
 
     thread = AsyncMock()
+    thread.id = 999888777
     opened = MagicMock(thread=thread)
     channel = MagicMock(spec=discord.ForumChannel)
     channel.create_thread = AsyncMock(return_value=opened)
     bot = MagicMock()
     bot.get_channel.return_value = channel
 
-    asyncio.run(post_report(123, "Weekly report", ["chunk one", "chunk two"], bot))
+    result = asyncio.run(post_report(123, "Weekly report", ["chunk one", "chunk two"], bot))
 
     channel.create_thread.assert_awaited_once()
     kwargs = channel.create_thread.call_args.kwargs
@@ -77,6 +78,7 @@ def test_post_report_forum_channel_opens_one_thread_with_all_chunks():
     assert kwargs["embed"].description == "chunk one"
     thread.send.assert_awaited_once()
     assert thread.send.call_args.kwargs["embed"].description == "chunk two"
+    assert result == 999888777
 
 
 def test_post_report_text_channel_sends_one_embed_per_chunk():
@@ -84,11 +86,12 @@ def test_post_report_text_channel_sends_one_embed_per_chunk():
     bot = MagicMock()
     bot.get_channel.return_value = channel
 
-    asyncio.run(post_report(123, "Daily report", ["chunk one", "chunk two"], bot))
+    result = asyncio.run(post_report(123, "Daily report", ["chunk one", "chunk two"], bot))
 
     assert channel.send.await_count == 2
     titles = [call.kwargs["embed"].title for call in channel.send.await_args_list]
     assert titles == ["Daily report", "Daily report (cont.)"]
+    assert result == 123
 
 
 def test_post_report_never_raises_on_send_failure():
@@ -99,4 +102,5 @@ def test_post_report_never_raises_on_send_failure():
     bot = MagicMock()
     bot.get_channel.return_value = channel
 
-    asyncio.run(post_report(123, "Daily report", ["chunk"], bot))  # must not raise
+    result = asyncio.run(post_report(123, "Daily report", ["chunk"], bot))  # must not raise
+    assert result is None

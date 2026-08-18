@@ -32,6 +32,17 @@ def test_history_and_forget_roundtrip(monkeypatch):
     assert asyncio.run(scenario()) == []
 
 
+def test_seed_preloads_a_thread_before_the_first_real_turn(monkeypatch):
+    monkeypatch.setattr(engine, "get_llm", lambda **kw: _FlatLLM())
+
+    async def scenario():
+        await engine.seed("report-thread", "here is today's report")
+        await investigate.investigate("explain", thread_id="report-thread")
+        return [m.content for m in await memory.history("report-thread")]
+
+    assert asyncio.run(scenario()) == ["here is today's report", "explain", "ok"]
+
+
 def test_thread_config_defaults_to_a_fresh_thread():
     a = memory.thread_config()["configurable"]["thread_id"]
     b = memory.thread_config()["configurable"]["thread_id"]

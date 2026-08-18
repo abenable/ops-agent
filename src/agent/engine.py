@@ -14,7 +14,7 @@ so a workflow that wants a narrower tool set doesn't touch the loop itself.
 
 import logging
 
-from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.errors import GraphRecursionError
 from langgraph.graph import END, START, MessagesState, StateGraph
@@ -125,3 +125,15 @@ async def run(
     except GraphRecursionError:
         return await _summarize_after_budget(config, budget_prompt)
     return _text(final["messages"][-1].content)
+
+
+async def seed(thread_id: str, content: str) -> None:
+    """Pre-load a thread's memory with one message before any real turn.
+
+    For content posted by something other than a model turn — a scheduled
+    report, say — so a later mention in that thread has it as context.
+    Recorded as an ``AIMessage`` since it's what the agent itself put there.
+    """
+    await _GRAPH.aupdate_state(
+        thread_config(thread_id), {"messages": [AIMessage(content=content)]}, as_node="model"
+    )
