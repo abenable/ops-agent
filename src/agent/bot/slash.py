@@ -9,6 +9,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from agent.bot.digest import build_daily, build_weekly
+from agent.bot.digest import post as post_digest
 from agent.bot.monitor import get_monitored_endpoints
 from agent.bot.summarize import clean
 from agent.bot.utils import format_container_list, split_discord_text
@@ -68,15 +69,27 @@ def setup_slash_commands(bot: commands.Bot) -> None:
         await _send_chunks(interaction, f"**Incident report — `{service}`**\n\n{text}")
 
     @bot.tree.command(name="digest", description="Render the daily or weekly infra report now")
-    @app_commands.describe(period="Which report to render (default: daily)")
+    @app_commands.describe(
+        period="Which report to render (default: daily)",
+        post_to_reports=(
+            "Post it to the reports channel instead of just previewing it here "
+            "(seeds that thread's memory too, same as the scheduled digest)"
+        ),
+    )
     @app_commands.choices(
         period=[
             app_commands.Choice(name="daily", value="daily"),
             app_commands.Choice(name="weekly", value="weekly"),
         ]
     )
-    async def slash_digest(interaction: discord.Interaction, period: str = "daily"):
+    async def slash_digest(
+        interaction: discord.Interaction, period: str = "daily", post_to_reports: bool = False
+    ):
         await interaction.response.defer()
+        if post_to_reports:
+            await post_digest(interaction.client, period)
+            await interaction.followup.send(f"Posted the {period} report to the reports channel.")
+            return
         body = await (build_weekly() if period == "weekly" else build_daily())
         await _send_chunks(interaction, f"**{period.capitalize()} report**\n\n{body}")
 

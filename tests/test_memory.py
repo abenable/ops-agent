@@ -43,6 +43,32 @@ def test_seed_preloads_a_thread_before_the_first_real_turn(monkeypatch):
     assert asyncio.run(scenario()) == ["here is today's report", "explain", "ok"]
 
 
+def test_seeded_content_actually_reaches_the_model(monkeypatch):
+    """The seed must survive agent.memory.window() trimming, not just land in
+    the raw checkpoint — a lone leading AIMessage gets silently dropped by
+    window()'s start_on="human", so this must be visible in what the model
+    is actually sent, not only in memory.history()."""
+    seen: list[list[str]] = []
+
+    class _RecordingLLM:
+        def bind_tools(self, _tools):
+            return self
+
+        async def ainvoke(self, messages):
+            seen.append([str(m.content) for m in messages])
+            return AIMessage(content="ok")
+
+    monkeypatch.setattr(engine, "get_llm", lambda **kw: _RecordingLLM())
+
+    async def scenario():
+        await engine.seed("seeded-thread", "here is today's report")
+        await investigate.investigate("explain", thread_id="seeded-thread")
+
+    asyncio.run(scenario())
+
+    assert "here is today's report" in seen[0]
+
+
 def test_thread_config_defaults_to_a_fresh_thread():
     a = memory.thread_config()["configurable"]["thread_id"]
     b = memory.thread_config()["configurable"]["thread_id"]
