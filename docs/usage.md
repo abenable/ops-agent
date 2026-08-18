@@ -124,7 +124,7 @@ It reads four things:
 4. Loki logs, including label discovery, instant and range queries.
 
 It will not restart a container, edit a config, scale anything, or run a shell command.
-This is not a policy the model is asked to follow, it is the shape of the tool surface:
+This is not a policy the model is asked to follow. It is the shape of the tool surface:
 nothing in `src/agent/tools/` exposes a call that changes state, so there is no path
 from a model decision to a write. When something needs doing, the answer names the
 action for you to take.

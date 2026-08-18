@@ -228,8 +228,8 @@ The inlined `scrape_configs` has three jobs: `prometheus` scraping itself at
 
 Only the first one resolves. Neither `node-exporter` nor `cadvisor` is defined as
 a service in this compose file, so those two jobs sit permanently in an error
-state and no host or per-container metrics are collected. Out of the box, the
-only metrics available to `query_prometheus` are Prometheus's own. Add
+state and no host or per-container metrics are collected. Until they are added,
+the only metrics available to `query_prometheus` are Prometheus's own. Add
 `prom/node-exporter` and `gcr.io/cadvisor/cadvisor` services to the compose file,
 on the same bridge network so the existing target names resolve, if you want CPU,
 memory, disk and per-container metrics.
