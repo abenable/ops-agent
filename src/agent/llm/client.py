@@ -5,6 +5,8 @@ from pydantic import SecretStr
 
 from agent.config.settings import settings
 
+_TIMEOUT_SECONDS = 60.0
+
 
 def get_llm(temperature: float = 0.0) -> ChatOpenAI:
     return ChatOpenAI(
@@ -12,4 +14,5 @@ def get_llm(temperature: float = 0.0) -> ChatOpenAI:
         api_key=SecretStr(settings.llm_api_key),
         base_url=settings.llm_base_url,
         temperature=temperature,
+        timeout=_TIMEOUT_SECONDS,
     )

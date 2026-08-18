@@ -16,7 +16,6 @@ logger = logging.getLogger(__name__)
 
 # Guard on_ready re-entrancy after Discord gateway reconnects.
 _setup_done = False
-# Keep a reference so the log pump task isn't garbage-collected mid-run.
 _pump_task: asyncio.Task | None = None
 
 
@@ -96,9 +95,6 @@ def run_bot():
     intents = discord.Intents.default()
     intents.message_content = True
 
-    # commands.Bot requires a prefix, but on_message is overridden below and
-    # never calls process_commands — no prefix command can ever fire. Every
-    # command here is a slash command (bot.tree), which doesn't use this.
     bot = commands.Bot(command_prefix=commands.when_mentioned, intents=intents)
 
     @bot.event

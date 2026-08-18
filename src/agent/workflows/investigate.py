@@ -10,8 +10,6 @@ from agent.tools import ALL_TOOLS
 
 logger = logging.getLogger(__name__)
 
-# A plain dict, not a hardcoded ``tools=ALL_TOOLS`` at the call site, so tests
-# can substitute a fake tool by name without patching the engine.
 _TOOLS_BY_NAME = {t.name: t for t in ALL_TOOLS}
 
 _SYSTEM_PROMPT = """You are Oracle, a terse infrastructure-operations assistant for the Marconi lab.
