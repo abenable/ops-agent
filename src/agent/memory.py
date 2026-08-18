@@ -5,22 +5,59 @@ thread per Discord channel. It lives here, not inside ``investigate.py``, so
 anything else (another loop, an eval notebook) can share the same threads,
 read one back, or drop it.
 
-In-memory means in-memory: threads die with the process. Swap ``CHECKPOINTER``
-for a ``SqliteSaver`` (needs ``langgraph-checkpoint-sqlite``) if they should
-survive a restart — nothing else in this module changes.
+Checkpoints are written to the same SQLite file as the watch list, so a thread
+survives a bot restart and is readable from any process — a digest posted by a
+one-off script seeds the same thread the running bot later answers in.
+
+Note what this is *not*: memory of one conversation, replayed per ``thread_id``.
+There is no cross-thread recall, and ``window()`` still trims the oldest turns
+out of a long thread, so a large seeded report is the first thing evicted.
 """
 
+from contextlib import AsyncExitStack
 from uuid import uuid4
 
 from langchain_core.messages import BaseMessage, trim_messages
 from langchain_core.runnables import RunnableConfig
-from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
-from agent.config.settings import settings
+from agent.config.settings import DB_PATH, settings
 
-# Shared by every graph that wants to remember a thread. Compile with
-# ``graph.compile(checkpointer=CHECKPOINTER)``.
-CHECKPOINTER = InMemorySaver()
+_CHECKPOINTER: AsyncSqliteSaver | None = None
+_STACK: AsyncExitStack | None = None
+
+
+async def checkpointer():
+    """The process-wide saver, opened on first use inside the running loop.
+
+    Not a module-level constant: ``AsyncSqliteSaver`` owns an ``aiosqlite``
+    connection bound to the loop it is opened in, so it has to be built inside
+    one. Tests inject an ``InMemorySaver`` by setting ``_CHECKPOINTER``, which
+    is returned as-is.
+    """
+    global _CHECKPOINTER, _STACK
+    if _CHECKPOINTER is None:
+        _STACK = AsyncExitStack()
+        _CHECKPOINTER = await _STACK.enter_async_context(
+            AsyncSqliteSaver.from_conn_string(str(DB_PATH))
+        )
+        # Create the tables up front: adelete_thread (/reset) is the one entry
+        # point that does not create them on demand.
+        await _CHECKPOINTER.setup()
+    return _CHECKPOINTER
+
+
+async def close_memory() -> None:
+    """Close the checkpointer's connection. Must be called before the loop ends.
+
+    aiosqlite runs the connection on a worker thread that keeps blocking on its
+    queue after the loop closes, so skipping this hangs the process at exit
+    rather than leaking quietly.
+    """
+    global _CHECKPOINTER, _STACK
+    if _STACK is not None:
+        await _STACK.aclose()
+    _CHECKPOINTER = _STACK = None
 
 
 def thread_config(thread_id: str | None = None, **extra) -> RunnableConfig:
@@ -54,7 +91,8 @@ def window(messages: list[BaseMessage]) -> list[BaseMessage]:
 
 async def history(thread_id: str) -> list[BaseMessage]:
     """Every message remembered for a thread; empty if it has never run."""
-    checkpoint = await CHECKPOINTER.aget(thread_config(thread_id))
+    saver = await checkpointer()
+    checkpoint = await saver.aget(thread_config(thread_id))
     if checkpoint is None:
         return []
     return checkpoint["channel_values"].get("messages", [])
@@ -62,4 +100,5 @@ async def history(thread_id: str) -> list[BaseMessage]:
 
 async def forget(thread_id: str) -> None:
     """Drop a thread's conversation, so the next question starts clean."""
-    await CHECKPOINTER.adelete_thread(thread_id)
+    saver = await checkpointer()
+    await saver.adelete_thread(thread_id)

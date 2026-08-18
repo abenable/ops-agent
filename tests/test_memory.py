@@ -77,3 +77,24 @@ def test_thread_config_defaults_to_a_fresh_thread():
         "thread_id": "chan-9",
         "llm": "x",
     }
+
+
+def test_memory_persists_across_connections(monkeypatch, tmp_database):
+    """A thread must outlive the checkpointer connection that wrote it.
+
+    Uses the real SQLite saver rather than the InMemorySaver the other tests
+    run on, and closes it between writes — the bot restarting is exactly this.
+    """
+    monkeypatch.setattr(engine, "get_llm", lambda **kw: _FlatLLM())
+    monkeypatch.setattr(memory, "_CHECKPOINTER", None)
+
+    async def scenario():
+        try:
+            await engine.seed("durable-thread", "here is today's report")
+            await memory.close_memory()
+            monkeypatch.setattr(engine, "_GRAPH", None)
+            return [m.content for m in await memory.history("durable-thread")]
+        finally:
+            await memory.close_memory()
+
+    assert asyncio.run(scenario()) == ["here is today's report"]

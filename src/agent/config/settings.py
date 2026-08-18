@@ -1,5 +1,7 @@
 """Pydantic settings loaded from environment and `.env`."""
 
+from pathlib import Path
+
 from dotenv import find_dotenv, load_dotenv
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -92,3 +94,11 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# The one SQLite file: the watch list and event log (agent.watchlist.repository)
+# and the conversation checkpointer (agent.memory) both live in it. Resolved
+# once, relative to the repo root, so every process agrees on the same file.
+DB_PATH = Path(settings.database_url.replace("sqlite:///", ""))
+if not DB_PATH.is_absolute():
+    DB_PATH = Path(__file__).resolve().parents[3] / DB_PATH
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)

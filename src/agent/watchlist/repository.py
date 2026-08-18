@@ -3,20 +3,13 @@ transition log (what the daily and weekly digests report on)."""
 
 import sqlite3
 from datetime import datetime
-from pathlib import Path
 
-from agent.config.settings import settings
+from agent.config.settings import DB_PATH
 from agent.normalize import resolve_one
-
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-_DB_PATH = Path(settings.database_url.replace("sqlite:///", ""))
-if not _DB_PATH.is_absolute():
-    _DB_PATH = _REPO_ROOT / _DB_PATH
-_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 
 def _connect():
-    return sqlite3.connect(str(_DB_PATH))
+    return sqlite3.connect(str(DB_PATH))
 
 
 # Transitions are rare, but a crash-looping container can log one per poll, so

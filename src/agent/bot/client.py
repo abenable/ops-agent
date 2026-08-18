@@ -11,6 +11,7 @@ from agent.bot.digest import start_digests
 from agent.bot.monitor import start_monitor
 from agent.bot.slash import setup_slash_commands
 from agent.config.settings import settings
+from agent.memory import close_memory
 
 logger = logging.getLogger(__name__)
 
@@ -91,11 +92,24 @@ def _attach_discord_log_handler(bot: discord.Client) -> None:
     _pump_task = asyncio.create_task(handler.pump())
 
 
+class _Bot(commands.Bot):
+    """The bot, plus the one shutdown step conversation memory needs.
+
+    The checkpointer holds an aiosqlite connection whose worker thread outlives
+    the event loop; closing it here is what keeps `docker stop` from hanging
+    until it gives up and sends SIGKILL.
+    """
+
+    async def close(self) -> None:
+        await close_memory()
+        await super().close()
+
+
 def run_bot():
     intents = discord.Intents.default()
     intents.message_content = True
 
-    bot = commands.Bot(command_prefix=commands.when_mentioned, intents=intents)
+    bot = _Bot(command_prefix=commands.when_mentioned, intents=intents)
 
     @bot.event
     async def on_ready():

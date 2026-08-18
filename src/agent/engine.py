@@ -21,7 +21,7 @@ from langgraph.graph import END, START, MessagesState, StateGraph
 
 from agent.config.settings import settings
 from agent.llm.client import get_llm
-from agent.memory import CHECKPOINTER, thread_config, window
+from agent.memory import checkpointer, thread_config, window
 
 logger = logging.getLogger(__name__)
 
@@ -67,24 +67,34 @@ def _next_step(state: MessagesState) -> str:
     return "tools" if state["messages"][-1].tool_calls else END
 
 
-def _build_graph():
+def _build_graph(saver):
     graph = StateGraph(MessagesState)
     graph.add_node("model", _call_model)
     graph.add_node("tools", _call_tools)
     graph.add_edge(START, "model")
     graph.add_conditional_edges("model", _next_step, {"tools": "tools", END: END})
     graph.add_edge("tools", "model")
-    return graph.compile(checkpointer=CHECKPOINTER)
+    return graph.compile(checkpointer=saver)
 
 
-_GRAPH = _build_graph()
+_GRAPH: tuple | None = None
+
+
+async def _graph():
+    """The compiled graph, rebuilt if the checkpointer changes — the saver is
+    baked in at compile time (see ``memory.checkpointer``)."""
+    global _GRAPH
+    saver = await checkpointer()
+    if _GRAPH is None or _GRAPH[0] is not saver:
+        _GRAPH = (saver, _build_graph(saver))
+    return _GRAPH[1]
 
 
 async def _summarize_after_budget(config: dict, budget_prompt: str) -> str:
     """One last no-tools call over the checkpointed thread once the budget is gone."""
     logger.info("tool budget exhausted (%d steps); requesting final summary", settings.max_tool_steps)
     system_prompt = config["configurable"]["system_prompt"]
-    state = await _GRAPH.aget_state(config)
+    state = await (await _graph()).aget_state(config)
     messages = [
         SystemMessage(content=system_prompt),
         *window(state.values["messages"]),
@@ -121,7 +131,8 @@ async def run(
         system_prompt=system_prompt,
     )
     try:
-        final = await _GRAPH.ainvoke({"messages": [HumanMessage(content=question)]}, config)
+        graph = await _graph()
+        final = await graph.ainvoke({"messages": [HumanMessage(content=question)]}, config)
     except GraphRecursionError:
         return await _summarize_after_budget(config, budget_prompt)
     return _text(final["messages"][-1].content)
@@ -138,6 +149,7 @@ async def seed(thread_id: str, content: str) -> None:
     ``HumanMessage`` is the only type guaranteed to survive as the seed of a
     fresh thread.
     """
-    await _GRAPH.aupdate_state(
+    graph = await _graph()
+    await graph.aupdate_state(
         thread_config(thread_id), {"messages": [HumanMessage(content=content)]}, as_node=START
     )
