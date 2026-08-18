@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     discord_guild_id: int | None = None
     discord_alert_channel_id: int | None = None
     discord_status_channel_id: int | None = None
+    discord_reports_channel_id: int | None = None
     discord_log_channel_id: int | None = None
 
     # Endpoint monitoring loop
@@ -58,7 +59,7 @@ class Settings(BaseSettings):
 
     # Scheduled digests. One task fires at REPORT_HOUR_UTC every day; on
     # WEEKLY_REPORT_WEEKDAY (0 = Monday) it also posts the weekly roll-up.
-    # Both go to DISCORD_STATUS_CHANNEL_ID and are skipped if it is unset.
+    # Both go to DISCORD_REPORTS_CHANNEL_ID and are skipped if it is unset.
     report_hour_utc: int = 5
     weekly_report_weekday: int = 0
     digest_lookback_days: int = 7

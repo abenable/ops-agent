@@ -73,6 +73,7 @@ simply inactive when its channel id is unset).
 | --- | --- |
 | `#alerts` | Container down-alerts (critical embeds) |
 | `#status-updates` | Container and endpoint recovery notes |
+| `#reports` | Scheduled daily/weekly digests. Can be a **forum channel** — each digest opens its own thread instead of a flat message, so notes on a report stay scoped to it |
 | `#agent-logs` | The bot's own INFO+ log stream (optional) |
 
 ## Project structure

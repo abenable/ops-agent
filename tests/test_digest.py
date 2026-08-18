@@ -22,14 +22,14 @@ def quiet_infra(monkeypatch):
 
 @pytest.fixture
 def sent(monkeypatch):
-    """Capture (title, body) of every digest posted."""
-    posted: list[tuple[str, str]] = []
+    """Capture (title, chunks) of every report posted."""
+    posted: list[tuple[str, list[str]]] = []
 
-    async def _capture(_channel, message, _bot, *, severity="info", title="Alert"):
-        posted.append((title, message))
+    async def _capture(_channel, title, chunks, _bot):
+        posted.append((title, chunks))
 
-    monkeypatch.setattr(digest.discord_alert, "send_alert", _capture)
-    monkeypatch.setattr(digest.settings, "discord_status_channel_id", 123)
+    monkeypatch.setattr(digest.discord_alert, "post_report", _capture)
+    monkeypatch.setattr(digest.settings, "discord_reports_channel_id", 123)
     return posted
 
 
@@ -114,8 +114,8 @@ def test_tick_posts_weekly_only_on_the_configured_weekday(quiet_infra, sent, mon
     assert [title.split(" —")[0] for title, _ in sent] == ["Daily report"]
 
 
-def test_nothing_is_posted_without_a_status_channel(quiet_infra, sent, monkeypatch):
-    monkeypatch.setattr(digest.settings, "discord_status_channel_id", None)
+def test_nothing_is_posted_without_a_reports_channel(quiet_infra, sent, monkeypatch):
+    monkeypatch.setattr(digest.settings, "discord_reports_channel_id", None)
     asyncio.run(digest.run_tick(None, _MONDAY))
     assert sent == []
 

@@ -148,10 +148,10 @@ async def _explain(flapping: list[str], days: int) -> str:
 
 
 async def post(bot, kind: str = "daily", now: datetime | None = None) -> None:
-    """Render one digest and post it to the status channel."""
-    channel_id = settings.discord_status_channel_id
+    """Render one digest and post it to the reports channel."""
+    channel_id = settings.discord_reports_channel_id
     if not channel_id:
-        logger.info("skipping %s digest: DISCORD_STATUS_CHANNEL_ID is unset", kind)
+        logger.info("skipping %s digest: DISCORD_REPORTS_CHANNEL_ID is unset", kind)
         return
     now = now or datetime.now(UTC)
     if kind == "weekly":
@@ -160,15 +160,9 @@ async def post(bot, kind: str = "daily", now: datetime | None = None) -> None:
     else:
         body = await build_daily(now)
         title = f"Daily report — {now:%Y-%m-%d}"
-    # Embed descriptions cap at 4096; a long weekly is posted as several embeds.
-    for i in range(0, len(body), 3900):
-        await discord_alert.send_alert(
-            channel_id,
-            body[i : i + 3900],
-            bot,
-            severity="info",
-            title=title if i == 0 else f"{title} (cont.)",
-        )
+    # Embed descriptions cap at 4096; a long weekly is posted as several chunks.
+    chunks = [body[i : i + 3900] for i in range(0, len(body), 3900)] or [body]
+    await discord_alert.post_report(channel_id, title, chunks, bot)
 
 
 async def run_tick(bot, now: datetime | None = None) -> None:
