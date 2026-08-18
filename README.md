@@ -1,147 +1,135 @@
 # Marconi Infrastructure Operations Agent
 
-An MVP infrastructure-operations agent that lives in Discord. It answers operator
-questions about lab services (status, logs, metrics) through an agentic
-tool-calling loop, summarizes infrastructure health, generates structured
-incident reports, and raises container down/recovery alerts — all powered by a
-self-hosted, OpenAI-compatible LLM and read-only tools.
-
-Built during the Implementation Phase (Weeks 5–8) of the Marconi industrial training.
+A Discord bot that answers infrastructure questions about a small self-hosted lab.
+Ask it something in a channel, a DM, or through a slash command, and it runs an LLM
+tool-calling loop over the Docker Engine API, Prometheus and Loki, gathers evidence,
+and replies with what it found plus a likely cause and next steps. Every tool it has
+is read-only, so it reports and recommends but never restarts, scales, or edits
+anything. Alongside the conversational side it polls containers and HTTP endpoints in
+the background, alerts on state changes, and posts scheduled daily and weekly digests.
 
 ## Features
 
-- **Agentic investigation** — `/investigate <question>` (or @mention/DM the bot):
-  the LLM discovers real service names, writes its own PromQL/LogQL through
-  read-only Prometheus and Loki tools, and inspects containers with read-only
-  Docker status/logs tools, in a bounded tool-calling loop. Service names match
-  separator-agnostically (`agent_api` finds `marconi-agent-api`).
-- **Health status** — `/status` summarizes container states and monitored
-  endpoints, cleaned up by the LLM for a readable answer.
-- **Incident reports** — `/report <service>` runs the same loop with a fixed
-  incident template: Summary → What happened → Evidence → Likely cause →
-  Recommended next steps.
-- **Scheduled digests** — a daily report at `REPORT_HOUR_UTC` (05:00 UTC) and a
-  weekly roll-up on `WEEKLY_REPORT_WEEKDAY`, both to the status channel, covering
-  the watched containers and endpoints plus every transition logged since.
-- **Background alerts** — a monitor loop polls containers and the configured
-  HTTP endpoints, posting a critical alert when one goes down and a recovery
-  note when it comes back. Containers are tracked when they match
-  `DOCKER_NAME_FILTER` or are explicitly watched via `/watch`; endpoints come
-  from `MONITORED_ENDPOINTS`.
-- **Self-hosted LLM** — points at any OpenAI-compatible endpoint (Ollama, vLLM,
-  llama.cpp server, a hosted gateway). Tool-calling support required for
-  investigations.
+- Natural-language investigation over 10 read-only tools (container state and logs,
+  PromQL instant and range queries, LogQL instant and range queries, metric and label
+  discovery).
+- Per-channel conversation memory, checkpointed to SQLite, so follow-up questions keep
+  context across bot restarts.
+- 11 slash commands for status, investigation, incident reports, digests, and the
+  container watch list.
+- Background monitor: container stop/start transitions read straight from the Docker
+  socket, plus HTTP endpoint probes, both alerting to Discord channels.
+- Daily and weekly digests where the numbers come from the recorded event table and
+  only the summary prose comes from the model.
+- Separator-agnostic name matching, so `agent_api` resolves `marconi-agent-api`, and an
+  ambiguous partial name is reported instead of guessed.
+- Works with any OpenAI-compatible chat endpoint (Ollama, vLLM, llama.cpp server, a
+  LiteLLM proxy).
 
-Safety boundary: every tool the LLM can call is **read-only**. It cannot
-restart containers or change configuration; it can only recommend actions for a
-human operator.
+## Requirements
+
+- Python 3.13 or newer, and [uv](https://docs.astral.sh/uv/).
+- A Discord application with a bot token and the privileged Message Content Intent
+  enabled (the bot exits with an explanatory log line if it is not).
+- An OpenAI-compatible chat completions endpoint.
+- Optional but expected in normal use: a readable Docker socket, a Prometheus server,
+  and a Loki server.
 
 ## Quick start
 
 ```bash
 uv sync
 cp .env.example .env
-# edit .env: at minimum set DISCORD_BOT_TOKEN and your LLM endpoint
-python -m agent bot        # run the Discord bot
+# Edit .env: set DISCORD_BOT_TOKEN, LLM_BASE_URL, LLM_MODEL (LLM_API_KEY if your
+# endpoint requires one).
+uv run python -m agent bot
 ```
+
+`uv sync` installs the project, so `uv run agent bot` works as well (`agent` is the
+console script declared in `pyproject.toml`).
+
+With Docker Compose, which also brings up Prometheus, Loki and Promtail:
+
+```bash
+cp .env.example .env   # same edits as above
+docker compose up -d --build
+docker compose logs -f bot
+```
+
+The `bot` service runs with `network_mode: host`, mounts `./data` for the SQLite file
+and mounts `/var/run/docker.sock` so the Docker tools can see host containers. See
+`docs/deployment.md` for the details and the security note about the socket mount.
 
 ## Discord commands
 
-| Command | Description |
+| Command | What it does |
 | --- | --- |
-| `/status` | LLM-cleaned summary of container + endpoint health |
-| `/investigate <question>` | Free-form agentic investigation using read-only tools |
-| `/report <service>` | Structured incident report for one service |
-| `/containers` | List Docker containers grouped by state |
-| `/digest [daily\|weekly]` | Render a scheduled report on demand |
-| `/watching` | List the HTTP endpoints polled by the background monitor |
-| `/watch <container>` | Add a container to the watch list (status updates + down-alerts) |
-| `/unwatch <container>` | Remove a container from the watch list |
-| `/watchlist` | List the containers currently being watched |
-| `/reset` | Forget this channel's conversation history with the agent |
-| `/help` | List what the agent can do |
+| `/status` | Summarize container health and configured endpoints. |
+| `/investigate <question>` | Free-form investigation, keeps this channel's context. |
+| `/report <service>` | Structured incident report for one service. |
+| `/digest [period] [post_to_reports]` | Render the daily or weekly report now. |
+| `/containers` | List Docker containers grouped by status. |
+| `/watching` | List the HTTP endpoints the monitor polls. |
+| `/watch <container>` | Add a container to the watch list. |
+| `/unwatch <container>` | Remove a container from the watch list. |
+| `/watchlist` | List the watched containers. |
+| `/reset` | Clear this channel's conversation history. |
+| `/help` | List what the agent can do. |
 
-You can also **@mention** or DM the bot with a question; it answers through the
-same agentic loop as `/investigate`.
+DMs and `@mentions` go through the same loop as `/investigate`. See `docs/usage.md`.
 
-## Discord channels
-
-The bot maps its output to purpose-specific channels (all optional; a feature is
-simply inactive when its channel id is unset).
-
-| Channel | Role |
-| --- | --- |
-| `#alerts` | Container down-alerts (critical embeds) |
-| `#status-updates` | Container and endpoint recovery notes |
-| `#reports` | Scheduled daily/weekly digests. Can be a **forum channel** — each digest opens its own thread instead of a flat message, so notes on a report stay scoped to it |
-| `#agent-logs` | The bot's own INFO+ log stream (optional) |
-
-## Project structure
+## Project layout
 
 ```
-.
-├── src/agent/
-│   ├── bot/                 # Discord client, slash commands, monitor loop, digests, summarize
-│   ├── workflows/           # investigate.py, report.py, nl.py (DM/@mention) — tools + prompts per workflow
-│   ├── engine.py            # The generic LangGraph tool-calling loop workflows configure and call
-│   ├── tools/               # Docker/Prometheus/Loki clients + read-only LangChain tools
-│   ├── memory.py            # Shared conversation memory: checkpointer, thread config, trimming
-│   ├── normalize.py         # Separator-agnostic name matching (one resolver for every lookup)
-│   ├── llm/                 # Self-hosted LLM client (OpenAI-compatible)
-│   ├── watchlist/           # SQLite repository for the container watch list
-│   ├── alerting/            # Discord alert embeds
-│   └── config/              # Environment-based settings
-├── tests/                   # Test suite
-└── data/                    # SQLite database
+src/agent/
+├── cli.py             # argparse entry point: `agent bot` / `python -m agent bot`
+├── engine.py          # generic LangGraph tool-calling loop (model node, tools node)
+├── memory.py          # SQLite checkpointer, thread config, context trimming
+├── normalize.py       # separator-agnostic name matching, one resolution rule
+├── config/settings.py # pydantic-settings Settings singleton, .env loading, DB_PATH
+├── llm/client.py      # get_llm(): ChatOpenAI against an OpenAI-compatible base URL
+├── tools/             # the read-only tool surface (ALL_TOOLS)
+│   ├── docker.py      # Engine API client + list_services, docker_status, docker_logs
+│   ├── prometheus.py  # instant/range PromQL, metric names, label values
+│   └── loki.py        # instant/range LogQL, label values
+├── workflows/         # units of work, each a plain `async def -> str`
+│   ├── investigate.py # the Oracle prompt bound to every tool
+│   ├── report.py      # the same loop with a fixed incident-report template
+│   └── nl.py          # DM and @mention handling
+├── watchlist/         # sqlite3 repository: watched containers, transition events
+├── alerting/discord.py# embed alerts and multi-chunk report posting
+└── bot/               # the Discord layer
+    ├── client.py      # run_bot(), intents, on_ready wiring, log forwarding
+    ├── slash.py       # the 11 slash commands and the tree error handler
+    ├── monitor.py     # container and endpoint polling loop
+    ├── digest.py      # scheduled daily and weekly reports
+    ├── summarize.py   # LLM cleanup of raw output, Discord markdown fixes
+    └── utils.py       # container list formatting, message chunking
 ```
 
-## Testing
+## Tests
 
 ```bash
-uv run pytest                  # unit + smoke tests (no external services needed)
-uv run pytest -m integration   # live checks (needs a real LLM / Discord token)
+uv run pytest              # the default run: fully offline
+uv run pytest -m integration   # live checks against Discord and the LLM endpoint
 ```
+
+The default run needs no network, no Docker, no Discord and no LLM. See
+`docs/development.md`.
 
 ## Documentation
 
-- [Architecture](docs/architecture.md) — components, data flow, safety boundaries
-- [Setup](docs/setup.md) — Discord app, configuration, compose/local runs
-- [Usage](docs/usage.md) — command reference with worked examples
-- [Tools](docs/tools.md) — the ten read-only agent tools and the safety boundary
-- [Testing](docs/testing.md) — what the suite covers and how to run it
-- [Demo](docs/demo.md) — scripted incident scenario for the final demonstration
+Full documentation lives in [`docs/`](docs/README.md).
 
-## Limitations
+- [Architecture](docs/architecture.md): how the layers fit together.
+- [Agent loop](docs/agent-loop.md): the engine, memory, and the tool budget.
+- [Tools](docs/tools.md): each tool, its arguments, and its limits.
+- [Monitoring](docs/monitoring.md): the background monitor, alerts, and digests.
+- [Configuration](docs/configuration.md): every environment variable.
+- [Deployment](docs/deployment.md): Docker Compose and the stack it brings up.
+- [Usage](docs/usage.md): talking to the bot in Discord.
+- [Development](docs/development.md): extending the project.
+- [Evaluation](docs/evaluation.md): the notebook harness for model behaviour.
 
-This is an MVP built for a controlled environment. Known limitations:
-
-- **Investigations need a tool-calling model** — if the configured LLM does not
-  support OpenAI-style tool calls, `/investigate` and `/report` cannot reason
-  over tools and will mostly echo the prompt back.
-- **Alerting is Docker and HTTP only** — a container stopping is observed from
-  the Docker socket and endpoints via a plain GET; there is no PromQL
-  alert-rule evaluation.
-- **Monitor state is in memory** — alert de-duplication resets when the bot
-  restarts (the first poll after a restart baselines state without alerting, so
-  a restart never produces a false alarm).
-- **Conversation state is in memory** — the LangGraph checkpointer is an
-  `InMemorySaver` keyed by channel id, so a channel's follow-up context is lost
-  on restart. Swap it for `SqliteSaver` if that matters.
-- **No RBAC** — any member who can see the bot's channel can run any command.
-  All LLM-reachable tools are read-only by construction.
-- **The bot process holds the Docker socket** — which is root-equivalent on the
-  host. The `:ro` flag in compose restricts the socket file, not the Engine API.
-  The model is constrained by the tool surface (no mutating tool exists), not by
-  the mount, so treat the bot process itself as privileged.
-- **Single-node SQLite** — stores the watched-container list and the monitor's
-  transition log (trimmed to 90 days); fine for one bot instance.
-
-## Future improvements
-
-- Human-approved remediation actions (e.g. restart a container after an
-  operator clicks Approve) — the safety boundary for this already exists: the
-  LLM never gets a mutating tool.
-- PromQL alert-rule evaluation in the monitor loop alongside Docker polling.
-- Persist monitor/alert state so de-duplication survives restarts.
-- An eval harness that replays simulated incidents against the investigation
-  loop and grades tool selection and summary grounding.
+[`docs/pdf/report.pdf`](docs/pdf/report.pdf) is a standalone report on the design and
+implementation, written to be readable without access to this repository.

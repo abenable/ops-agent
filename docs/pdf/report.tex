@@ -1,0 +1,1719 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{xcolor}
+\usepackage{tcolorbox}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage{tikz}
+\usepackage{microtype}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage[skip=0.9\baselineskip,indent=0pt]{parskip}
+\setlength{\emergencystretch}{3em}
+
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,calc,fit,backgrounds,decorations.pathreplacing}
+
+% ---------------------------------------------------------------- palette
+\definecolor{accent}{HTML}{000000}
+\definecolor{accentlight}{HTML}{F0F0F0}
+\definecolor{rule}{HTML}{888888}
+\definecolor{codebg}{HTML}{F5F6F8}
+\definecolor{codekw}{HTML}{000000}
+\definecolor{codecm}{HTML}{444444}
+\definecolor{warnbg}{HTML}{F0F0F0}
+\definecolor{warnrule}{HTML}{000000}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=black,
+  citecolor=black,
+  pdftitle={Marconi Research and Innovations Lab: Infrastructure Operations Agent},
+  pdfsubject={Design and Implementation},
+  bookmarksnumbered=true
+}
+
+% ---------------------------------------------------------------- headers
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+\fancyfoot[C]{\small\thepage}
+
+% ---------------------------------------------------------------- headings
+\titleformat{\section}{\Large\bfseries\color{accent}}{\thesection}{0.7em}{}
+\titleformat{\subsection}{\large\bfseries\color{accent!85!black}}{\thesubsection}{0.6em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries}{\thesubsubsection}{0.6em}{}
+\titlespacing*{\section}{0pt}{0pt}{0.9em}
+
+% Every section starts on a fresh page.
+\let\stdsection\section
+\renewcommand{\section}{\clearpage\stdsection}
+
+\captionsetup{font=small,labelfont={bf,color=accent}}
+\setlist[itemize]{itemsep=4pt,topsep=2pt,parsep=0pt,leftmargin=*,align=left}
+\setlist[enumerate]{itemsep=4pt,topsep=2pt,parsep=0pt,leftmargin=*,align=left}
+\setlist[description]{itemsep=4pt,topsep=2pt,parsep=0pt,leftmargin=0pt,style=unboxed}
+
+% ---------------------------------------------------------------- listings
+\lstdefinestyle{plain}{
+  basicstyle=\ttfamily\footnotesize,
+  backgroundcolor=\color{codebg},
+  keywordstyle=\color{codekw}\bfseries,
+  commentstyle=\color{codecm}\itshape,
+  stringstyle=\color{accent},
+  frame=single,
+  rulecolor=\color{rule},
+  framesep=6pt,
+  breaklines=true,
+  showstringspaces=false,
+  columns=fullflexible,
+  xleftmargin=4pt,
+  xrightmargin=4pt,
+  aboveskip=10pt,
+  belowskip=10pt
+}
+\lstset{style=plain}
+
+% ---------------------------------------------------------------- boxes
+\newtcolorbox{keybox}[1]{
+  colback=accentlight, colframe=accent, boxrule=0.6pt,
+  left=8pt,right=8pt,top=6pt,bottom=6pt,
+  fonttitle=\bfseries\small, title={#1}, sharp corners=downhill
+}
+\newtcolorbox{warnbox}[1]{
+  colback=warnbg, colframe=warnrule, boxrule=0.6pt,
+  left=8pt,right=8pt,top=6pt,bottom=6pt,
+  fonttitle=\bfseries\small, title={#1}, sharp corners=downhill
+}
+
+% ---------------------------------------------------------------- tikz styles
+\tikzset{
+  layer/.style={draw=accent, fill=accentlight, rounded corners=2pt,
+                minimum height=8mm, text width=0.70\textwidth, align=center,
+                font=\small},
+  boxn/.style={draw=accent, fill=white, rounded corners=2pt,
+               minimum height=8mm, minimum width=22mm, align=center, font=\small},
+  statn/.style={draw=accent, fill=accentlight, circle, minimum size=13mm,
+                align=center, font=\small},
+  term/.style={draw=accent!60, fill=white, rounded corners=6pt,
+               minimum size=8mm, align=center, font=\footnotesize},
+  fl/.style={-{Stealth[length=2mm]}, draw=accent!80, thick},
+  fldash/.style={-{Stealth[length=2mm]}, draw=accent!60, thick, dashed},
+  lbl/.style={font=\scriptsize, inner sep=1.5pt, fill=white}
+}
+
+\begin{document}
+
+% ================================================================ TITLE
+\begin{titlepage}
+\centering
+\vspace*{4.5cm}
+
+{\Huge\bfseries\color{accent} Marconi Research and\\[0.25em] Innovations Lab\par}
+\vspace{1.3cm}
+{\LARGE\bfseries Infrastructure Operations Agent\par}
+\vspace{0.7cm}
+{\Large\itshape Design and Implementation\par}
+
+\vfill
+\end{titlepage}
+
+% ================================================================ ABSTRACT
+\pagenumbering{roman}
+\section*{Abstract}
+\addcontentsline{toc}{section}{Abstract}
+\markboth{Abstract}{}
+
+Diagnosing a fault in a small self-hosted environment usually means opening three
+separate interfaces and correlating them by hand: the container runtime for process
+state, a metrics server for resource behaviour, and a log store for what the service
+itself reported. The work is mechanical and has to be repeated for every incident. It also takes
+longest at the point where an operator can least afford the delay.
+
+This report describes a system that performs that correlation on request. An operator
+asks a question in ordinary language from a chat client. A language model, given a
+fixed set of read-only query tools, decides which backends to consult, issues the
+queries, reads the results, and returns an answer with the evidence it rests on, a
+likely cause, and recommended next steps for a human.
+
+The design has one governing constraint: the agent can observe but cannot act. No tool
+in the system issues a mutating call to any backend. The worst outcome of a mistaken
+model turn is an incorrect answer rather than a stopped service. This constraint is
+enforced by the set of operations exposed to the model, not by instructions given to
+it, which is a materially different guarantee.
+
+Beyond the conversational path, the system polls container and endpoint health on a
+fixed cycle, alerts on transitions, records those transitions durably, and publishes
+daily and weekly reports. The reports separate measured data, rendered directly from
+the recorded events and never paraphrased by the model, from generated prose that
+summarises it. That separation keeps the numbers exact while still giving a reader a
+short narrative.
+
+The report describes how the system is built and why it is built that way. It closes
+with the design decisions behind it, what each one costs, and the limitations that
+remain.
+
+\vspace{1em}
+\tableofcontents
+\listoffigures
+
+\clearpage
+\pagenumbering{arabic}
+
+% ================================================================ 1
+\section{Introduction}
+
+\subsection{The operational problem}
+
+A small self-hosted environment running on the order of ten services accumulates
+three separate sources of truth about its own health. The container runtime knows
+which processes exist, whether they are running, and what exit status they last
+reported. A metrics server holds numeric time series describing resource consumption
+and application behaviour. A log store holds the text each service emitted.
+
+Any non-trivial question spans all three. Establishing why a service restarted
+requires its current state from the runtime, its output immediately before the
+restart from the log store, and its resource behaviour over the preceding interval
+from the metrics server. None of these systems answers the question alone, and none
+of them knows the others exist.
+
+The correlation work is routine. An experienced operator performs roughly the same
+sequence every time: confirm the exact service name, check whether the process is
+running, read the recent output, then look at resource curves over the relevant
+window. The sequence is well defined enough to describe in a paragraph, which makes
+it a reasonable candidate for automation, but it branches on what each step returns,
+which is why a fixed script handles it poorly.
+
+\subsection{Approach}
+
+The system places a language model between the operator and the backends. The
+operator asks a question in ordinary language. The model has a fixed set of query
+operations available, each documented with a description written for the model rather
+than for a human reader. It selects operations, receives their output as text, and
+either issues further queries or produces an answer.
+
+The model is not asked to know the environment. It is asked to discover it. The
+available operations include enumeration calls (list the services, list the metric
+names, list the values of a label) and the guidance given to the model requires
+discovery before querying. A model that guesses a metric name produces an empty
+result; a model that enumerates first produces a real one.
+
+Access is through an existing chat workspace rather than a purpose-built interface.
+This is a deliberate economy. The workspace already has accounts, permissions,
+notification routing, mobile clients and message history. A question asked in a
+channel, an alert posted to that channel, and the scheduled report published there
+all sit in one place, which is where an operator already looks.
+
+\subsection{Scope}
+
+The system provides four capabilities.
+
+\begin{enumerate}
+  \item \textbf{Conversational investigation.} A free-form question is answered by an
+        agent loop with every read-only operation available to it. Context is retained
+        per conversation, so follow-up questions do not need to restate the subject.
+  \item \textbf{Structured incident reporting.} A fixed template drives the same loop
+        toward a report with defined sections: summary, observed behaviour, supporting
+        evidence, likely cause, and recommended next steps.
+  \item \textbf{Continuous monitoring.} Container state and configured HTTP endpoints
+        are polled on a fixed cycle. Transitions produce alerts and durable records.
+  \item \textbf{Scheduled reporting.} Daily and weekly digests summarise current state
+        and the transitions recorded over the reporting window.
+\end{enumerate}
+
+\subsection{Out of scope}
+
+Several things are excluded by design, and knowing which is necessary to read the
+rest of this report correctly.
+
+\begin{enumerate}
+  \item \textbf{No write operations.} The agent cannot restart, scale, reconfigure or
+        delete anything. Where an action is warranted it names the action and leaves it
+        to a human. This is not a temporary limitation pending a permissions model. It
+        is the central design constraint, and Section~\ref{sec:readonly} explains how
+        it is enforced.
+  \item \textbf{Single tenant.} The system assumes one environment, one chat
+        workspace, and an operator population that trusts one another. There is no
+        per-user authorisation beyond what the chat workspace itself provides.
+  \item \textbf{No alerting rule engine.} Alerts fire on observed state transitions of
+        containers and endpoints, not on threshold expressions over metric data.
+        Metrics are available to the reasoning loop for diagnosis and are not used to
+        drive alerts. Section~\ref{sec:socket-vs-query} explains why.
+  \item \textbf{No model training.} No component trains, fine-tunes or otherwise
+        modifies a model. The model is an external service reached over a network API.
+\end{enumerate}
+
+% ================================================================ 2
+\section{System overview}
+
+The system runs as a single long-lived process holding four concurrent
+responsibilities: a connection to the chat workspace that receives commands and
+messages, a reasoning loop that answers questions, a polling loop that watches health,
+and a scheduled task that publishes reports. Figure~\ref{fig:overview} shows the
+arrangement.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=5mm]
+
+\node[term, text width=18mm] (op) {Operator};
+\node[boxn, right=6mm of op, text width=24mm, fill=accentlight] (chat) {Chat\\workspace};
+
+\node[draw=accent, fill=white, rounded corners=3pt, right=6mm of chat,
+      text width=36mm, minimum height=30mm, align=center] (proc)
+      {\textbf{Agent process}\\[4pt]
+       \footnotesize reasoning loop\\
+       \footnotesize monitor loop\\
+       \footnotesize report scheduler\\
+       \footnotesize conversation store};
+
+\node[boxn, right=7mm of proc, yshift=13mm, text width=22mm] (dock) {Container\\runtime};
+\node[boxn, right=7mm of proc, text width=22mm] (prom) {Metrics\\server};
+\node[boxn, right=7mm of proc, yshift=-13mm, text width=22mm] (loki) {Log\\store};
+
+\node[boxn, below=13mm of proc, text width=30mm, fill=accentlight] (llm) {Language model\\endpoint};
+
+\draw[fl] (op) -- (chat);
+\draw[fl] (chat) -- (proc);
+\draw[fl] (proc.east) -- (dock.west);
+\draw[fl] (proc.east) -- (prom.west);
+\draw[fl] (proc.east) -- (loki.west);
+\draw[fl] (proc) -- (llm);
+
+\draw[decorate, decoration={brace, amplitude=4pt}, draw=accent!70]
+      (dock.north east) -- (loki.south east)
+      node[midway, right=3pt, font=\scriptsize\itshape, align=left] {read\\only};
+
+\draw[fldash] (proc.north) to[out=140,in=40] node[lbl,above]{answers, alerts, reports} (chat.north);
+
+
+\end{tikzpicture}
+\caption{Top level arrangement. The agent process is the only component that talks to
+both the chat workspace and the observability backends. All backend access is read
+only.}
+\label{fig:overview}
+\end{figure}
+
+\subsection{The conversational path}
+
+An operator issues a slash command, sends a direct message, or mentions the agent in
+a channel. All three converge on the same reasoning loop. The loop consults the model,
+executes whatever operations the model requests, feeds the results back, and repeats
+until the model produces an answer without requesting further operations. The answer
+is reformatted for the chat platform and sent, split across several messages when it
+exceeds the platform's per-message limit.
+
+\subsection{The monitoring path}
+
+Independently of any conversation, a polling task runs on a fixed interval. It reads
+container state from the runtime and probes each configured HTTP endpoint. It compares
+what it observes against what it observed on the previous cycle. A change from running
+to not running, or from reachable to unreachable, is a transition. Transitions are
+written to a durable event log and posted as alerts. Recovery transitions are posted
+to a separate channel so that failures and recoveries do not compete for attention in
+one stream.
+
+\subsection{The reporting path}
+
+A scheduled task fires once daily at a configured hour. It renders a digest of current
+state and the transitions recorded in the preceding day, and on one configured weekday
+it additionally renders a weekly roll-up with per-service outage counts and cumulative
+downtime. Reports are published to a dedicated channel. A published report is also
+loaded into the conversation memory for the thread it was published in, so that an
+operator can reply to the report itself and ask follow-up questions with the report
+already in context.
+
+\subsection{Implementation stack}
+
+The system is assembled from established components rather than bespoke ones.
+Table~\ref{tab:stack} names each and cites its documentation.
+
+\begin{table}[H]
+\centering\small
+\begin{tabularx}{\textwidth}{@{}lXl@{}}
+\toprule
+\textbf{Concern} & \textbf{Component} & \textbf{Reference} \\
+\midrule
+Runtime & Python 3.13 & \cite{python} \\
+Reasoning loop & LangGraph state machine and checkpointing & \cite{langgraph} \\
+Model binding & LangChain tool-calling abstractions & \cite{langchain} \\
+Model protocol & OpenAI-compatible chat completions & \cite{openai} \\
+Chat interface & discord.py over the Discord API & \cite{discordpy, discordapi} \\
+Configuration & Pydantic settings management & \cite{pydantic} \\
+HTTP transport & HTTPX asynchronous client & \cite{httpx} \\
+Storage & SQLite & \cite{sqlite} \\
+Container runtime & Docker Engine API & \cite{dockerapi} \\
+Orchestration & Docker Compose & \cite{compose} \\
+Metrics & Prometheus HTTP API and PromQL & \cite{promapi, promql} \\
+Logs & Grafana Loki HTTP API and LogQL & \cite{lokiapi, logql} \\
+Log shipping & Promtail container discovery & \cite{promtail} \\
+Packaging & uv dependency resolution and locking & \cite{uv} \\
+Testing & pytest & \cite{pytest} \\
+Evaluation & Jupyter notebooks & \cite{jupyter} \\
+\bottomrule
+\end{tabularx}
+\caption{Implementation stack and the documentation for each component.}
+\label{tab:stack}
+\end{table}
+
+% ================================================================ 3
+\section{Architecture}
+
+\subsection{Layering}
+
+The system is arranged in layers with imports running strictly downward, shown in
+Figure~\ref{fig:layers}. Each layer is defined as much by what it refuses to know as
+by what it does.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=3.5mm]
+
+\node[layer] (l1) {\textbf{Chat layer} \quad\footnotesize client, commands, monitor, scheduler, output shaping};
+\node[layer, below=of l1] (l2) {\textbf{Workflows} \quad\footnotesize investigation, incident report, message handling};
+\node[layer, below=of l2] (l3) {\textbf{Engine} \quad\footnotesize generic tool-calling loop \qquad \textbf{Memory} \quad\footnotesize conversation state};
+\node[layer, below=of l3] (l4) {\textbf{Tools} \quad\footnotesize container, metric and log query operations};
+\node[layer, below=of l4] (l5) {\textbf{Foundations} \quad\footnotesize settings, model client, name resolution, event store};
+
+\draw[fl] (l1) -- (l2);
+\draw[fl] (l2) -- (l3);
+\draw[fl] (l3) -- (l4);
+\draw[fl] (l4) -- (l5);
+
+\node[right=3mm of l1, font=\scriptsize\itshape, text width=26mm, align=left] {owns platform types};
+\node[right=3mm of l3, font=\scriptsize\itshape, text width=26mm, align=left] {knows no backend};
+\node[right=3mm of l4, font=\scriptsize\itshape, text width=26mm, align=left] {no mutating call};
+
+\end{tikzpicture}
+\caption{Layering. Imports run downward only. The engine sits below the workflows that
+configure it and above the tools it never names.}
+\label{fig:layers}
+\end{figure}
+
+\subsubsection{Foundations}
+
+The settings component reads configuration from the process environment and an
+optional environment file, exposing it as a validated, typed object constructed once
+at import. It also resolves the storage path a single time so that every component
+agrees on one file.
+
+The model client constructs a chat client against an endpoint speaking the widely
+implemented OpenAI-compatible protocol~\cite{openai}. Any server implementing that protocol is
+usable, which is what makes a self-hosted model practical here. A request timeout is
+applied so that an unresponsive endpoint fails rather than stalling a background task
+indefinitely.
+
+Name resolution provides the single matching rule used for every service lookup in
+the system. Section~\ref{sec:names} describes it.
+
+The event store is a small persistence component over the transition log and the
+watch list.
+
+\subsubsection{Tools}
+
+Each tool module pairs a thin asynchronous HTTP client~\cite{httpx} for one backend with the
+model-callable operations built on top of it. The split matters: the client half is
+ordinary code that other components call directly, and the tool half adds the schema,
+the description written for the model, and the clamping of arguments to safe ranges.
+
+This layer knows nothing about conversations, chat platforms or scheduling. It also
+contains no operation that changes anything.
+
+\subsubsection{Engine and memory}
+
+The engine implements the tool-calling loop and nothing else. It does not import the
+tool layer, does not contain a persona, and does not name a backend. The tools it runs
+and the instructions it runs under are supplied by the caller on each invocation.
+
+This is the most consequential structural decision in the system. Because the engine
+takes its tools as a parameter, a caller can hand it a narrower set, and a test can
+hand it substitutes. Because it takes its instructions as a parameter, a second
+workflow with a different purpose reuses the loop without modifying it.
+
+Memory holds conversation state, keyed by thread. It is a peer of the engine rather
+than a part of it, so that any component can read a thread back, seed one, or drop one
+without going through the loop.
+
+\subsubsection{Workflows}
+
+A workflow is one unit of work. The investigation workflow binds the full tool set to the operations persona, using
+the model-facing tool schema abstractions~\cite{langchain}, and calls the engine. The incident report workflow calls the
+investigation workflow with a fixed template. Both are plain asynchronous functions
+returning a string, with no chat platform types in their signatures, which is what
+allows the chat layer to remain a thin adapter.
+
+One workflow is an exception worth naming. Message handling for direct messages and
+mentions necessarily receives platform message objects, because its job is to decide
+whether an arbitrary incoming message is addressed to the agent at all. It is placed
+in this layer rather than inside the chat client for a specific reason discussed in
+Section~\ref{sec:silent}.
+
+\subsubsection{Chat layer}
+
+Everything that knows the chat platform's types lives here: the client and its
+lifecycle, the command definitions, the monitoring task, the report scheduler, output
+shaping for the platform's markdown dialect and message length limits, and the bridge
+that forwards application logs into a channel.
+
+\subsection{Request flow}
+
+Figure~\ref{fig:sequence} traces one investigation from question to answer.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\small]
+
+\def\lx{0} \def\wx{28} \def\ex{56} \def\mx{84} \def\tx{112}
+\def\ytop{0} \def\ybot{-76}
+
+\foreach \x/\name in {\lx/Chat layer, \wx/Workflow, \ex/Engine, \mx/Model, \tx/Backends} {
+  \node[boxn, text width=20mm] at (\x mm, \ytop) {\name};
+  \draw[draw=rule, thick] (\x mm, -5mm) -- (\x mm, \ybot mm);
+}
+
+\draw[fl] (\lx mm,-12mm) -- node[lbl,above]{\scriptsize question} (\wx mm,-12mm);
+\draw[fl] (\wx mm,-19mm) -- node[lbl,above]{\scriptsize tools + prompt} (\ex mm,-19mm);
+\draw[fl] (\ex mm,-26mm) -- node[lbl,above]{\scriptsize state} (\mx mm,-26mm);
+\draw[fl] (\mx mm,-33mm) -- node[lbl,above]{\scriptsize tool request} (\ex mm,-33mm);
+\draw[fl] (\ex mm,-40mm) -- node[lbl,above,pos=0.22]{\scriptsize query} (\tx mm,-40mm);
+\draw[fl] (\tx mm,-47mm) -- node[lbl,above,pos=0.78]{\scriptsize result} (\ex mm,-47mm);
+
+\draw[fldash] (56mm,-51mm) -- (68mm,-51mm) -- (68mm,-55mm) -- (56mm,-55mm);
+\node[lbl, right] at (68.5mm,-53mm) {\scriptsize repeat within budget};
+
+\draw[fl] (\ex mm,-61mm) -- node[lbl,above]{\scriptsize answer} (\wx mm,-61mm);
+\draw[fl] (\wx mm,-69mm) -- node[lbl,above]{\scriptsize shaped text} (\lx mm,-69mm);
+
+\end{tikzpicture}
+\caption{One investigation. The engine mediates between the model and the backends.
+The model never reaches a backend directly; it asks the engine to, and reads the
+result as text.}
+\label{fig:sequence}
+\end{figure}
+
+The property worth noting is that the model issues no network calls. It emits a
+structured request naming an operation and its arguments. The engine looks that name
+up in the table supplied for this run and executes it. An operation that is not in
+that table cannot be invoked regardless of what the model emits, which makes the tool
+table an enforcement point rather than a convention.
+
+\subsection{Data model}
+
+One storage file holds everything the system persists, containing three kinds of data:
+
+\begin{enumerate}
+  \item \textbf{The watch list.} Services an operator has explicitly asked to be
+        monitored regardless of the general scope rule.
+  \item \textbf{The transition log.} One row per observed state change, carrying the
+        target, its kind, the new state and a timestamp.
+  \item \textbf{Conversation checkpoints.} Written by the memory component, holding
+        the message history for each thread.
+\end{enumerate}
+
+Using one file rather than separating conversation state from operational state is
+deliberate. A published report needs to become conversation context for the thread it
+was published in, which means the component that publishes reports and the component
+that answers questions must see the same threads. Keeping them in one file makes that
+true by construction. It also means a maintenance script run outside the main process
+observes exactly the state the running process observes.
+
+The transition log is trimmed on write, retaining ninety days. A service in a restart
+loop can otherwise produce one row per polling cycle indefinitely.
+
+% ================================================================ 4
+\section{The agent engine}
+
+\subsection{The loop}
+
+The engine is a state machine with two active states, shown in
+Figure~\ref{fig:machine}, built on a graph execution library that supplies the state
+machine, the message-history state type and the checkpointing used in
+Section~\ref{sec:memory}~\cite{langgraph}. The model state consults the language model with the current
+conversation and the available operations. The tool state executes every operation the
+model requested in its most recent turn.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=16mm]
+
+\node[term] (start) {start};
+\node[statn, right=of start] (model) {model};
+\node[statn, right=26mm of model] (tools) {tools};
+\node[term, below=16mm of model] (end) {answer};
+
+\draw[fl] (start) -- (model);
+\draw[fl] (model) to[bend left=22] node[lbl,above]{requested operations} (tools);
+\draw[fl] (tools) to[bend left=22] node[lbl,below]{results as text} (model);
+\draw[fl] (model) -- node[lbl,right]{no operations requested} (end);
+
+\node[draw=warnrule, fill=warnbg, rounded corners=2pt, right=14mm of tools,
+      text width=30mm, align=center, font=\footnotesize] (budget)
+      {budget exhausted\\$\rightarrow$ one final call\\with no operations};
+\draw[fldash] (tools) -- (budget);
+
+\end{tikzpicture}
+\caption{The engine state machine. The loop terminates when a model turn requests no
+operations, or when the step budget is exhausted and the summary path is taken.}
+\label{fig:machine}
+\end{figure}
+
+Termination is decided by a single condition: whether the model's most recent message
+requested any operations. If it did, control passes to the tool state and back. If it
+did not, the message is the answer and the loop ends. There is no separate stopping
+heuristic, and no maximum imposed on the answer itself.
+
+\subsection{Per-run configuration}
+
+The operations table, the instruction text and the configured model client are built
+once per invocation and passed down to the states through the run configuration
+rather than reconstructed on each turn. A five-turn investigation therefore builds one
+client, not five.
+
+This also has a correctness consequence. Because the operations table is taken exactly
+as the caller built it, a caller that supplies substitutes gets those substitutes and
+nothing else. The loop has no separate notion of a real operation, which is what makes
+it testable without any backend present.
+
+The compiled state machine itself is cached across invocations and rebuilt only when
+the underlying storage component changes, because storage is bound at compile time.
+
+\subsection{The step budget}
+
+Unbounded loops against a paid or rate-limited endpoint are a liability. The engine
+bounds the number of steps a single question may consume. The bound is expressed as a
+step limit on the state machine and derived from the configured maximum number of
+model turns.
+
+The derivation carries a factor of two. One turn in which the model requests an
+operation costs two transitions through the machine: one to consult the model, one to
+execute what it asked for. A budget of ten model turns is therefore twenty machine
+steps.
+
+\begin{keybox}{Behaviour when the budget is exhausted}
+Exceeding the budget does not produce an error for the operator. The engine reads back
+the conversation accumulated so far and makes one further call to the model with no
+operations available, asking it to state what it found, what it believes the cause to
+be, and what it could not check. The operator receives a partial but honest answer
+rather than a failure message.
+\end{keybox}
+
+This final call bypasses the state machine, which has one visible consequence: neither
+the request for a summary nor the summary itself is written into the conversation
+history. A follow-up question in the same thread sees the investigation but not its
+concluding summary.
+
+\subsection{Failure handling inside the loop}
+
+Two failure modes are handled at the tool state rather than allowed to propagate.
+
+\begin{enumerate}
+  \item \textbf{Unknown operation.} If the model requests an operation that is not in
+        the table for this run, the engine returns a short message to that effect as
+        the operation's result.
+  \item \textbf{Operation raised.} If an operation raises an exception, the exception
+        is caught and its text is returned as the result.
+\end{enumerate}
+
+In both cases the model receives a description of what went wrong as ordinary input
+and continues. This is preferable to aborting: a query against an unreachable backend
+is information the model can use, and it frequently is the answer. A model told that a
+log query failed because the log store refused the connection can reasonably conclude
+that the log store is down, which is a correct and useful diagnosis.
+
+Failures above the loop are handled differently. The investigation workflow catches
+everything and returns a description of the failure as its answer, so that a caller
+always receives a string to send.
+
+% ================================================================ 5
+\section{Conversation memory}
+\label{sec:memory}
+
+\subsection{Threads}
+
+Conversation state is keyed by a thread identifier. The chat layer supplies the
+identifier of the channel or direct message the question arrived in, so a channel is a
+conversation. Two channels sharing nothing is what keeps one team's investigation out
+of another's.
+
+A caller that omits an identifier receives a freshly generated one, giving a one-shot
+interaction with no history and no persistence beyond the call. Incident report
+generation uses this path deliberately: a report should describe the service, not
+whatever was discussed in that channel earlier.
+
+\subsection{Durability}
+
+Conversation state is written to the same embedded database file~\cite{sqlite} as the
+operational data. A
+thread therefore survives a process restart. An operator who asked a question before a
+deployment can ask a follow-up after it.
+
+The storage component owns a connection bound to the event loop it was opened in,
+which requires it to be created inside the running loop rather than at import. It is
+consequently created on first use and held for the process lifetime.
+
+\begin{warnbox}{Shutdown ordering}
+The connection runs on a worker thread that continues waiting on its queue after the
+event loop stops. If it is not closed before shutdown, the process does not exit; it
+hangs until the supervising runtime gives up and kills it. The chat client's shutdown
+path closes it explicitly for this reason.
+\end{warnbox}
+
+\subsection{Context windowing}
+
+A thread grows without bound while a model's context does not, so the history is
+trimmed before every model call to fit a configured token budget. Trimming keeps the
+most recent messages and discards the oldest.
+
+Trimming cannot cut at an arbitrary point. A model turn requesting operations and the
+results of those operations form a unit in the protocol. Delivering a request whose
+results are missing, or results whose request is missing, is rejected by the API as
+malformed. The trimming boundaries are therefore constrained to positions that keep
+those pairs intact.
+
+\subsection{Seeding a thread}
+
+Content the model did not produce can be loaded into a thread before any conversation
+occurs. This is what makes a published report answerable: the report body is written
+into the thread it was published in, so an operator replying to it asks questions
+against a conversation that already contains it.
+
+Seeded content is recorded as a message of the type attributed to a human participant.
+This is required rather than stylistic. Trimming begins each window at a human turn,
+so a thread seeded with content attributed to the model would have that content
+discarded before it ever reached the model, silently and with no error.
+
+\subsection{Stated limits}
+
+Memory here means one conversation replayed per thread. There is no recall across
+threads and no retrieval over past conversations. A fact established in one channel is
+unavailable in another.
+
+Trimming evicts oldest first, which interacts with seeding in a way worth stating
+plainly: a large seeded report is the first content evicted from a thread that goes on
+to have a long conversation. The report is present for the first few follow-up
+questions and gone by the twentieth.
+
+% ================================================================ 6
+\section{The tool surface}
+\label{sec:tools}
+
+\subsection{Composition}
+
+Ten operations are available to the model, covering three backends. Table~\ref{tab:tools}
+summarises them; Appendix~\ref{app:tools} gives the full reference.
+
+\begin{table}[H]
+\centering\small
+\begin{tabularx}{\textwidth}{@{}llX@{}}
+\toprule
+\textbf{Operation} & \textbf{Backend} & \textbf{Purpose} \\
+\midrule
+\texttt{list\_services} & runtime & Enumerate container names and configured endpoints \\
+\texttt{docker\_status} & runtime & State, status and image of one container \\
+\texttt{docker\_logs} & runtime & Recent output of one container \\
+\texttt{list\_metric\_names} & metrics & Enumerate available metric names \\
+\texttt{get\_label\_values} & metrics & Enumerate values of a metric label \\
+\texttt{query\_prometheus} & metrics & Instant query for current values \\
+\texttt{query\_prometheus\_range} & metrics & Range query for behaviour over a window \\
+\texttt{get\_loki\_label\_values} & logs & Enumerate values of a stream label \\
+\texttt{query\_loki} & logs & Log query over a short recent window \\
+\texttt{query\_loki\_range} & logs & Log query over an explicit window \\
+\bottomrule
+\end{tabularx}
+\caption{The ten read-only operations available to the model.}
+\label{tab:tools}
+\end{table}
+
+Four of the ten exist purely for discovery. This proportion is intentional. A model
+asked about resource usage will otherwise write a query against a plausible-sounding
+metric name that does not exist in this environment, receive an empty result, and
+report that usage is zero. Making enumeration cheap and instructing the model to
+enumerate first converts a confident wrong answer into a correct one.
+
+\subsection{Output discipline}
+
+Every operation returns text, and every operation bounds what it returns. Query
+results are truncated to a fixed character count; enumerations are capped at a fixed
+number of entries. Without these caps a single query against a busy log stream would
+consume the entire context window and leave no room for the reasoning that follows.
+
+Arguments that describe a range are clamped rather than rejected. A request for
+twenty-four hours of log data against a six-hour maximum returns six hours, not an
+error. The model receives usable data and the backend is protected from an expensive
+query.
+
+\subsection{Container runtime}
+
+The runtime is queried over its HTTP API~\cite{dockerapi}, reached either through a
+local socket or a network address. Enumeration returns an empty list when the runtime is unreachable
+rather than raising, so a question about metrics remains answerable on a host where
+the runtime is unavailable.
+
+Container output requires one piece of protocol handling. A container without an
+attached terminal has its output framed: each chunk carries an eight-byte header
+identifying the stream and giving the payload length. Returning the raw bytes would
+interleave binary headers with the log text. The framing is parsed and stripped, and
+remaining non-printable bytes are removed, before the text reaches the model.
+
+\subsection{Metrics}
+
+The metrics server exposes both instant and range query endpoints over
+HTTP~\cite{promapi}, addressed in its own query language~\cite{promql}. Instant
+queries return current values; range queries return a series over a window.
+The resolution of a range query is derived from the requested window so that the
+result contains a roughly constant number of points regardless of window length. A
+thirty-minute window and a six-hour window therefore cost about the same to transmit
+and to read.
+
+\subsection{Logs}
+
+Log queries are issued over the log store's HTTP API~\cite{lokiapi} in its own
+selector and filter language~\cite{logql}. They carry one non-obvious behaviour. The
+instant query endpoint rejects plain stream selectors, accepting only queries that
+aggregate. Since a
+selector returning recent lines is exactly what an investigation wants, the instant
+operation is implemented as a range query over a short recent window. The model sees
+an instant query and gets the lines it expected.
+
+\begin{keybox}{Label schemas are not shared}
+The labels attached to log streams are set by the log shipping agent's configuration.
+They are not the container runtime's names and not the metric server's labels. A model
+that assumes the three systems share a vocabulary writes selectors that match nothing.
+The log operations' descriptions state this explicitly and instruct the model to
+enumerate the real labels before writing a selector.
+\end{keybox}
+
+\subsection{Input validation}
+
+Label names supplied by the model are placed into a URL path segment when enumerating
+their values. They are validated against the backends' own permitted character set,
+letters, digits and underscore, beginning with a letter or underscore, before use. A
+name failing validation yields an empty result rather than a request.
+
+This is a trust boundary. The model's output is not trusted input: it is generated
+text influenced by tool results that themselves derive from log lines an arbitrary
+service produced. Path separators, query and fragment markers, relative path segments
+and whitespace are all rejected, which prevents a constructed label name from
+redirecting the request to a different endpoint.
+
+\subsection{Read only by construction}
+\label{sec:readonly}
+
+The guarantee that the agent cannot act rests on the composition of
+Table~\ref{tab:tools} and nothing else. Every operation is a query. None accepts a
+parameter that would change state, and none is routed to a mutating endpoint.
+
+The instructions given to the model also state that it is read only and should
+recommend actions to a human rather than claim to perform them. That text improves the
+quality of answers. It is not the guarantee. Instructions constrain what a model tries
+to do; the tool table constrains what it can do. A model that ignores its instructions
+entirely and requests a restart receives a message stating that no such operation
+exists.
+
+This distinction matters when reasoning about deployment. Section~\ref{sec:socketsec}
+returns to it in the context of runtime socket access, where an appealing but
+misleading alternative guarantee is available.
+
+% ================================================================ 7
+\section{Name resolution}
+\label{sec:names}
+
+Operators do not type exact container names. A service known conversationally as the
+API might be deployed under a name carrying a project prefix and a role suffix, and
+the separator convention is inconsistent across tools: hyphens in one place,
+underscores in another.
+
+One rule handles this everywhere. A name is reduced by removing separator characters
+and lowercasing, and a candidate matches if the reduced query appears within the
+reduced candidate. Under this rule three spellings of the same name are equivalent,
+and a partial name matches the full one.
+
+Two refinements make it safe.
+
+\begin{enumerate}
+  \item \textbf{Exact match wins.} If any candidate's reduced form equals the query's
+        reduced form exactly, that candidate is selected regardless of other partial
+        matches. Without this, a service whose name is a prefix of a longer service's
+        name would become unaddressable.
+  \item \textbf{Ambiguity is an error.} If a partial name matches several candidates
+        and none matches exactly, the lookup fails with a message listing the
+        candidates and asking for a specific one. It does not select the first.
+\end{enumerate}
+
+The second refinement is the one that matters operationally. Silently choosing among
+several matches produces a status report about the wrong service, labelled with the
+name the operator asked about. That is worse than an error, because it is believable.
+An explicit ambiguity message costs the operator one round trip and cannot mislead.
+
+The same rule is applied to watch list lookups, so removing a service from monitoring
+behaves exactly as querying it does.
+
+% ================================================================ 8
+\section{Monitoring and alerting}
+
+\subsection{The poll cycle}
+
+A single task runs on a configured interval with a floor applied, so that a
+misconfigured interval cannot produce a tight polling loop. Each cycle reads all
+container states from the runtime and probes each configured HTTP endpoint in turn.
+
+\subsection{Scope}
+
+Container monitoring is disabled by default and enabled explicitly. When enabled, a
+container is in scope if its name contains a configured filter substring, or if an
+operator added it to the watch list through a command. An empty filter places every
+container in scope.
+
+The union of a broad rule and explicit additions covers the two real cases. An
+environment where every container matters sets an empty filter. An environment sharing
+a host with unrelated workloads sets a filter matching its own naming convention and
+adds anything else that matters individually.
+
+\subsection{Transition detection}
+
+The task holds the previous observation of each target in memory and compares. A
+container observed as running and now observed otherwise is a failure transition. The
+reverse is a recovery. Endpoints follow the same pattern over a reachable flag, where
+reachable means a response with a non-error status and unreachable means an error
+status, a connection failure, or a timeout.
+
+Figure~\ref{fig:transitions} shows the resulting behaviour, including the case that
+produces no output.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=22mm]
+
+\node[statn] (up) {running};
+\node[statn, right=34mm of up] (down) {stopped};
+\node[term, above=24mm of $(up)!0.5!(down)$] (new) {first\\observation};
+
+\draw[fl] (up) to[bend left=25] node[lbl,above,pos=0.5]{alert channel, event recorded} (down);
+\draw[fl] (down) to[bend left=25] node[lbl,below]{status channel, event recorded} (up);
+
+\draw[fldash] (new) to[bend right=18] node[lbl,pos=0.72,left,xshift=-1mm]{no alert} (up);
+\draw[fldash] (new) to[bend left=18] node[lbl,pos=0.72,right,xshift=1mm]{no alert} (down);
+
+\end{tikzpicture}
+\caption{Transition handling. Failures and recoveries are routed to different channels.
+The first observation of a target establishes a baseline and produces no alert.}
+\label{fig:transitions}
+\end{figure}
+
+\subsection{Baselining}
+
+The first observation of any target records its state and emits nothing. Only a change
+from a known previous state is a transition.
+
+Without this, every process restart would announce every container that happens to be
+stopped and every endpoint that happens to be down. That is precisely the behaviour
+that teaches operators to mute an alert channel, at which point the entire subsystem
+has negative value.
+
+The cost is stated honestly: a container that fails while the agent is not running
+produces no alert and no event. When the agent returns it observes the stopped
+container, treats that as a baseline, and stays silent. The failure is still visible
+in the scheduled report's current-state section, marked as not running, but it is not
+announced.
+
+\subsection{Reading state from the runtime rather than querying metrics}
+\label{sec:socket-vs-query}
+
+Container liveness could be derived from a metrics query, since the metrics server
+tracks whether its scrape targets respond. The system reads the runtime directly
+instead, for two reasons.
+
+\begin{enumerate}
+  \item \textbf{Latency.} A metrics-derived signal is delayed by the scrape interval,
+        and the transition it reports is the transition of a scrape, not of a process.
+  \item \textbf{Failure correlation.} If the metrics server itself restarts, every
+        target it scrapes appears to fail simultaneously. An alerting path built on
+        metric queries announces a total environment outage when what actually happened
+        is that the monitoring system bounced. Reading the runtime directly means the
+        metrics server is just another monitored service, and its restart is reported
+        as one service restarting.
+\end{enumerate}
+
+Metrics remain fully available to the reasoning loop for diagnosis. The decision here
+is only about what drives an alert.
+
+\subsection{Endpoint probing}
+
+Endpoint checks cover what runtime inspection cannot see: a service on another host, a
+service behind a proxy, or an externally observable health path whose success depends
+on more than the process being alive. A container can be running while the application
+inside it returns errors, and only a probe distinguishes those.
+
+\subsection{The event log}
+
+Every transition is recorded durably with its target, kind, new state and timestamp.
+The recording happens before the alert is dispatched, so an environment configured
+with no alert channel still accumulates a complete history. Silencing notifications
+does not silence the record the reports are built from.
+
+Live state is held only in memory. This is a deliberate asymmetry: the current
+observation is cheap to rebuild on the next cycle, whereas history cannot be
+reconstructed. Targets that leave scope have their in-memory state discarded, so a
+service that returns later is baselined afresh rather than compared against a stale
+observation from before it left.
+
+% ================================================================ 9
+\section{Scheduled reporting}
+
+\subsection{Schedule}
+
+A single task fires once daily at a configured hour. It always publishes the daily
+digest, and on one configured weekday it additionally publishes the weekly roll-up.
+Both are suppressed entirely when no reports channel is configured.
+
+The scheduler has no catch-up for missed firings. An agent that is not running at the
+scheduled hour skips that day rather than publishing late on restart. A digest
+covering the previous day, delivered at an arbitrary hour two days later, is a
+distraction rather than a report.
+
+\subsection{Contents}
+
+The daily digest gives current state for every in-scope container and endpoint,
+followed by every transition recorded in the preceding twenty-four hours in
+chronological order.
+
+The weekly roll-up gives the same current-state section, followed by per-target
+totals over the lookback window: how many separate outages the target had and how much
+cumulative downtime they represent.
+
+\subsection{Downtime accounting}
+
+Totals are computed by pairing failure events with the recovery events that follow
+them. Each unmatched failure opens an outage, and the matching recovery closes it and
+contributes its duration.
+
+A failure with no following recovery means the target is still down. That outage is
+measured to the present moment and flagged accordingly, rather than being discarded
+for lack of a closing event. Discarding it would report the most serious case, a
+service that has been down for three days, as no downtime at all.
+
+\subsection{Measured data and generated prose}
+
+Digests separate two kinds of content, and the boundary is enforced rather than
+conventional.
+
+The detail section is rendered directly from recorded events and current observations.
+The model does not see it before it is written and does not rewrite it. These are
+exact values, and passing an exact value through a language model can only preserve it
+or damage it.
+
+A summary section is generated on top of the rendered detail, giving a reader a short
+narrative before the numbers. If the model is unavailable, the summary degrades to the
+raw detail rather than failing the report.
+
+\begin{keybox}{The one exception}
+The weekly roll-up contains a narrative section that is genuinely model-generated.
+When a target has failed at least twice within the window, it is flapping, and the
+agent is asked to investigate that specific target: read its recent output, look at
+its resource behaviour, and give a short account of the likely cause.
+
+This is the one question a template cannot answer. A template can count outages; it
+cannot read a log. If that investigation fails, the failure is caught and noted, and
+the rest of the report is published intact.
+\end{keybox}
+
+\subsection{Publication and follow-up}
+
+A report is published as a unit. Where the target channel supports threads, the whole
+report becomes one thread rather than a series of loose messages. Long reports are
+split to respect the platform's per-message size limit.
+
+The publication step returns the identifier of whatever container now holds the
+report, and the report body is written into that thread's conversation memory. An
+operator replying to the published report and asking why a service flapped is asking a
+question against a conversation that already contains the report.
+
+% ================================================================ 10
+\section{The chat interface}
+
+\subsection{Commands}
+
+Eleven commands are registered through the chat library's application command
+tree~\cite{discordpy, discordapi}, listed in Table~\ref{tab:commands}. Commands whose
+output concerns only the caller reply privately, so that routine list queries do not
+fill a shared channel.
+
+\begin{table}[H]
+\centering\small
+\begin{tabularx}{\textwidth}{@{}llX@{}}
+\toprule
+\textbf{Command} & \textbf{Argument} & \textbf{Effect} \\
+\midrule
+\texttt{status} & none & Current containers and endpoints, summarised \\
+\texttt{investigate} & question & Free-form investigation with all operations \\
+\texttt{report} & service & Structured incident report for one service \\
+\texttt{digest} & period, publish flag & Render a scheduled report immediately \\
+\texttt{containers} & none & Containers grouped by state \\
+\texttt{watching} & none & Endpoints the monitor probes \\
+\texttt{watch} & container & Add a container to the watch list \\
+\texttt{unwatch} & container & Remove a container from the watch list \\
+\texttt{watchlist} & none & Containers currently watched \\
+\texttt{reset} & none & Discard this conversation's history \\
+\texttt{help} & none & List the commands \\
+\bottomrule
+\end{tabularx}
+\caption{The command set.}
+\label{tab:commands}
+\end{table}
+
+\subsection{Conversational access}
+
+A direct message, or a mention in a channel the agent can see, is treated as a
+question and routed through the same investigation path as the explicit command. The
+mention markup is stripped before the text reaches the model. A mention carrying no
+question receives a prompt for one rather than an investigation of an empty string.
+
+Because the conversation identifier is the channel, an operator can hold an ordinary
+exchange: ask a broad question, then ask why, then ask for the evidence, without
+restating the subject.
+
+\subsection{Output shaping}
+\label{sec:shaping}
+
+Model output requires two corrections before it is fit to send.
+
+\begin{enumerate}
+  \item \textbf{Markdown dialect.} The platform renders a restricted dialect. Heading
+        syntax is displayed literally rather than rendered, and tables are not
+        supported at all, appearing as rows of pipe characters. Small models emit both
+        regularly even when instructed not to. Headings are rewritten to bold text and
+        tables are converted into labelled bullet lines. Content inside code fences is
+        exempt, so that a log line containing a pipe character or a configuration
+        comment beginning with a hash is not corrupted.
+  \item \textbf{Message length.} The platform caps message length. Answers exceeding
+        it are split, preferring line boundaries so that a split does not fall inside a
+        word or a code block.
+\end{enumerate}
+
+\subsection{Log forwarding}
+
+Application logs at informational level and above are forwarded to a configured
+channel, which makes the agent observable through the same interface it serves. Two
+details make this safe.
+
+\begin{enumerate}
+  \item \textbf{Library records are dropped.} Records emitted by the chat library
+        itself are not forwarded, since forwarding them would produce a feedback loop:
+        sending a message logs an event, which sends a message.
+  \item \textbf{Forwarding is asynchronous.} Log emission places the record on a queue
+        and returns immediately; a separate task drains the queue and sends. A logging
+        call therefore never blocks on a network round trip, and a slow or unreachable
+        channel degrades log delivery rather than stalling the code that logged.
+\end{enumerate}
+
+On startup the bridge announces itself in the channel. An empty channel then means
+nothing is happening, rather than being indistinguishable from a broken configuration.
+
+\subsection{Failure must be visible}
+\label{sec:silent}
+
+Message handling is deliberately structured so that no incoming question can be
+answered with silence.
+
+The chat library's default handling of an exception raised inside an event handler is
+to log it against the library's own logger and continue. That logger is exactly the
+one excluded from channel forwarding to prevent the loop described above. The two
+behaviours compose badly: a failure while answering a mention would be logged where no
+operator was watching, and the visible result would be an agent that simply did not
+reply.
+
+Handling is therefore placed in a workflow function wrapped in explicit exception
+handling that always sends a reply, stating that something went wrong and what. An
+error message is a worse answer than a correct one and a far better outcome than
+silence, because silence is indistinguishable from the agent being offline.
+
+% ================================================================ 11
+\section{Configuration}
+
+All configuration is read from the process environment, optionally populated from an
+environment file, and validated once at startup into a typed object by a settings
+management library~\cite{pydantic}.
+Table~\ref{tab:config} groups the settings; Appendix~\ref{app:settings} gives the full
+reference with defaults.
+
+\begin{table}[H]
+\centering\small
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Group} & \textbf{Governs} \\
+\midrule
+Chat workspace & Authentication token, target workspace, and the four channel roles \\
+Endpoint monitoring & Which endpoints are probed and how often \\
+Scheduled reports & Publication hour, weekly day, lookback window \\
+Language model & Endpoint address, model name, credential \\
+Observability backends & Metric and log server addresses and optional credentials \\
+Container discovery & Runtime address, monitoring toggle, name filter \\
+Loop limits & Step budget, context budget, result and window caps \\
+Storage & Location of the single storage file \\
+\bottomrule
+\end{tabularx}
+\caption{Configuration groups.}
+\label{tab:config}
+\end{table}
+
+\subsection{Required and optional}
+
+One setting is required: the chat workspace authentication token. Its absence is a
+startup failure with an explicit message rather than an obscure error later.
+
+Several capabilities are gated on optional settings and stay off when those are unset.
+No alert channel means transitions are recorded but not announced. No reports channel
+means digests are not published. No log channel means logs go only to standard output.
+Container monitoring is off unless explicitly enabled.
+
+Absence is treated as a configuration choice rather than an error. An operator who
+wants monitoring without notifications, or reports without a log bridge, expresses
+that by leaving the corresponding setting empty.
+
+\subsection{Handling of empty values}
+
+Optional numeric settings such as channel identifiers must distinguish unset from
+zero, so an empty environment variable is parsed as absent rather than as an empty
+string. Plain text settings need the opposite treatment, since an empty string is a
+valid value meaning no filter or no credential. Validation therefore restores empty
+strings for text settings after the general parsing rule has run.
+
+The storage location is resolved once at import: the configured path is made absolute
+relative to the installation root, and its containing directory is created. Every
+component consequently agrees on one file without coordinating.
+
+\subsection{Loop limits}
+
+Four settings bound resource use per question. The step budget bounds model turns, as
+described earlier. The context budget bounds tokens per model call and drives history
+trimming. A result limit bounds returned log lines. A window maximum bounds how far
+back a range query may reach.
+
+The last two protect the backends rather than the model. A range query over a week of
+high-volume log data is expensive to serve, and an investigation almost never needs it.
+
+% ================================================================ 12
+\section{Deployment}
+
+\subsection{Packaging}
+
+The agent is packaged as a container image on a slim Python~\cite{python} base. Dependencies are
+resolved from a lock file~\cite{uv} and installed in a layer built before the
+application source is copied, so that editing source does not invalidate the dependency layer. Builds
+after a source change reuse the cached dependency installation.
+
+\subsection{The accompanying stack}
+
+The deployment description~\cite{compose} brings up the agent alongside the
+observability components it queries: a metrics server, a log store, and a log shipping agent that discovers
+containers on the host and forwards their output to the log store.
+
+Configuration for the three observability components is supplied inline in the
+deployment description rather than as separate files on disk, which keeps the stack in
+one artefact.
+
+The log shipper discovers containers on the host and relabels their metadata before
+forwarding~\cite{promtail}. Its relabelling rules determine the labels available to
+log queries. It
+sets a service label from the container's compose service, a container label from the
+container name, and a fixed job label. These three labels are what a query selector
+may reference, which is the concrete form of the point made in Section~\ref{sec:tools}
+about label schemas not being shared.
+
+\begin{warnbox}{Scrape targets requiring additional services}
+The metrics server's scrape configuration includes targets for a host metrics
+exporter and a container metrics exporter. Neither service is included in the
+deployment description. Until they are added, those targets are configured but
+unreachable, so host-level and per-container resource metrics are unavailable while
+metrics from the server itself remain available.
+\end{warnbox}
+
+\subsection{Networking}
+
+The agent shares the host's network namespace, which lets it reach the observability
+backends and the external model endpoint at local addresses without further
+configuration. The consequence is that the bridge-networked components cannot address
+the agent by service name and reach it through the host gateway instead.
+
+\subsection{Persistence}
+
+The storage file is held on a mounted directory so that the watch list, the transition
+history and all conversation threads survive replacement of the container. Losing this
+directory loses the reporting history, which cannot be reconstructed from any other
+source.
+
+\subsection{Runtime socket access}
+\label{sec:socketsec}
+
+The agent requires access to the container runtime's API socket to read container
+state and output. This deserves an accurate description, because a natural reading of
+the deployment description is misleading.
+
+The socket is mounted with a read-only flag. That flag applies to the socket file. It
+does not constrain the API reachable through it: the runtime API remains fully
+writable, and access to that socket is equivalent to root on the host.
+
+\begin{keybox}{Where the guarantee actually comes from}
+The read-only guarantee rests entirely on the tool surface, described in
+Section~\ref{sec:readonly}. No operation available to the model performs a mutating
+call. The mount flag contributes nothing to that guarantee and should not be cited as
+though it did.
+
+The operational consequence is ordinary: grant this access on the same basis as any
+other root-equivalent privilege on the host, and treat the containing host as the
+security boundary.
+\end{keybox}
+
+\subsection{Operating the system}
+
+The process restarts automatically unless explicitly stopped. Shutdown closes the
+conversation store before the event loop ends, as described earlier, so that
+termination is prompt rather than requiring a forced kill.
+
+For diagnosis, the log channel carries informational records and above in real time.
+The container's own output carries the same records and is the place to look when the
+chat connection itself is the problem. Transport-level logging is pinned to warnings,
+because informational logging of every backend request would emit a line per call and
+flood both destinations.
+
+% ================================================================ 13
+\section{Verification}
+
+\subsection{Automated tests}
+
+The test suite~\cite{pytest} runs entirely offline. It contacts no network service, requires no
+container runtime, no chat workspace and no model endpoint. This is a property of the
+architecture rather than of extensive mocking infrastructure: because the engine takes
+its operations table as a parameter, a test supplies substitutes directly.
+
+A fixture applied to every test redirects both the operational store and the
+conversation store to a temporary location and substitutes an in-memory conversation
+store. No test can reach production data even by mistake.
+
+Coverage spans the areas where behaviour is not obvious from reading the code:
+
+\begin{enumerate}
+  \item \textbf{Loop behaviour.} A turn that requests an operation before answering, a
+        turn that answers immediately, an operation failure being fed back rather than
+        raised, budget exhaustion producing a summary, and threads remaining isolated
+        from one another.
+  \item \textbf{Conversation memory.} Reading a thread back, discarding one, seeding
+        one, verifying that seeded content actually reaches the model, and persistence
+        across separate connections.
+  \item \textbf{Transition detection.} Both edges, the absence of an alert on first
+        observation, scope changes pruning stale state, and an end-to-end incident
+        scenario.
+  \item \textbf{Report generation.} Outage pairing, unclosed-outage accounting, the
+        flapping narrative and its absence when nothing flapped, weekday gating, and
+        thread seeding on publication.
+  \item \textbf{Output shaping.} Heading and table conversion, exemption of fenced
+        content, length capping, and the fallbacks when the model is unavailable or
+        returns nothing.
+  \item \textbf{Name resolution.} Separator variants, exact-match precedence, and
+        ambiguity raising.
+  \item \textbf{Backend clients.} Credential headers being sent only when configured,
+        label validation rejecting malformed names, the log store's range delegation,
+        and output frame parsing.
+\end{enumerate}
+
+Checks requiring live services are marked and excluded from the default run, so that
+the ordinary case needs no environment at all.
+
+\subsection{Model behaviour evaluation}
+
+Tests verify the code. They cannot verify that a given model chooses sensible
+operations, and a model substitution changes that materially while leaving every test
+passing. A separate notebook harness~\cite{jupyter} addresses this, and is read by a human
+rather than asserted on.
+
+Seven notebooks each isolate one subject operation, binding it, plus the discovery
+calls it requires, and nothing else. Each rebuilds a minimal loop rather than invoking
+the production engine, which makes the notebook a readable account of what the loop
+does at the cost of not tracking engine changes automatically.
+
+Each isolation notebook asks two questions. The first is answerable with the bound
+operations. The second requires evidence from a backend that is not bound, and is the
+more informative of the two: it measures whether the model states the limit or answers
+anyway. A model that reports a service healthy when it can only enumerate names has
+fabricated a verdict, and no automated test detects that.
+
+Token consumption is accumulated per turn and reported, so each run shows what it cost.
+
+An eighth notebook binds all ten operations and shares the production conversation
+store. It exercises what isolation cannot: which backend the model selects when
+nothing is withheld, and whether conversation context carries. Its sequence asks a
+broad question, then a follow-up naming nothing, which is answerable only if history
+carried forward, then repeats that follow-up on a fresh thread, which should fail,
+demonstrating isolation.
+
+% ================================================================ 14
+\section{Design decisions}
+\label{sec:decisions}
+
+\subsection{Read only by construction}
+
+\begin{itemize}
+  \item \textbf{Decision.} Expose no operation capable of changing anything.
+  \item \textbf{Reasoning.} An agent that can act must be correct about when to act. An agent that can only observe must merely be useful. The gap between those two requirements is the difference between a system that can be deployed against a live environment now and one that needs an approval workflow, an audit trail and a rollback story first. Placing the constraint in the tool surface rather than in the instructions makes it verifiable by inspection.
+  \item \textbf{Cost.} Every remediation is manual. An operator reading a correct diagnosis at three in the morning still restarts the service by hand.
+\end{itemize}
+
+\subsection{A generic engine}
+
+\begin{itemize}
+  \item \textbf{Decision.} The reasoning loop takes its operations and instructions as parameters and names no backend.
+  \item \textbf{Reasoning.} It makes the loop testable without any backend, allows a second workflow to reuse it unchanged, and permits a restricted tool set per call. The alternative, a loop that imports the tool set directly, is shorter by a few lines and forecloses all three.
+  \item \textbf{Cost.} Every caller must construct and pass configuration that a hardcoded loop would supply itself.
+\end{itemize}
+
+\subsection{Failure is always answered}
+
+\begin{itemize}
+  \item \textbf{Decision.} Every failure path terminates in a message to the operator.
+  \item \textbf{Reasoning.} Operation failures become model input. Model failures become a fallback message. Budget exhaustion becomes a partial summary. Alert dispatch failures are logged rather than raised, because they occur inside recurring tasks that a raised exception would silently stop, converting one failed alert into permanent monitoring loss. Message handling failures produce an explicit reply, for the reason given in Section~\ref{sec:silent}.
+  \item \textbf{Cost.} Failures are less conspicuous in aggregate. A backend that has been unreachable for a day produces a series of individually reasonable answers noting that it could not be checked, rather than one loud failure.
+\end{itemize}
+
+\subsection{Measured data, generated prose}
+
+\begin{itemize}
+  \item \textbf{Decision.} Report figures are rendered from recorded data and never passed through the model. Only summary narrative is generated.
+  \item \textbf{Reasoning.} The figures are already exact. A language model can preserve an exact number or corrupt it, and cannot improve it. Restricting generation to the parts where fluency helps, and excluding it from the parts where precision matters, takes the benefit without the risk.
+  \item \textbf{Cost.} Reports contain a section of dense rendered detail that reads less smoothly than a fully generated report would.
+\end{itemize}
+
+\subsection{One storage file}
+
+\begin{itemize}
+  \item \textbf{Decision.} Operational state and conversation state share one file.
+  \item \textbf{Reasoning.} Publishing a report and answering questions about it must observe the same threads. One file makes that true without coordination and lets an external script see exactly what the running process sees.
+  \item \textbf{Cost.} Two concerns with different access patterns share a store, and separating them later means a migration.
+\end{itemize}
+
+\subsection{One name-matching rule}
+
+\begin{itemize}
+  \item \textbf{Decision.} Every lookup uses the same separator-insensitive rule, with exact match taking precedence and ambiguity raising.
+  \item \textbf{Reasoning.} Consistency is the point. An operator who learns that partial names work when querying should find that they work identically when managing the watch list. Raising on ambiguity trades a round trip for the impossibility of a confidently mislabelled answer.
+  \item \textbf{Cost.} An operator with several similarly named services types more.
+\end{itemize}
+
+% ================================================================ 15
+\section{Limitations and extensions}
+
+\subsection{Limitations}
+
+\begin{enumerate}
+  \item \textbf{Answer quality tracks model quality.} The system supplies evidence and
+        structure; the reasoning is the model's. A smaller model will discover names
+        correctly and still draw a weak conclusion from them. The evaluation harness
+        exists precisely because this cannot be tested automatically.
+  \item \textbf{Memory does not span conversations.} A thread is a conversation, and
+        nothing is recalled across threads. An incident diagnosed in one channel
+        contributes nothing to a similar incident raised in another.
+  \item \textbf{Long conversations lose their beginnings.} Trimming evicts oldest
+        first, so extended threads forget their early turns, including a seeded report.
+  \item \textbf{Monitoring has a blind interval.} Live state is in memory and the
+        first observation after a restart is a baseline, so a failure occurring while
+        the agent is down is never announced. It remains visible in the next report's
+        current-state section.
+  \item \textbf{Missed report firings are skipped.} There is no catch-up, so an agent
+        down at the scheduled hour omits that day's digest entirely.
+  \item \textbf{The deployment is single tenant.} There is no per-user authorisation
+        beyond what the chat workspace enforces. Anyone who can message the agent can
+        query every service it can see.
+  \item \textbf{Alerting observes state, not thresholds.} A service that is running
+        but degraded, serving slowly or returning errors, produces no alert unless an
+        HTTP probe happens to detect it.
+\end{enumerate}
+
+\subsection{Possible extensions}
+
+Several extensions follow naturally from the existing structure.
+
+\begin{enumerate}
+  \item \textbf{Threshold alerting on metric data} would fill the degraded-but-running
+        gap. It would need care to avoid the correlated-failure problem described in
+        Section~\ref{sec:socket-vs-query}, most likely by suppressing metric-derived
+        alerts when the metrics server itself is the failing target.
+  \item \textbf{Persisting monitor state} would close the blind interval, letting the
+        agent compare its first observation after a restart against the last
+        observation before it and report a failure that occurred while it was down.
+  \item \textbf{A summarisation step over evicted history} would extend effective
+        conversation length, replacing the oldest turns with a condensed account rather
+        than discarding them.
+  \item \textbf{Write operations}, if ever added, should be introduced as a distinct
+        tool set behind an explicit approval step rather than by adding mutating calls
+        to the existing surface. The value of the guarantee in
+        Section~\ref{sec:readonly} lies in it being absolute. An agent that can act
+        sometimes requires reasoning about every case in which it might.
+  \item \textbf{Additional backends} fit the existing pattern directly. A new backend
+        is a client, a set of query operations with descriptions written for the model,
+        and an entry in the tool table. Nothing in the engine changes.
+\end{enumerate}
+
+% ================================================================ 16
+\section{Conclusion}
+
+The system automates a specific, repetitive part of operations work: gathering evidence
+from three separate systems and correlating it into an account of what happened. It
+does this through a language model given a fixed set of query operations, reached from
+the chat workspace an operator already uses.
+
+Its most consequential property is what it cannot do. No operation available to the
+model changes anything, which places the guarantee in the composition of the tool set
+rather than in instructions the model may disregard. That single constraint is what
+allows an autonomous reasoning loop to run against a live environment while the worst
+available outcome remains an incorrect answer.
+
+The remaining design follows from taking failure seriously in a system whose central
+component is probabilistic:
+
+\begin{itemize}
+  \item \textbf{The reasoning loop is bounded}, and returns a partial summary instead
+        of an error when the bound is reached.
+  \item \textbf{Operation failures become evidence} rather than exceptions.
+  \item \textbf{Report figures are rendered from recorded data} and never passed
+        through the model, which restricts generation to the parts where fluency helps.
+  \item \textbf{Monitoring baselines before it alerts}, because an alert stream that
+        cries wolf on every restart is worse than none.
+\end{itemize}
+
+Every one of these choices costs something, and Section~\ref{sec:decisions} states the
+costs alongside the reasoning.
+
+
+% ================================================================ REFERENCES
+\clearpage
+\addcontentsline{toc}{section}{References}
+% thebibliography emits its own \section*; restore the plain definition so the
+% per-section \clearpage does not split the heading from the entries.
+\begingroup
+\let\section\stdsection
+\begin{thebibliography}{99}
+\setlength{\itemsep}{4pt}
+
+\bibitem{python}
+Python Software Foundation, ``Python 3.13 documentation.'' [Online].
+Available: \url{https://docs.python.org/3.13/}. [Accessed: Aug. 18, 2026].
+
+\bibitem{langgraph}
+LangChain, Inc., ``LangGraph documentation.'' [Online].
+Available: \url{https://langchain-ai.github.io/langgraph/}. [Accessed: Aug. 18, 2026].
+
+\bibitem{langchain}
+LangChain, Inc., ``LangChain Python documentation.'' [Online].
+Available: \url{https://python.langchain.com/}. [Accessed: Aug. 18, 2026].
+
+\bibitem{openai}
+OpenAI, ``Chat Completions API reference.'' [Online].
+Available: \url{https://platform.openai.com/docs/api-reference/chat}. [Accessed: Aug. 18, 2026].
+
+\bibitem{discordpy}
+Rapptz and contributors, ``discord.py documentation.'' [Online].
+Available: \url{https://discordpy.readthedocs.io/}. [Accessed: Aug. 18, 2026].
+
+\bibitem{discordapi}
+Discord, Inc., ``Discord Developer Portal: API reference.'' [Online].
+Available: \url{https://discord.com/developers/docs/}. [Accessed: Aug. 18, 2026].
+
+\bibitem{pydantic}
+Pydantic Services, Inc., ``Pydantic Settings documentation.'' [Online].
+Available: \url{https://docs.pydantic.dev/latest/concepts/pydantic_settings/}. [Accessed: Aug. 18, 2026].
+
+\bibitem{httpx}
+Encode OSS Ltd., ``HTTPX: a next-generation HTTP client for Python.'' [Online].
+Available: \url{https://www.python-httpx.org/}. [Accessed: Aug. 18, 2026].
+
+\bibitem{sqlite}
+SQLite Consortium, ``SQLite documentation.'' [Online].
+Available: \url{https://www.sqlite.org/docs.html}. [Accessed: Aug. 18, 2026].
+
+\bibitem{dockerapi}
+Docker, Inc., ``Docker Engine API reference.'' [Online].
+Available: \url{https://docs.docker.com/reference/api/engine/}. [Accessed: Aug. 18, 2026].
+
+\bibitem{compose}
+Docker, Inc., ``Docker Compose documentation.'' [Online].
+Available: \url{https://docs.docker.com/compose/}. [Accessed: Aug. 18, 2026].
+
+\bibitem{promapi}
+Prometheus Authors, ``Prometheus HTTP API.'' [Online].
+Available: \url{https://prometheus.io/docs/prometheus/latest/querying/api/}. [Accessed: Aug. 18, 2026].
+
+\bibitem{promql}
+Prometheus Authors, ``Querying Prometheus: PromQL basics.'' [Online].
+Available: \url{https://prometheus.io/docs/prometheus/latest/querying/basics/}. [Accessed: Aug. 18, 2026].
+
+\bibitem{lokiapi}
+Grafana Labs, ``Grafana Loki HTTP API.'' [Online].
+Available: \url{https://grafana.com/docs/loki/latest/reference/loki-http-api/}. [Accessed: Aug. 18, 2026].
+
+\bibitem{logql}
+Grafana Labs, ``LogQL: Loki query language.'' [Online].
+Available: \url{https://grafana.com/docs/loki/latest/query/}. [Accessed: Aug. 18, 2026].
+
+\bibitem{promtail}
+Grafana Labs, ``Promtail configuration and service discovery.'' [Online].
+Available: \url{https://grafana.com/docs/loki/latest/send-data/promtail/}. [Accessed: Aug. 18, 2026].
+
+\bibitem{uv}
+Astral Software, Inc., ``uv: Python packaging documentation.'' [Online].
+Available: \url{https://docs.astral.sh/uv/}. [Accessed: Aug. 18, 2026].
+
+\bibitem{pytest}
+pytest Development Team, ``pytest documentation.'' [Online].
+Available: \url{https://docs.pytest.org/}. [Accessed: Aug. 18, 2026].
+
+\bibitem{jupyter}
+Project Jupyter, ``Jupyter documentation.'' [Online].
+Available: \url{https://docs.jupyter.org/}. [Accessed: Aug. 18, 2026].
+
+\end{thebibliography}
+\endgroup
+
+% ================================================================ APPENDIX
+\appendix
+\clearpage
+
+\section{Settings reference}
+\label{app:settings}
+
+\begin{longtable}{@{}p{0.34\textwidth}p{0.16\textwidth}p{0.42\textwidth}@{}}
+\toprule
+\textbf{Setting} & \textbf{Default} & \textbf{Meaning} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Setting} & \textbf{Default} & \textbf{Meaning} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{3}{r@{}}{\footnotesize\itshape continued on next page} \\
+\endfoot
+\bottomrule
+\endlastfoot
+
+\multicolumn{3}{@{}l}{\textbf{\color{accent}Chat workspace}} \\
+Bot token & none & Authentication credential. Required; startup fails without it \\
+Guild identifier & unset & Target workspace. When set, commands register there directly \\
+Alert channel & unset & Receives failure notifications \\
+Status channel & unset & Receives recovery notifications \\
+Reports channel & unset & Receives scheduled digests. Unset disables them \\
+Log channel & unset & Receives forwarded application logs \\
+\addlinespace
+\multicolumn{3}{@{}l}{\textbf{\color{accent}Endpoint monitoring}} \\
+Monitored endpoints & empty & Comma-separated name and URL pairs \\
+Monitor interval & 60 s & Poll cycle period, floored at 10 seconds \\
+\addlinespace
+\multicolumn{3}{@{}l}{\textbf{\color{accent}Scheduled reports}} \\
+Report hour & 05 UTC & Hour at which the daily task fires \\
+Weekly weekday & 0 (Monday) & Day on which the weekly roll-up also publishes \\
+Lookback days & 7 & Window covered by the weekly roll-up \\
+\addlinespace
+\multicolumn{3}{@{}l}{\textbf{\color{accent}Language model}} \\
+Base URL & local default & Address of the OpenAI-compatible endpoint \\
+Model name & configured & Model identifier requested from that endpoint \\
+API key & empty & Credential, where the endpoint requires one \\
+\addlinespace
+\multicolumn{3}{@{}l}{\textbf{\color{accent}Observability backends}} \\
+Metrics URL & local default & Address of the metrics server \\
+Log store URL & local default & Address of the log store \\
+Metrics token & empty & Bearer credential, sent only when set \\
+Log store token & empty & Bearer credential, sent only when set \\
+\addlinespace
+\multicolumn{3}{@{}l}{\textbf{\color{accent}Container discovery}} \\
+Runtime address & local socket & Runtime API location \\
+Monitoring enabled & false & Whether containers are polled at all \\
+Name filter & empty & Scope substring. Empty places every container in scope \\
+\addlinespace
+\multicolumn{3}{@{}l}{\textbf{\color{accent}Loop limits}} \\
+Max tool steps & 10 & Model turns permitted per question \\
+Max context tokens & 12000 & Token budget per model call, driving history trimming \\
+Log result limit & 500 & Maximum log lines returned by one query \\
+Range maximum & 6 h & Furthest back a range query may reach \\
+\addlinespace
+\multicolumn{3}{@{}l}{\textbf{\color{accent}Storage}} \\
+Database URL & local file & Location of the single storage file \\
+
+\end{longtable}
+
+\clearpage
+\section{Operation reference}
+\label{app:tools}
+
+\footnotesize
+\begin{longtable}{@{}p{0.30\textwidth}p{0.20\textwidth}p{0.42\textwidth}@{}}
+\toprule
+\textbf{Operation} & \textbf{Arguments} & \textbf{Behaviour and limits} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Operation} & \textbf{Arguments} & \textbf{Behaviour and limits} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{3}{r@{}}{\footnotesize\itshape continued on next page} \\
+\endfoot
+\bottomrule
+\endlastfoot
+
+\texttt{list\_services} & none &
+Container names plus configured endpoint names. Output capped. Returns a placeholder
+when the runtime is unreachable \\
+\addlinespace
+\texttt{docker\_status} & container name &
+State, status and image. Name matched loosely. Reports ambiguity rather than choosing \\
+\addlinespace
+\texttt{docker\_logs} & container name, line count &
+Recent combined output. Line count capped at 200. Stream framing parsed and
+non-printable bytes removed. Output capped \\
+\addlinespace
+\texttt{list\_metric\_names} & optional filter &
+Available metric names, optionally filtered by substring. Entry count capped \\
+\addlinespace
+\texttt{get\_label\_values} & label name &
+Values of one metric label. Label name validated before use. Entry count capped \\
+\addlinespace
+\texttt{query\_prometheus} & query expression &
+Instant query for current values. Output capped \\
+\addlinespace
+\texttt{query\_prometheus\_range} & query expression, minutes &
+Range query. Window clamped to the configured maximum. Resolution derived from window
+length for a roughly constant point count. Output capped \\
+\addlinespace
+\texttt{get\_loki\_label\_values} & label name &
+Values of one stream label. Label name validated before use. Entry count capped.
+Labels are those the log shipper defines \\
+\addlinespace
+\texttt{query\_loki} & query expression, limit &
+Log query over a short recent window. Implemented as a range query because the instant
+endpoint rejects plain stream selectors. Limit clamped. Output capped \\
+\addlinespace
+\texttt{query\_loki\_range} & query expression, minutes, limit &
+Log query over an explicit window. Window and limit both clamped. Output capped \\
+
+\end{longtable}
+\normalsize
+
+\vspace{1em}
+\begin{keybox}{Common properties}
+Every operation returns text and bounds what it returns. Every range and limit
+argument is clamped rather than rejected, so an over-large request yields usable data
+instead of an error. No operation accepts a parameter that would change state, and no
+operation is routed to a mutating endpoint.
+\end{keybox}
+
+\end{document}
