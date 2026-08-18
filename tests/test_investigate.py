@@ -4,7 +4,9 @@ import asyncio
 
 from langchain_core.messages import AIMessage
 
-from agent import investigate
+from agent import engine
+from agent.workflows import investigate
+from agent.workflows.report import report
 
 
 class _FakeLLM:
@@ -39,7 +41,7 @@ def test_loop_executes_tool_then_answers(monkeypatch):
         AIMessage(content="", tool_calls=[_tool_call()]),
         AIMessage(content="Container is **running**."),
     ]
-    monkeypatch.setattr(investigate, "get_llm", lambda **kw: _FakeLLM(responses))
+    monkeypatch.setattr(engine, "get_llm", lambda **kw: _FakeLLM(responses))
     tool = _FakeTool("api: state=running")
     monkeypatch.setitem(investigate._TOOLS_BY_NAME, "docker_status", tool)
 
@@ -51,7 +53,7 @@ def test_loop_executes_tool_then_answers(monkeypatch):
 
 def test_loop_answers_without_tools(monkeypatch):
     responses = [AIMessage(content="Nothing is wrong.")]
-    monkeypatch.setattr(investigate, "get_llm", lambda **kw: _FakeLLM(responses))
+    monkeypatch.setattr(engine, "get_llm", lambda **kw: _FakeLLM(responses))
     out = asyncio.run(investigate.investigate("all good?"))
     assert out == "Nothing is wrong."
 
@@ -61,7 +63,7 @@ def test_tool_error_is_fed_back_not_raised(monkeypatch):
         AIMessage(content="", tool_calls=[_tool_call()]),
         AIMessage(content="Docker is unreachable."),
     ]
-    monkeypatch.setattr(investigate, "get_llm", lambda **kw: _FakeLLM(responses))
+    monkeypatch.setattr(engine, "get_llm", lambda **kw: _FakeLLM(responses))
 
     class _BoomTool:
         async def ainvoke(self, _args):
@@ -73,14 +75,14 @@ def test_tool_error_is_fed_back_not_raised(monkeypatch):
 
 
 def test_step_cap_triggers_final_summary(monkeypatch):
-    monkeypatch.setattr(investigate.settings, "max_tool_steps", 2)
+    monkeypatch.setattr(engine.settings, "max_tool_steps", 2)
     responses = [
         AIMessage(content="", tool_calls=[_tool_call(call_id="c1")]),
         AIMessage(content="", tool_calls=[_tool_call(call_id="c2")]),
         AIMessage(content="Summary after cap."),
     ]
     fake = _FakeLLM(responses)  # one instance: the loop and the fallback share the queue
-    monkeypatch.setattr(investigate, "get_llm", lambda **kw: fake)
+    monkeypatch.setattr(engine, "get_llm", lambda **kw: fake)
     monkeypatch.setitem(investigate._TOOLS_BY_NAME, "docker_status", _FakeTool("ok"))
 
     out = asyncio.run(investigate.investigate("why is it slow?"))
@@ -95,7 +97,7 @@ def test_llm_failure_returns_error_message(monkeypatch):
         async def ainvoke(self, _messages):
             raise ConnectionError("endpoint down")
 
-    monkeypatch.setattr(investigate, "get_llm", lambda **kw: _DeadLLM())
+    monkeypatch.setattr(engine, "get_llm", lambda **kw: _DeadLLM())
     out = asyncio.run(investigate.investigate("status?"))
     assert out.startswith("Investigation failed:")
 
@@ -111,8 +113,8 @@ def test_report_uses_incident_template(monkeypatch):
             seen.extend(str(m.content) for m in messages)
             return AIMessage(content="**Summary** all healthy.")
 
-    monkeypatch.setattr(investigate, "get_llm", lambda **kw: _RecordingLLM())
-    out = asyncio.run(investigate.report("marconi-agent-api"))
+    monkeypatch.setattr(engine, "get_llm", lambda **kw: _RecordingLLM())
+    out = asyncio.run(report("marconi-agent-api"))
     assert "healthy" in out
     assert any("incident report" in s and "marconi-agent-api" in s for s in seen)
 
@@ -129,7 +131,7 @@ def test_thread_id_keeps_history_and_isolates_threads(monkeypatch):
             seen.append([str(m.content) for m in messages])
             return AIMessage(content="ok")
 
-    monkeypatch.setattr(investigate, "get_llm", lambda **kw: _RecordingLLM())
+    monkeypatch.setattr(engine, "get_llm", lambda **kw: _RecordingLLM())
 
     asyncio.run(investigate.investigate("first question", thread_id="chan-1"))
     asyncio.run(investigate.investigate("second question", thread_id="chan-1"))

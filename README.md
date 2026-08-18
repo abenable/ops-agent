@@ -58,6 +58,8 @@ python -m agent bot        # run the Discord bot
 | `/watch <container>` | Add a container to the watch list (status updates + down-alerts) |
 | `/unwatch <container>` | Remove a container from the watch list |
 | `/watchlist` | List the containers currently being watched |
+| `/reset` | Forget this channel's conversation history with the agent |
+| `/help` | List what the agent can do |
 
 You can also **@mention** or DM the bot with a question; it answers through the
 same agentic loop as `/investigate`.
@@ -79,8 +81,9 @@ simply inactive when its channel id is unset).
 .
 ├── src/agent/
 │   ├── bot/                 # Discord client, slash commands, monitor loop, digests, summarize
+│   ├── workflows/           # investigate.py, report.py, nl.py (DM/@mention) — tools + prompts per workflow
+│   ├── engine.py            # The generic LangGraph tool-calling loop workflows configure and call
 │   ├── tools/               # Docker/Prometheus/Loki clients + read-only LangChain tools
-│   ├── investigate.py       # The LangGraph agent loop (/investigate, /report, mentions)
 │   ├── memory.py            # Shared conversation memory: checkpointer, thread config, trimming
 │   ├── normalize.py         # Separator-agnostic name matching (one resolver for every lookup)
 │   ├── llm/                 # Self-hosted LLM client (OpenAI-compatible)

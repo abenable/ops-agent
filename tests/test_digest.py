@@ -85,7 +85,7 @@ def test_weekly_asks_the_agent_about_a_flapping_target(quiet_infra, monkeypatch)
         asked.append(question)
         return "It runs out of memory."
 
-    monkeypatch.setattr("agent.investigate.investigate", _fake_investigate)
+    monkeypatch.setattr("agent.workflows.investigate.investigate", _fake_investigate)
     body = asyncio.run(digest.build_weekly())
 
     assert "**Why**" in body

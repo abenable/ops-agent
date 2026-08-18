@@ -8,11 +8,11 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from agent import investigate as investigator
 from agent.bot.digest import build_daily, build_weekly
 from agent.bot.monitor import get_monitored_endpoints
 from agent.bot.summarize import clean
 from agent.bot.utils import format_container_list, split_discord_text
+from agent.memory import forget
 from agent.normalize import AmbiguousName
 from agent.tools import docker
 from agent.watchlist.repository import (
@@ -20,6 +20,8 @@ from agent.watchlist.repository import (
     list_watched_containers,
     remove_watched_container,
 )
+from agent.workflows import investigate as investigator
+from agent.workflows.report import report as generate_report
 
 
 async def _send_chunks(interaction: discord.Interaction, text: str) -> None:
@@ -62,7 +64,7 @@ def setup_slash_commands(bot: commands.Bot) -> None:
     @app_commands.describe(service="Service or container name (partial or separator-variant ok)")
     async def slash_report(interaction: discord.Interaction, service: str):
         await interaction.response.defer()
-        text = await investigator.report(service)
+        text = await generate_report(service)
         await _send_chunks(interaction, f"**Incident report — `{service}`**\n\n{text}")
 
     @bot.tree.command(name="digest", description="Render the daily or weekly infra report now")
@@ -154,6 +156,35 @@ def setup_slash_commands(bot: commands.Bot) -> None:
             )
             return
         lines = ["**Watched containers**"] + [f"- `{name}`" for name in names]
+        await interaction.response.send_message("\n".join(lines), ephemeral=True)
+
+    @bot.tree.command(name="reset", description="Forget this channel's conversation with the agent")
+    async def slash_reset(interaction: discord.Interaction):
+        await forget(str(interaction.channel_id))
+        await interaction.response.send_message(
+            "Conversation history for this channel has been cleared.", ephemeral=True
+        )
+
+    @bot.tree.command(name="help", description="List what the agent can do")
+    async def slash_help(interaction: discord.Interaction):
+        lines = [
+            "**Commands**",
+            "- `/status` — summarize container + endpoint health",
+            "- `/investigate <question>` — free-form agentic investigation",
+            "- `/report <service>` — structured incident report for one service",
+            "- `/digest [daily|weekly]` — render a scheduled report now",
+            "- `/containers` — list Docker containers grouped by status",
+            "- `/watching` — list endpoints the monitor polls",
+            "- `/watch <container>` / `/unwatch <container>` — manage the watch list",
+            "- `/watchlist` — list watched containers",
+            "- `/reset` — forget this channel's conversation history",
+            "",
+            (
+                "**Or just talk to me:** DM me, or `@mention` me in a channel, with a "
+                "question — it goes through the same investigation loop as `/investigate` "
+                "and remembers context per channel/DM."
+            ),
+        ]
         await interaction.response.send_message("\n".join(lines), ephemeral=True)
 
     async def on_app_command_error(

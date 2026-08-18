@@ -4,7 +4,8 @@ import asyncio
 
 from langchain_core.messages import AIMessage
 
-from agent import investigate, memory
+from agent import engine, memory
+from agent.workflows import investigate
 
 
 class _FlatLLM:
@@ -18,7 +19,7 @@ class _FlatLLM:
 
 
 def test_history_and_forget_roundtrip(monkeypatch):
-    monkeypatch.setattr(investigate, "get_llm", lambda **kw: _FlatLLM())
+    monkeypatch.setattr(engine, "get_llm", lambda **kw: _FlatLLM())
 
     async def scenario():
         assert await memory.history("thread-a") == []

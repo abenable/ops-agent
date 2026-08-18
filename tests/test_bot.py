@@ -40,7 +40,7 @@ def test_slash_commands_registered():
     setup_slash_commands(bot)
     for name in (
         "status", "investigate", "report", "containers",
-        "watching", "watch", "unwatch", "watchlist",
+        "watching", "watch", "unwatch", "watchlist", "reset", "help",
     ):
         assert name in bot.tree.commands
 

@@ -133,7 +133,7 @@ async def build_weekly(now: datetime | None = None) -> str:
 
 async def _explain(flapping: list[str], days: int) -> str:
     """Let the agent investigate whatever flapped; a template cannot read logs."""
-    from agent import investigate as investigator
+    from agent.workflows import investigate as investigator
 
     names = ", ".join(f"`{t}`" for t in flapping)
     try:

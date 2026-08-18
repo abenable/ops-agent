@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import re
 import sys
 
 import discord
@@ -17,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 # Guard on_ready re-entrancy after Discord gateway reconnects.
 _setup_done = False
+# Keep a reference so the log pump task isn't garbage-collected mid-run.
+_pump_task: asyncio.Task | None = None
 
 
 class DiscordLogHandler(logging.Handler):
@@ -87,14 +88,18 @@ def _attach_discord_log_handler(bot: discord.Client) -> None:
     handler.setFormatter(logging.Formatter("%(levelname)s %(name)s\n%(message)s"))
     root = logging.getLogger()
     root.addHandler(handler)
-    asyncio.create_task(handler.pump())
+    global _pump_task
+    _pump_task = asyncio.create_task(handler.pump())
 
 
 def run_bot():
     intents = discord.Intents.default()
     intents.message_content = True
 
-    bot = commands.Bot(command_prefix="", intents=intents)
+    # commands.Bot requires a prefix, but on_message is overridden below and
+    # never calls process_commands — no prefix command can ever fire. Every
+    # command here is a slash command (bot.tree), which doesn't use this.
+    bot = commands.Bot(command_prefix=commands.when_mentioned, intents=intents)
 
     @bot.event
     async def on_ready():
@@ -125,27 +130,9 @@ def run_bot():
 
     @bot.event
     async def on_message(message: discord.Message):
-        # Ignore own messages and other bots.
-        if message.author == bot.user or message.author.bot:
-            return
+        from agent.workflows.nl import handle_message
 
-        # DMs and mentions go to the agentic investigation loop.
-        is_dm = message.guild is None
-        if is_dm or bot.user in message.mentions:
-            from agent import investigate as investigator
-            from agent.bot.utils import split_discord_text
-
-            question = re.sub(r"<@!?\d+>", "", message.content).strip()
-            if not question:
-                await message.reply("What should I look into? Try `/status` or `/investigate`.")
-                return
-            async with message.channel.typing():
-                # Thread per channel (per DM), so follow-up questions keep context.
-                answer = await investigator.investigate(question, thread_id=str(message.channel.id))
-            chunks = split_discord_text(answer) or ["(empty answer)"]
-            await message.reply(chunks[0])
-            for chunk in chunks[1:]:
-                await message.channel.send(chunk)
+        await handle_message(bot, message)
 
     setup_slash_commands(bot)
     _setup_logging()
