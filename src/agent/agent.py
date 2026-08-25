@@ -9,7 +9,7 @@ from langchain.agents.middleware import (
 
 from agent.config.settings import settings
 from agent.memory import checkpointer
-from agent.tools import ALL_TOOLS
+from agent.tools import ALL_TOOLS, configured_tools
 
 _TOOLS_BY_NAME = {t.name: t for t in ALL_TOOLS}
 
@@ -45,7 +45,8 @@ async def get_agent():
             saver,
             create_agent(
                 model=settings.model_id,
-                tools=list(_TOOLS_BY_NAME.values()),
+                # Via the registry, so a test that swaps one tool gets its swap.
+                tools=[_TOOLS_BY_NAME[t.name] for t in configured_tools()],
                 system_prompt=_SYSTEM_PROMPT,
                 middleware=[
                     ToolCallLimitMiddleware(

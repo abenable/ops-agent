@@ -70,3 +70,26 @@ def test_empty_docker_host_env_falls_back_to_default_socket(monkeypatch):
 
     monkeypatch.setenv("DOCKER_HOST", "tcp://docker:2375")
     assert docker._docker_host() == "tcp://docker:2375"
+
+
+def test_unconfigured_backends_are_left_out_of_the_tool_set(monkeypatch):
+    """A tool that cannot work is not offered: the model would read its failure
+    as the backend being down rather than never configured."""
+    from agent.config.settings import settings
+    from agent.tools import ALL_TOOLS, configured_tools
+
+    monkeypatch.setattr(settings, "prometheus_url", "http://prom:9090")
+    monkeypatch.setattr(settings, "loki_url", "http://loki:3100")
+    assert configured_tools() == ALL_TOOLS
+
+    monkeypatch.setattr(settings, "loki_url", "")
+    names = [t.name for t in configured_tools()]
+    assert "query_loki" not in names
+    assert "query_prometheus" in names
+
+    monkeypatch.setattr(settings, "prometheus_url", "")
+    assert [t.name for t in configured_tools()] == [
+        "list_services",
+        "docker_status",
+        "docker_logs",
+    ]

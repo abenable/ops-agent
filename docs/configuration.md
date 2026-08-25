@@ -46,8 +46,8 @@ through the environment; see [architecture.md](architecture.md#the-model).
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `PROMETHEUS_URL` | blank | Blank disables the Prometheus tools. |
-| `LOKI_URL` | blank | Blank disables the Loki tools. |
+| `PROMETHEUS_URL` | blank | Blank leaves the four Prometheus tools out of the agent's tool set entirely. |
+| `LOKI_URL` | blank | Blank leaves the three Loki tools out. |
 | `PROMETHEUS_TOKEN` | blank | Sent as `Authorization: Bearer` when set. |
 | `LOKI_TOKEN` | blank | Same, for Loki. |
 | `DOCKER_HOST` | `unix:///var/run/docker.sock` | Set `tcp://host:2375` for a remote daemon. |
