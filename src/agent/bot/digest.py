@@ -1,17 +1,4 @@
-"""Scheduled digests of the watched infrastructure.
-
-One ``tasks.loop`` fires at ``REPORT_HOUR_UTC`` every day: it always posts the
-daily digest, and on ``WEEKLY_REPORT_WEEKDAY`` it also posts the weekly
-roll-up. ``tasks.loop(time=...)`` has no missed-tick catch-up, so a bot that is
-down at 05:00 skips that day rather than posting late.
-
-The **Details** section is rendered from the monitor's own data, never
-paraphrased by the LLM — the numbers are already exact, and a paraphrase could
-only lose or invent detail. A **Summary** section is generated on top of it
-for a fast read. The one exception in the details themselves is the weekly
-narrative: when something flapped, the agent is asked to go read its logs and
-metrics, which no template can do.
-"""
+"""Scheduled daily/weekly digests of the watched infrastructure."""
 
 import logging
 from datetime import UTC, datetime, time, timedelta
@@ -27,7 +14,6 @@ from agent.watchlist.repository import events_since, list_watched_containers
 
 logger = logging.getLogger(__name__)
 
-# A container that went down this many times in the window is worth explaining.
 _FLAP_THRESHOLD = 2
 
 
@@ -63,11 +49,7 @@ async def _snapshot() -> list[str]:
 
 
 def _downtime(events: list[dict]) -> dict[str, dict]:
-    """Per-target outage counts and total downtime, from paired down/up events.
-
-    A ``down`` with no matching ``up`` means the target is still down, so the
-    outage is measured to now rather than dropped.
-    """
+    """Per-target outage counts and total downtime, from paired down/up events."""
     stats: dict[str, dict] = {}
     opened: dict[str, datetime] = {}
     for event in events:
@@ -155,7 +137,7 @@ async def _explain(flapping: list[str], days: int) -> str:
             "Check their logs and metrics and give one short paragraph on the likely "
             "cause and what an operator should do."
         )
-    except Exception as exc:  # noqa: BLE001 - a failed narrative must not lose the report
+    except Exception as exc:  # noqa: BLE001
         logger.warning("weekly narrative failed: %s", exc)
         return f"(could not investigate {names}: {exc})"
 
@@ -173,13 +155,8 @@ async def post(bot, kind: str = "daily", now: datetime | None = None) -> None:
     else:
         body = await build_daily(now)
         title = f"Daily report — {now:%Y-%m-%d}"
-    # Embed descriptions cap at 4096; a long weekly is posted as several chunks.
     chunks = [body[i : i + 3900] for i in range(0, len(body), 3900)] or [body]
-    thread_id = await discord_alert.post_report(channel_id, title, chunks, bot)
-    if thread_id is not None:
-        from agent.engine import seed
-
-        await seed(str(thread_id), body)
+    await discord_alert.post_report(channel_id, title, chunks, bot)
 
 
 async def run_tick(bot, now: datetime | None = None) -> None:

@@ -1,8 +1,4 @@
-"""Discord slash (application) commands for the agent.
-
-These are registered through discord.py's CommandTree so the bot exposes its
-operations as slash commands (`/`).
-"""
+"""Discord slash (application) commands for the agent."""
 
 import discord
 from discord import app_commands
@@ -13,7 +9,6 @@ from agent.bot.digest import post as post_digest
 from agent.bot.monitor import get_monitored_endpoints
 from agent.bot.summarize import clean
 from agent.bot.utils import format_container_list, split_discord_text
-from agent.memory import forget
 from agent.normalize import AmbiguousName
 from agent.tools import docker
 from agent.watchlist.repository import (
@@ -71,10 +66,7 @@ def setup_slash_commands(bot: commands.Bot) -> None:
     @bot.tree.command(name="digest", description="Render the daily or weekly infra report now")
     @app_commands.describe(
         period="Which report to render (default: daily)",
-        post_to_reports=(
-            "Post it to the reports channel instead of just previewing it here "
-            "(seeds that thread's memory too, same as the scheduled digest)"
-        ),
+        post_to_reports="Post it to the reports channel instead of just previewing it here",
     )
     @app_commands.choices(
         period=[
@@ -171,13 +163,6 @@ def setup_slash_commands(bot: commands.Bot) -> None:
         lines = ["**Watched containers**"] + [f"- `{name}`" for name in names]
         await interaction.response.send_message("\n".join(lines), ephemeral=True)
 
-    @bot.tree.command(name="reset", description="Forget this channel's conversation with the agent")
-    async def slash_reset(interaction: discord.Interaction):
-        await forget(str(interaction.channel_id))
-        await interaction.response.send_message(
-            "Conversation history for this channel has been cleared.", ephemeral=True
-        )
-
     @bot.tree.command(name="help", description="List what the agent can do")
     async def slash_help(interaction: discord.Interaction):
         lines = [
@@ -190,7 +175,6 @@ def setup_slash_commands(bot: commands.Bot) -> None:
             "- `/watching` — list endpoints the monitor polls",
             "- `/watch <container>` / `/unwatch <container>` — manage the watch list",
             "- `/watchlist` — list watched containers",
-            "- `/reset` — forget this channel's conversation history",
             "",
             (
                 "**Or just talk to me:** DM me, or `@mention` me in a channel, with a "

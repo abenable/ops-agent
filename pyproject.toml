@@ -6,16 +6,18 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "langchain-openai>=1.3.5",
+    "langchain-google-genai>=2.1.0",
     "discord.py>=2.4.0",
     "pydantic-settings>=2.6.0",
     "python-dotenv>=1.0.0",
     "httpx2>=2.7.0",
     "langgraph>=1.2.11",
     "langgraph-checkpoint-sqlite>=3.1.1",
+    "langchain>=1.3.17",
 ]
 
 [project.scripts]
-agent = "agent.cli:main"
+agent = "agent.__main__:main"
 
 [dependency-groups]
 dev = [
@@ -37,6 +39,9 @@ where = ["src"]
 # Integration tests hit the real LLM endpoint and Discord API, so they are
 # excluded by default; `pytest -m integration` overrides this.
 addopts = "-m 'not integration'"
+# eval/ holds the notebook harness (eval_transcript). It is not part of the
+# package, so put it on the path rather than importing it as agent.*.
+pythonpath = ["eval"]
 markers = [
     "integration: live external API checks (LLM, Discord, etc.)",
 ]

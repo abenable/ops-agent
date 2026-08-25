@@ -40,7 +40,7 @@ def test_slash_commands_registered():
     setup_slash_commands(bot)
     for name in (
         "status", "investigate", "report", "containers",
-        "watching", "watch", "unwatch", "watchlist", "reset", "help",
+        "watching", "watch", "unwatch", "watchlist", "help",
     ):
         assert name in bot.tree.commands
 
@@ -52,8 +52,6 @@ def test_discord_log_handler_forwards_info_and_quiets_httpx():
     from agent.bot.client import DiscordLogHandler, _setup_logging
 
     _setup_logging()
-    # httpx/httpx2 are transport noise; one INFO line per request would flood the
-    # Discord log channel, so they must be silenced to WARNING.
     assert logging.getLogger("httpx").level == logging.WARNING
     assert logging.getLogger("httpx2").level == logging.WARNING
 
@@ -80,8 +78,8 @@ def test_discord_log_handler_forwards_info_and_quiets_httpx():
     handler.setFormatter(logging.Formatter("%(levelname)s %(name)s\n%(message)s"))
     test_logger = logging.getLogger("agent.test")
     test_logger.addHandler(handler)
-    test_logger.setLevel(logging.INFO)  # don't depend on root's effective level
-    # Drive the pump so the bootstrap banner and any queued records flush.
+    test_logger.setLevel(logging.INFO)
+
     async def run():
         import asyncio as _aio
         task = _aio.create_task(handler.pump())

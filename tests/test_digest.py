@@ -28,7 +28,6 @@ def sent(monkeypatch):
 
     async def _capture(_channel, title, chunks, _bot):
         posted.append((title, chunks))
-        return 999
 
     monkeypatch.setattr(digest.discord_alert, "post_report", _capture)
     monkeypatch.setattr(digest.settings, "discord_reports_channel_id", 123)
@@ -128,30 +127,6 @@ def test_events_since_ignores_anything_before_the_cutoff():
     assert events_since(datetime.now(UTC) + timedelta(minutes=5)) == []
 
 
-def test_posting_a_report_seeds_the_thread_with_its_body(quiet_infra, monkeypatch):
-    from agent import memory
-
-    async def _capture(_channel, _title, _chunks, _bot):
-        return 42424242
-
-    monkeypatch.setattr(digest.discord_alert, "post_report", _capture)
-    monkeypatch.setattr(digest.settings, "discord_reports_channel_id", 123)
-
+def test_posting_a_report_sends_its_body_to_the_reports_channel(quiet_infra, sent):
     asyncio.run(digest.post(None, "daily", _MONDAY))
-
-    remembered = asyncio.run(memory.history("42424242"))
-    assert remembered and "no changes" in remembered[0].content
-
-
-def test_nothing_is_seeded_when_posting_fails(quiet_infra, monkeypatch):
-    from agent import memory
-
-    async def _capture(_channel, _title, _chunks, _bot):
-        return None
-
-    monkeypatch.setattr(digest.discord_alert, "post_report", _capture)
-    monkeypatch.setattr(digest.settings, "discord_reports_channel_id", 123)
-
-    asyncio.run(digest.post(None, "daily", _MONDAY))
-
-    assert asyncio.run(memory.history("None")) == []
+    assert sent and "no changes" in sent[0][1][0]

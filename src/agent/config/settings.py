@@ -1,5 +1,6 @@
 """Pydantic settings loaded from environment and `.env`."""
 
+import os
 from pathlib import Path
 
 from dotenv import find_dotenv, load_dotenv
@@ -25,7 +26,6 @@ class Settings(BaseSettings):
         env_parse_none_str="",
     )
 
-    # Discord
     discord_bot_token: str = Field(default="", validation_alias="DISCORD_BOT_TOKEN")
     discord_guild_id: int | None = None
     discord_alert_channel_id: int | None = None
@@ -33,51 +33,59 @@ class Settings(BaseSettings):
     discord_reports_channel_id: int | None = None
     discord_log_channel_id: int | None = None
 
-    # Endpoint monitoring loop
     monitored_endpoints: str = ""
     monitor_interval_seconds: int = 60
 
-    # Self-hosted LLM (OpenAI-compatible)
+    llm_provider: str = Field(
+        default="google",
+        validation_alias="LLM_PROVIDER",
+    )
     llm_base_url: str = "http://100.64.0.7:4000/v1"
-    llm_model: str = "marconi-llm"
+    llm_model: str = "gemma-4-26b-a4b-it"
+    llm_summarizer_model: str = ""
     llm_api_key: str = Field(
         default="",
         validation_alias="LLM_API_KEY",
     )
+    google_api_key: str = Field(
+        default="",
+        validation_alias="GEMINI_API_KEY",
+    )
 
-    # Monitoring / logging integrations
-    prometheus_url: str = "http://localhost:9090"
-    loki_url: str = "http://localhost:3100"
+    @property
+    def model_id(self) -> str:
+        """The ``provider:model`` identifier ``init_chat_model`` takes."""
+        provider = "google_genai" if self.llm_provider == "google" else "openai"
+        return f"{provider}:{self.llm_model}"
+
+    @property
+    def summarizer_model_id(self) -> str:
+        """``model_id`` for the cheaper summarization model, if one is set."""
+        provider = "google_genai" if self.llm_provider == "google" else "openai"
+        return f"{provider}:{self.llm_summarizer_model or self.llm_model}"
+
+    prometheus_url: str = ""
+    loki_url: str = ""
     prometheus_token: str = ""
     loki_token: str = ""
 
-    # Agentic investigation loop. 10 turns lets a non-trivial diagnosis (e.g.
-    # "0 samples scraped") complete within the loop; the guided prose fallback
-    # handles anything that still hits the cap.
     max_tool_steps: int = 10
     max_context_tokens: int = 12000
     loki_max_limit: int = 500
     range_max_hours: int = 6
 
-    # Scheduled digests. One task fires at REPORT_HOUR_UTC every day; on
-    # WEEKLY_REPORT_WEEKDAY (0 = Monday) it also posts the weekly roll-up.
-    # Both go to DISCORD_REPORTS_CHANNEL_ID and are skipped if it is unset.
     report_hour_utc: int = 5
     weekly_report_weekday: int = 0
     digest_lookback_days: int = 7
 
-    # Docker container discovery (DOCKER_HOST is read from the env by tools/docker.py)
     docker_monitor: bool = False
     docker_name_filter: str = ""
 
-    # Storage
     database_url: str = "sqlite:///data/agent.db"
 
     @model_validator(mode="before")
     @classmethod
     def _blank_env_to_empty_string(cls, data):
-        # env_parse_none_str="" turns empty env vars into None (needed for the
-        # optional int fields). Keep plain str fields as "" instead of None.
         if isinstance(data, dict):
             for name, field in cls.model_fields.items():
                 if field.annotation is not str:
@@ -95,10 +103,23 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# The one SQLite file: the watch list and event log (agent.watchlist.repository)
-# and the conversation checkpointer (agent.memory) both live in it. Resolved
-# once, relative to the repo root, so every process agrees on the same file.
 DB_PATH = Path(settings.database_url.replace("sqlite:///", ""))
 if not DB_PATH.is_absolute():
     DB_PATH = Path(__file__).resolve().parents[3] / DB_PATH
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+MEMORY_DB_PATH = DB_PATH.with_name("memory.db")
+
+
+def _export_provider_env() -> None:
+    """Publish the configured credentials/endpoint into the environment."""
+    for name, value in (
+        ("OPENAI_API_KEY", settings.llm_api_key),
+        ("OPENAI_API_BASE", settings.llm_base_url),
+        ("GOOGLE_API_KEY", settings.google_api_key),
+    ):
+        if value:
+            os.environ[name] = value
+
+
+_export_provider_env()

@@ -18,7 +18,7 @@ def test_send_alert_uses_embed():
     embed = channel.send.call_args.kwargs["embed"]
     assert embed.title == "Down"
     assert embed.description == "the message"
-    assert embed.color.value == 0xE74C3C  # critical color
+    assert embed.color.value == 0xE74C3C
 
 
 def test_send_alert_falls_back_to_fetch_channel():
@@ -35,8 +35,7 @@ def test_send_alert_falls_back_to_fetch_channel():
 
 
 def test_send_alert_never_raises_on_bad_channel():
-    """A bad channel id must not raise — callers run inside tasks.loop jobs
-    that a raised exception would silently kill."""
+    """A bad channel id must not raise."""
     import discord
 
     bot = MagicMock()
@@ -70,7 +69,7 @@ def test_post_report_forum_channel_opens_one_thread_with_all_chunks():
     bot = MagicMock()
     bot.get_channel.return_value = channel
 
-    result = asyncio.run(post_report(123, "Weekly report", ["chunk one", "chunk two"], bot))
+    asyncio.run(post_report(123, "Weekly report", ["chunk one", "chunk two"], bot))
 
     channel.create_thread.assert_awaited_once()
     kwargs = channel.create_thread.call_args.kwargs
@@ -78,7 +77,6 @@ def test_post_report_forum_channel_opens_one_thread_with_all_chunks():
     assert kwargs["embed"].description == "chunk one"
     thread.send.assert_awaited_once()
     assert thread.send.call_args.kwargs["embed"].description == "chunk two"
-    assert result == 999888777
 
 
 def test_post_report_text_channel_sends_one_embed_per_chunk():
@@ -86,12 +84,11 @@ def test_post_report_text_channel_sends_one_embed_per_chunk():
     bot = MagicMock()
     bot.get_channel.return_value = channel
 
-    result = asyncio.run(post_report(123, "Daily report", ["chunk one", "chunk two"], bot))
+    asyncio.run(post_report(123, "Daily report", ["chunk one", "chunk two"], bot))
 
     assert channel.send.await_count == 2
     titles = [call.kwargs["embed"].title for call in channel.send.await_args_list]
     assert titles == ["Daily report", "Daily report (cont.)"]
-    assert result == 123
 
 
 def test_post_report_never_raises_on_send_failure():
@@ -102,5 +99,4 @@ def test_post_report_never_raises_on_send_failure():
     bot = MagicMock()
     bot.get_channel.return_value = channel
 
-    result = asyncio.run(post_report(123, "Daily report", ["chunk"], bot))  # must not raise
-    assert result is None
+    asyncio.run(post_report(123, "Daily report", ["chunk"], bot))  # must not raise
