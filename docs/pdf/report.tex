@@ -330,10 +330,9 @@ one stream.
 A scheduled task fires once daily at a configured hour. It renders a digest of current
 state and the transitions recorded in the preceding day, and on one configured weekday
 it additionally renders a weekly roll-up with per-service outage counts and cumulative
-downtime. Reports are published to a dedicated channel. A published report is also
-loaded into the conversation memory for the thread it was published in, so that an
-operator can reply to the report itself and ask follow-up questions with the report
-already in context.
+downtime. Reports are published to a dedicated channel. Where that channel is a forum, each
+digest opens its own thread, which keeps a series of reports separable rather than
+interleaved in one stream.
 
 \subsection{Implementation stack}
 
@@ -347,8 +346,8 @@ Table~\ref{tab:stack} names each and cites its documentation.
 \textbf{Concern} & \textbf{Component} & \textbf{Reference} \\
 \midrule
 Runtime & Python 3.13 & \cite{python} \\
-Reasoning loop & LangGraph state machine and checkpointing & \cite{langgraph} \\
-Model binding & LangChain tool-calling abstractions & \cite{langchain} \\
+Agent harness & LangChain \texttt{create\_agent} and its middleware & \cite{langchain} \\
+Conversation store & LangGraph checkpointing & \cite{langgraph} \\
 Model protocol & OpenAI-compatible chat completions & \cite{openai} \\
 Chat interface & discord.py over the Discord API & \cite{discordpy, discordapi} \\
 Configuration & Pydantic settings management & \cite{pydantic} \\
@@ -383,7 +382,7 @@ by what it does.
 
 \node[layer] (l1) {\textbf{Chat layer} \quad\footnotesize client, commands, monitor, scheduler, output shaping};
 \node[layer, below=of l1] (l2) {\textbf{Workflows} \quad\footnotesize investigation, incident report, message handling};
-\node[layer, below=of l2] (l3) {\textbf{Engine} \quad\footnotesize generic tool-calling loop \qquad \textbf{Memory} \quad\footnotesize conversation state};
+\node[layer, below=of l2] (l3) {\textbf{Agent} \quad\footnotesize one configured harness \qquad \textbf{Memory} \quad\footnotesize conversation state};
 \node[layer, below=of l3] (l4) {\textbf{Tools} \quad\footnotesize container, metric and log query operations};
 \node[layer, below=of l4] (l5) {\textbf{Foundations} \quad\footnotesize settings, model client, name resolution, event store};
 
@@ -397,8 +396,8 @@ by what it does.
 \node[right=3mm of l4, font=\scriptsize\itshape, text width=26mm, align=left] {no mutating call};
 
 \end{tikzpicture}
-\caption{Layering. Imports run downward only. The engine sits below the workflows that
-configure it and above the tools it never names.}
+\caption{Layering. Imports run downward only. The agent sits below the workflows that
+call it and above the tools it is constructed with.}
 \label{fig:layers}
 \end{figure}
 
@@ -406,14 +405,16 @@ configure it and above the tools it never names.}
 
 The settings component reads configuration from the process environment and an
 optional environment file, exposing it as a validated, typed object constructed once
-at import. It also resolves the storage path a single time so that every component
-agrees on one file.
+at import. It also resolves both storage paths a single time so that every component
+agrees on which file is which.
 
-The model client constructs a chat client against an endpoint speaking the widely
-implemented OpenAI-compatible protocol~\cite{openai}. Any server implementing that protocol is
-usable, which is what makes a self-hosted model practical here. A request timeout is
-applied so that an unresponsive endpoint fails rather than stalling a background task
-indefinitely.
+The settings component also derives the model identifier. The configured provider and
+model name are combined into a single \texttt{provider:model} string, which the model
+library resolves to a client on its own. Because the harness constructs that client
+internally, configuration reaches it only through the process environment, so the
+credential and the endpoint address are published there at import. Any server speaking
+the widely implemented OpenAI-compatible protocol~\cite{openai} is usable, which is
+what makes a self-hosted model practical here.
 
 Name resolution provides the single matching rule used for every service lookup in
 the system. Section~\ref{sec:names} describes it.
@@ -431,25 +432,27 @@ the description written for the model, and the clamping of arguments to safe ran
 This layer knows nothing about conversations, chat platforms or scheduling. It also
 contains no operation that changes anything.
 
-\subsubsection{Engine and memory}
+\subsubsection{Agent and memory}
 
-The engine implements the tool-calling loop and nothing else. It does not import the
-tool layer, does not contain a persona, and does not name a backend. The tools it runs
-and the instructions it runs under are supplied by the caller on each invocation.
+One module constructs the agent, and it is the only place in the system where an agent
+is constructed. It names the model, the tool set, the operations persona, the
+middleware stack and the conversation store in a single call to the framework's agent
+factory. The result is built once and cached, and every workflow shares that instance.
 
-This is the most consequential structural decision in the system. Because the engine
-takes its tools as a parameter, a caller can hand it a narrower set, and a test can
-hand it substitutes. Because it takes its instructions as a parameter, a second
-workflow with a different purpose reuses the loop without modifying it.
+Concentrating construction in one place is the most consequential structural decision
+in the system. A workflow cannot configure the agent differently from any other, so
+there is exactly one answer to what tools the model has and what instructions it runs
+under, and that answer is readable in one file. Section~\ref{sec:decisions} states what
+this costs.
 
-Memory holds conversation state, keyed by thread. It is a peer of the engine rather
-than a part of it, so that any component can read a thread back, seed one, or drop one
-without going through the loop.
+Memory holds conversation state, keyed by thread. It is a peer of the agent rather
+than a part of it, so that the store's lifetime belongs to the process rather than to
+any one conversation.
 
 \subsubsection{Workflows}
 
 A workflow is one unit of work. The investigation workflow binds the full tool set to the operations persona, using
-the model-facing tool schema abstractions~\cite{langchain}, and calls the engine. The incident report workflow calls the
+the model-facing tool schema abstractions~\cite{langchain}. The incident report workflow calls the
 investigation workflow with a fixed template. Both are plain asynchronous functions
 returning a string, with no chat platform types in their signatures, which is what
 allows the chat layer to remain a thin adapter.
@@ -478,13 +481,13 @@ Figure~\ref{fig:sequence} traces one investigation from question to answer.
 \def\lx{0} \def\wx{28} \def\ex{56} \def\mx{84} \def\tx{112}
 \def\ytop{0} \def\ybot{-76}
 
-\foreach \x/\name in {\lx/Chat layer, \wx/Workflow, \ex/Engine, \mx/Model, \tx/Backends} {
+\foreach \x/\name in {\lx/Chat layer, \wx/Workflow, \ex/Agent, \mx/Model, \tx/Backends} {
   \node[boxn, text width=20mm] at (\x mm, \ytop) {\name};
   \draw[draw=rule, thick] (\x mm, -5mm) -- (\x mm, \ybot mm);
 }
 
 \draw[fl] (\lx mm,-12mm) -- node[lbl,above]{\scriptsize question} (\wx mm,-12mm);
-\draw[fl] (\wx mm,-19mm) -- node[lbl,above]{\scriptsize tools + prompt} (\ex mm,-19mm);
+\draw[fl] (\wx mm,-19mm) -- node[lbl,above]{\scriptsize question + thread} (\ex mm,-19mm);
 \draw[fl] (\ex mm,-26mm) -- node[lbl,above]{\scriptsize state} (\mx mm,-26mm);
 \draw[fl] (\mx mm,-33mm) -- node[lbl,above]{\scriptsize tool request} (\ex mm,-33mm);
 \draw[fl] (\ex mm,-40mm) -- node[lbl,above,pos=0.22]{\scriptsize query} (\tx mm,-40mm);
@@ -497,140 +500,134 @@ Figure~\ref{fig:sequence} traces one investigation from question to answer.
 \draw[fl] (\wx mm,-69mm) -- node[lbl,above]{\scriptsize shaped text} (\lx mm,-69mm);
 
 \end{tikzpicture}
-\caption{One investigation. The engine mediates between the model and the backends.
-The model never reaches a backend directly; it asks the engine to, and reads the
+\caption{One investigation. The agent mediates between the model and the backends.
+The model never reaches a backend directly; it asks the agent to, and reads the
 result as text.}
 \label{fig:sequence}
 \end{figure}
 
 The property worth noting is that the model issues no network calls. It emits a
-structured request naming an operation and its arguments. The engine looks that name
-up in the table supplied for this run and executes it. An operation that is not in
-that table cannot be invoked regardless of what the model emits, which makes the tool
-table an enforcement point rather than a convention.
+structured request naming an operation and its arguments. The harness looks that name
+up in the tool set the agent was built with and executes it. An operation that is not
+in that set cannot be invoked regardless of what the model emits, which makes the tool
+set an enforcement point rather than a convention.
 
 \subsection{Data model}
 
-One storage file holds everything the system persists, containing three kinds of data:
+Two embedded database files sit side by side, each opened by exactly one component.
 
-\begin{enumerate}
-  \item \textbf{The watch list.} Services an operator has explicitly asked to be
-        monitored regardless of the general scope rule.
-  \item \textbf{The transition log.} One row per observed state change, carrying the
-        target, its kind, the new state and a timestamp.
-  \item \textbf{Conversation checkpoints.} Written by the memory component, holding
-        the message history for each thread.
-\end{enumerate}
+The operational file holds the watch list, naming services an operator has explicitly
+asked to be monitored regardless of the general scope rule, and the transition log,
+carrying one row per observed state change with the target, its kind, the new state
+and a timestamp. Both are read and written synchronously by the event store.
 
-Using one file rather than separating conversation state from operational state is
-deliberate. A published report needs to become conversation context for the thread it
-was published in, which means the component that publishes reports and the component
-that answers questions must see the same threads. Keeping them in one file makes that
-true by construction. It also means a maintenance script run outside the main process
-observes exactly the state the running process observes.
+The conversation file holds the checkpoints written by the memory component: the
+message history for each thread. Nothing else opens it.
+
+The separation matters because the two files are written by different mechanisms: the
+event store writes synchronously from the polling task, and the conversation store
+writes asynchronously from the model turn. Sharing one file would put those two in
+contention for a single write lock, so a watch-list update could stall an answer.
+Section~\ref{sec:decisions} states what the split costs.
 
 The transition log is trimmed on write, retaining ninety days. A service in a restart
 loop can otherwise produce one row per polling cycle indefinitely.
 
 % ================================================================ 4
-\section{The agent engine}
+\section{The agent}
 
-\subsection{The loop}
+\subsection{The harness}
 
-The engine is a state machine with two active states, shown in
-Figure~\ref{fig:machine}, built on a graph execution library that supplies the state
-machine, the message-history state type and the checkpointing used in
-Section~\ref{sec:memory}~\cite{langgraph}. The model state consults the language model with the current
-conversation and the available operations. The tool state executes every operation the
-model requested in its most recent turn.
+The agent is one call to the framework's agent factory, made once and cached. The call
+names five things: the model identifier, the tool set, the operations persona, a
+middleware stack, and the conversation store. Everything the loop does between a
+question arriving and an answer leaving is the framework's, shown in
+Figure~\ref{fig:machine}.
 
 \begin{figure}[H]
 \centering
-\begin{tikzpicture}[node distance=16mm]
+\begin{tikzpicture}[node distance=14mm]
 
 \node[term] (start) {start};
-\node[statn, right=of start] (model) {model};
-\node[statn, right=26mm of model] (tools) {tools};
-\node[term, below=16mm of model] (end) {answer};
+\node[statn, right=13mm of start, text width=24mm] (before) {\footnotesize summarise\\\footnotesize if oversized};
+\node[statn, right=13mm of before] (model) {model};
+\node[statn, below=14mm of model, text width=22mm] (after) {\footnotesize budget\\\footnotesize check};
+\node[statn, left=13mm of after] (tools) {tools};
+\node[term, right=15mm of model] (end) {answer};
 
-\draw[fl] (start) -- (model);
-\draw[fl] (model) to[bend left=22] node[lbl,above]{requested operations} (tools);
-\draw[fl] (tools) to[bend left=22] node[lbl,below]{results as text} (model);
-\draw[fl] (model) -- node[lbl,right]{no operations requested} (end);
-
-\node[draw=warnrule, fill=warnbg, rounded corners=2pt, right=14mm of tools,
-      text width=30mm, align=center, font=\footnotesize] (budget)
-      {budget exhausted\\$\rightarrow$ one final call\\with no operations};
-\draw[fldash] (tools) -- (budget);
+\draw[fl] (start) -- (before);
+\draw[fl] (before) -- (model);
+\draw[fl] (model) -- node[lbl,right]{\scriptsize operations requested} (after);
+\draw[fl] (after) -- (tools);
+\draw[fl] (tools) to[out=150,in=210] node[lbl,left]{\scriptsize results as text} (before);
+\draw[fl] (model) -- node[lbl,above]{\scriptsize none requested} (end);
+\draw[fl] (after.east) to[out=0,in=-90] node[lbl,right]{\scriptsize budget spent} (end.south);
 
 \end{tikzpicture}
-\caption{The engine state machine. The loop terminates when a model turn requests no
-operations, or when the step budget is exhausted and the summary path is taken.}
+\caption{The agent as configured. Two middleware components bracket the model call:
+one compresses the history before it, one enforces the tool budget after it. The
+unlabelled path back through the tools is the ordinary loop.}
 \label{fig:machine}
 \end{figure}
 
-Termination is decided by a single condition: whether the model's most recent message
-requested any operations. If it did, control passes to the tool state and back. If it
-did not, the message is the answer and the loop ends. There is no separate stopping
-heuristic, and no maximum imposed on the answer itself.
+Termination is decided by whether the model's most recent message requested any
+operations. If it did, the requested operations run and control returns to the model.
+If it did not, that message is the answer. There is no separate stopping heuristic and
+no maximum imposed on the answer itself.
 
-\subsection{Per-run configuration}
+\subsection{The middleware stack}
 
-The operations table, the instruction text and the configured model client are built
-once per invocation and passed down to the states through the run configuration
-rather than reconstructed on each turn. A five-turn investigation therefore builds one
-client, not five.
-
-This also has a correctness consequence. Because the operations table is taken exactly
-as the caller built it, a caller that supplies substitutes gets those substitutes and
-nothing else. The loop has no separate notion of a real operation, which is what makes
-it testable without any backend present.
-
-The compiled state machine itself is cached across invocations and rebuilt only when
-the underlying storage component changes, because storage is bound at compile time.
-
-\subsection{The step budget}
-
-Unbounded loops against a paid or rate-limited endpoint are a liability. The engine
-bounds the number of steps a single question may consume. The bound is expressed as a
-step limit on the state machine and derived from the configured maximum number of
-model turns.
-
-The derivation carries a factor of two. One turn in which the model requests an
-operation costs two transitions through the machine: one to consult the model, one to
-execute what it asked for. A budget of ten model turns is therefore twenty machine
-steps.
-
-\begin{keybox}{Behaviour when the budget is exhausted}
-Exceeding the budget does not produce an error for the operator. The engine reads back
-the conversation accumulated so far and makes one further call to the model with no
-operations available, asking it to state what it found, what it believes the cause to
-be, and what it could not check. The operator receives a partial but honest answer
-rather than a failure message.
-\end{keybox}
-
-This final call bypasses the state machine, which has one visible consequence: neither
-the request for a summary nor the summary itself is written into the conversation
-history. A follow-up question in the same thread sees the investigation but not its
-concluding summary.
-
-\subsection{Failure handling inside the loop}
-
-Two failure modes are handled at the tool state rather than allowed to propagate.
+Three middleware components are configured. Each replaced code that was previously
+written by hand in this system, which is the strongest argument for adopting the
+harness: the behaviours were all needed, and none of them were novel.
 
 \begin{enumerate}
-  \item \textbf{Unknown operation.} If the model requests an operation that is not in
-        the table for this run, the engine returns a short message to that effect as
-        the operation's result.
-  \item \textbf{Operation raised.} If an operation raises an exception, the exception
-        is caught and its text is returned as the result.
+  \item \textbf{Context summarisation.} When the accumulated history exceeds the
+        configured token budget, older turns are replaced with a generated summary
+        before the model is consulted. It may be pointed at a cheaper model than the
+        one answering, since compressing a transcript is a lesser task than diagnosing
+        an incident.
+  \item \textbf{Tool budget.} A run may spend a fixed number of operations. The call
+        that would exceed the limit is not executed, and neither is any sibling call
+        issued in the same turn; the run ends with an explanation instead.
+  \item \textbf{Operation errors.} An operation that raises is converted into an
+        ordinary result carrying the failure text, which the model reads and continues
+        from.
 \end{enumerate}
+
+\subsection{The tool budget}
+
+Unbounded loops against a paid or rate-limited endpoint are a liability, so the number
+of operations one question may consume is bounded.
+
+\begin{keybox}{The budget counts operations, not turns}
+The unit is one operation call. A turn in which the model requests three operations in
+parallel spends three, not one. Bounding model turns instead would leave the quantity
+that actually costs money unbounded, since a single turn may request any number of
+operations. It would also have to be expressed against the shape of the underlying
+graph, where a change to the graph silently changes the budget.
+\end{keybox}
+
+Exceeding the budget does not produce an error for the operator. The run ends with the
+model's own account of what it had established, and the partial answer is delivered
+normally. What the operator loses is the work that was not done, not the work that was.
+
+\subsection{Failure handling}
+
+Two failure modes are handled inside the loop rather than allowed to propagate. An
+operation that raises has its exception text returned as the operation's result. An
+operation the model names but that does not exist is reported as not existing.
 
 In both cases the model receives a description of what went wrong as ordinary input
 and continues. This is preferable to aborting: a query against an unreachable backend
 is information the model can use, and it frequently is the answer. A model told that a
 log query failed because the log store refused the connection can reasonably conclude
 that the log store is down, which is a correct and useful diagnosis.
+
+Distinguishing the two matters more than it appears. Reporting a non-existent
+operation as a failed one would tell the model that a capability exists and is broken,
+when the truth is that it was never offered. That distinction is exactly what the
+evaluation notebooks in Section~\ref{sec:eval} measure.
 
 Failures above the loop are handled differently. The investigation workflow catches
 everything and returns a description of the failure as its answer, so that a caller
@@ -652,16 +649,20 @@ interaction with no history and no persistence beyond the call. Incident report
 generation uses this path deliberately: a report should describe the service, not
 whatever was discussed in that channel earlier.
 
+The thread identifier is the only handle on a conversation. There is no interface for
+reading a stored thread back, writing into one from outside, or deleting one, which
+keeps the stored history reachable only through the component that owns it.
+
 \subsection{Durability}
 
-Conversation state is written to the same embedded database file~\cite{sqlite} as the
-operational data. A
-thread therefore survives a process restart. An operator who asked a question before a
+Conversation state is written to its own embedded database file~\cite{sqlite}, so a
+thread survives a process restart. An operator who asked a question before a
 deployment can ask a follow-up after it.
 
 The storage component owns a connection bound to the event loop it was opened in,
 which requires it to be created inside the running loop rather than at import. It is
-consequently created on first use and held for the process lifetime.
+consequently created on first use and held for the process lifetime. It is also the
+only opener of that file, which is what makes a single connection sufficient.
 
 \begin{warnbox}{Shutdown ordering}
 The connection runs on a worker thread that continues waiting on its queue after the
@@ -670,29 +671,25 @@ hangs until the supervising runtime gives up and kills it. The chat client's shu
 path closes it explicitly for this reason.
 \end{warnbox}
 
-\subsection{Context windowing}
+\subsection{Bounding a long conversation}
 
-A thread grows without bound while a model's context does not, so the history is
-trimmed before every model call to fit a configured token budget. Trimming keeps the
-most recent messages and discards the oldest.
+A thread grows without bound while a model's context does not. The history is
+therefore compressed once it exceeds the configured token budget: older turns are
+replaced by a generated summary, and recent turns are kept verbatim.
 
-Trimming cannot cut at an arbitrary point. A model turn requesting operations and the
-results of those operations form a unit in the protocol. Delivering a request whose
-results are missing, or results whose request is missing, is rejected by the API as
-malformed. The trimming boundaries are therefore constrained to positions that keep
-those pairs intact.
+\begin{keybox}{Compression rewrites the record, not just the prompt}
+The summary replaces the older turns in the stored thread, not merely in the message
+list on its way to the model. The distinction decides whether storage is bounded: a
+scheme that shortens only the prompt leaves the stored thread holding every message
+ever exchanged, so a long-lived channel grows a database row without limit. Rewriting
+in place also discards less than trimming would, since a trimmed thread loses its
+oldest turns outright while a summarised one keeps a compressed account of them.
+\end{keybox}
 
-\subsection{Seeding a thread}
-
-Content the model did not produce can be loaded into a thread before any conversation
-occurs. This is what makes a published report answerable: the report body is written
-into the thread it was published in, so an operator replying to it asks questions
-against a conversation that already contains it.
-
-Seeded content is recorded as a message of the type attributed to a human participant.
-This is required rather than stylistic. Trimming begins each window at a human turn,
-so a thread seeded with content attributed to the model would have that content
-discarded before it ever reached the model, silently and with no error.
+Trimming had a second constraint that summarisation removes. A model turn requesting
+operations and the results of those operations form a unit in the protocol, and
+delivering one without the other is rejected as malformed, so trim boundaries had to
+be chosen to keep those pairs intact.
 
 \subsection{Stated limits}
 
@@ -700,10 +697,9 @@ Memory here means one conversation replayed per thread. There is no recall acros
 threads and no retrieval over past conversations. A fact established in one channel is
 unavailable in another.
 
-Trimming evicts oldest first, which interacts with seeding in a way worth stating
-plainly: a large seeded report is the first content evicted from a thread that goes on
-to have a long conversation. The report is present for the first few follow-up
-questions and gone by the twentieth.
+Compression is lossy by construction. A long conversation retains a summary of its
+early turns rather than the turns themselves, so a detail mentioned once and not
+repeated may survive only as whatever the summarising model judged worth keeping.
 
 % ================================================================ 6
 \section{The tool surface}
@@ -1045,7 +1041,7 @@ question against a conversation that already contains the report.
 
 \subsection{Commands}
 
-Eleven commands are registered through the chat library's application command
+Ten commands are registered through the chat library's application command
 tree~\cite{discordpy, discordapi}, listed in Table~\ref{tab:commands}. Commands whose
 output concerns only the caller reply privately, so that routine list queries do not
 fill a shared channel.
@@ -1065,7 +1061,6 @@ fill a shared channel.
 \texttt{watch} & container & Add a container to the watch list \\
 \texttt{unwatch} & container & Remove a container from the watch list \\
 \texttt{watchlist} & none & Containers currently watched \\
-\texttt{reset} & none & Discard this conversation's history \\
 \texttt{help} & none & List the commands \\
 \bottomrule
 \end{tabularx}
@@ -1157,11 +1152,11 @@ reference with defaults.
 Chat workspace & Authentication token, target workspace, and the four channel roles \\
 Endpoint monitoring & Which endpoints are probed and how often \\
 Scheduled reports & Publication hour, weekly day, lookback window \\
-Language model & Endpoint address, model name, credential \\
+Language model & Provider, endpoint address, model names, credential \\
 Observability backends & Metric and log server addresses and optional credentials \\
 Container discovery & Runtime address, monitoring toggle, name filter \\
-Loop limits & Step budget, context budget, result and window caps \\
-Storage & Location of the single storage file \\
+Loop limits & Operation budget, context budget, result and window caps \\
+Storage & Location of the operational file; the conversation file sits beside it \\
 \bottomrule
 \end{tabularx}
 \caption{Configuration groups.}
@@ -1191,15 +1186,16 @@ valid value meaning no filter or no credential. Validation therefore restores em
 strings for text settings after the general parsing rule has run.
 
 The storage location is resolved once at import: the configured path is made absolute
-relative to the installation root, and its containing directory is created. Every
-component consequently agrees on one file without coordinating.
+relative to the installation root, and its containing directory is created. The
+conversation file is derived from it rather than configured separately, so the two
+always sit together and no deployment can point them at different volumes.
 
 \subsection{Loop limits}
 
-Four settings bound resource use per question. The step budget bounds model turns, as
-described earlier. The context budget bounds tokens per model call and drives history
-trimming. A result limit bounds returned log lines. A window maximum bounds how far
-back a range query may reach.
+Four settings bound resource use per question. The operation budget bounds how many
+operations one question may spend, as described earlier. The context budget sets the
+threshold at which history is compressed. A result limit bounds returned log lines. A
+window maximum bounds how far back a range query may reach.
 
 The last two protect the backends rather than the model. A range query over a week of
 high-volume log data is expensive to serve, and an investigation almost never needs it.
@@ -1295,8 +1291,10 @@ flood both destinations.
 
 The test suite~\cite{pytest} runs entirely offline. It contacts no network service, requires no
 container runtime, no chat workspace and no model endpoint. This is a property of the
-architecture rather than of extensive mocking infrastructure: because the engine takes
-its operations table as a parameter, a test supplies substitutes directly.
+architecture rather than of extensive mocking infrastructure. Because the agent is
+given a model identifier rather than a client, a single fixture redirects the model
+factory to a scripted substitute, and because the tool set is a named mapping, a test
+replaces one entry without disturbing the rest.
 
 A fixture applied to every test redirects both the operational store and the
 conversation store to a temporary location and substitutes an in-memory conversation
@@ -1307,17 +1305,17 @@ Coverage spans the areas where behaviour is not obvious from reading the code:
 \begin{enumerate}
   \item \textbf{Loop behaviour.} A turn that requests an operation before answering, a
         turn that answers immediately, an operation failure being fed back rather than
-        raised, budget exhaustion producing a summary, and threads remaining isolated
-        from one another.
-  \item \textbf{Conversation memory.} Reading a thread back, discarding one, seeding
-        one, verifying that seeded content actually reaches the model, and persistence
-        across separate connections.
+        raised, the operation budget halting the loop at exactly its limit, a model
+        failure returning a message, and threads remaining isolated from one another.
+  \item \textbf{Conversation memory.} Thread configuration, and a thread surviving a
+        closed and reopened connection, verified by asking a second question and
+        checking that the first reached the model.
   \item \textbf{Transition detection.} Both edges, the absence of an alert on first
         observation, scope changes pruning stale state, and an end-to-end incident
         scenario.
   \item \textbf{Report generation.} Outage pairing, unclosed-outage accounting, the
         flapping narrative and its absence when nothing flapped, weekday gating, and
-        thread seeding on publication.
+        publication to the reports channel.
   \item \textbf{Output shaping.} Heading and table conversion, exemption of fenced
         content, length capping, and the fallbacks when the model is unavailable or
         returns nothing.
@@ -1326,12 +1324,17 @@ Coverage spans the areas where behaviour is not obvious from reading the code:
   \item \textbf{Backend clients.} Credential headers being sent only when configured,
         label validation rejecting malformed names, the log store's range delegation,
         and output frame parsing.
+  \item \textbf{The evaluation harness.} That the budget counts operations rather than
+        turns, that a run which fails part way still writes its transcript, that an
+        operation the model invents is reported as absent rather than broken, and that
+        repeated runs are graded by the same rule as single ones.
 \end{enumerate}
 
 Checks requiring live services are marked and excluded from the default run, so that
 the ordinary case needs no environment at all.
 
 \subsection{Model behaviour evaluation}
+\label{sec:eval}
 
 Tests verify the code. They cannot verify that a given model chooses sensible
 operations, and a model substitution changes that materially while leaving every test
@@ -1339,9 +1342,13 @@ passing. A separate notebook harness~\cite{jupyter} addresses this, and is read 
 rather than asserted on.
 
 Seven notebooks each isolate one subject operation, binding it, plus the discovery
-calls it requires, and nothing else. Each rebuilds a minimal loop rather than invoking
-the production engine, which makes the notebook a readable account of what the loop
-does at the cost of not tracking engine changes automatically.
+calls it requires, and nothing else. All seven drive a shared instrumented loop rather
+than each rebuilding one, so a change to how runs are measured applies to every
+notebook at once. That loop is not the production harness: it is a deliberate
+reimplementation that records every message sent, every response, every operation and
+its result, and the token cost of each call, to a transcript file per run. Its budget
+counts operations exactly as the production harness does, so the two agree on how much
+work a question is allowed.
 
 Each isolation notebook asks two questions. The first is answerable with the bound
 operations. The second requires evidence from a backend that is not bound, and is the
@@ -1351,9 +1358,9 @@ fabricated a verdict, and no automated test detects that.
 
 Token consumption is accumulated per turn and reported, so each run shows what it cost.
 
-An eighth notebook binds all ten operations and shares the production conversation
-store. It exercises what isolation cannot: which backend the model selects when
-nothing is withheld, and whether conversation context carries. Its sequence asks a
+An eighth notebook is different in kind: it imports the production agent itself and
+drives it with memory. It exercises what isolation cannot: which backend the model
+selects when nothing is withheld, and whether conversation context carries. Its sequence asks a
 broad question, then a follow-up naming nothing, which is answerable only if history
 carried forward, then repeats that follow-up on a fresh thread, which should fail,
 demonstrating isolation.
@@ -1370,12 +1377,12 @@ demonstrating isolation.
   \item \textbf{Cost.} Every remediation is manual. An operator reading a correct diagnosis at three in the morning still restarts the service by hand.
 \end{itemize}
 
-\subsection{A generic engine}
+\subsection{The framework's harness, not a hand-written loop}
 
 \begin{itemize}
-  \item \textbf{Decision.} The reasoning loop takes its operations and instructions as parameters and names no backend.
-  \item \textbf{Reasoning.} It makes the loop testable without any backend, allows a second workflow to reuse it unchanged, and permits a restricted tool set per call. The alternative, a loop that imports the tool set directly, is shorter by a few lines and forecloses all three.
-  \item \textbf{Cost.} Every caller must construct and pass configuration that a hardcoded loop would supply itself.
+  \item \textbf{Decision.} Build the agent with the framework's documented factory and configure its middleware, rather than writing the tool-calling loop, the budget, the error handling and the history trimming by hand.
+  \item \textbf{Reasoning.} All four behaviours were implemented here first, and all four were ordinary. Maintaining them meant owning bugs in code that is not this project's subject, and the hand-written versions had already drifted: the budget was expressed in graph steps rather than operations, and trimming bounded the prompt while leaving the stored history unbounded. The framework's versions are maintained, documented and correct on both counts.
+  \item \textbf{Cost.} The system now tracks a dependency's release cycle in a place where it previously tracked nothing, and behaviour that used to be readable in this repository is now a configuration flag whose meaning lives in someone else's documentation.
 \end{itemize}
 
 \subsection{Failure is always answered}
@@ -1394,12 +1401,12 @@ demonstrating isolation.
   \item \textbf{Cost.} Reports contain a section of dense rendered detail that reads less smoothly than a fully generated report would.
 \end{itemize}
 
-\subsection{One storage file}
+\subsection{Two storage files}
 
 \begin{itemize}
-  \item \textbf{Decision.} Operational state and conversation state share one file.
-  \item \textbf{Reasoning.} Publishing a report and answering questions about it must observe the same threads. One file makes that true without coordination and lets an external script see exactly what the running process sees.
-  \item \textbf{Cost.} Two concerns with different access patterns share a store, and separating them later means a migration.
+  \item \textbf{Decision.} Operational state and conversation state live in separate files, each with exactly one opener.
+  \item \textbf{Reasoning.} They shared one file while a published report had to become conversation context, which required the publishing and answering components to see the same threads. That path was removed, and what remained was two connections contending for one write lock for no benefit. One writer per file means a watch-list write cannot block a model turn.
+  \item \textbf{Cost.} A backup is now two files rather than one, and anything wanting a consistent view of both has to take them together.
 \end{itemize}
 
 \subsection{One name-matching rule}
@@ -1423,8 +1430,10 @@ demonstrating isolation.
   \item \textbf{Memory does not span conversations.} A thread is a conversation, and
         nothing is recalled across threads. An incident diagnosed in one channel
         contributes nothing to a similar incident raised in another.
-  \item \textbf{Long conversations lose their beginnings.} Trimming evicts oldest
-        first, so extended threads forget their early turns, including a seeded report.
+  \item \textbf{Long conversations keep a summary, not a record.} Once a thread
+        exceeds the context budget its early turns are replaced by generated prose. A
+        detail mentioned once and never repeated survives only if the summarising
+        model judged it worth keeping.
   \item \textbf{Monitoring has a blind interval.} Live state is in memory and the
         first observation after a restart is a baseline, so a failure occurring while
         the agent is down is never announced. It remains visible in the next report's
@@ -1451,9 +1460,6 @@ Several extensions follow naturally from the existing structure.
   \item \textbf{Persisting monitor state} would close the blind interval, letting the
         agent compare its first observation after a restart against the last
         observation before it and report a failure that occurred while it was down.
-  \item \textbf{A summarisation step over evicted history} would extend effective
-        conversation length, replacing the oldest turns with a condensed account rather
-        than discarding them.
   \item \textbf{Write operations}, if ever added, should be introduced as a distinct
         tool set behind an explicit approval step rather than by adding mutating calls
         to the existing surface. The value of the guarantee in
@@ -1461,7 +1467,7 @@ Several extensions follow naturally from the existing structure.
         sometimes requires reasoning about every case in which it might.
   \item \textbf{Additional backends} fit the existing pattern directly. A new backend
         is a client, a set of query operations with descriptions written for the model,
-        and an entry in the tool table. Nothing in the engine changes.
+        and an entry in the tool list. Nothing in the agent changes.
 \end{enumerate}
 
 % ================================================================ 16
@@ -1510,12 +1516,12 @@ Python Software Foundation, ``Python 3.13 documentation.'' [Online].
 Available: \url{https://docs.python.org/3.13/}. [Accessed: Aug. 18, 2026].
 
 \bibitem{langgraph}
-LangChain, Inc., ``LangGraph documentation.'' [Online].
-Available: \url{https://langchain-ai.github.io/langgraph/}. [Accessed: Aug. 18, 2026].
+LangChain, Inc., ``LangChain Python documentation: short-term memory.'' [Online].
+Available: \url{https://docs.langchain.com/oss/python/langchain/short-term-memory}. [Accessed: Aug. 25, 2026].
 
 \bibitem{langchain}
-LangChain, Inc., ``LangChain Python documentation.'' [Online].
-Available: \url{https://python.langchain.com/}. [Accessed: Aug. 18, 2026].
+LangChain, Inc., ``LangChain Python documentation: agents.'' [Online].
+Available: \url{https://docs.langchain.com/oss/python/langchain/agents}. [Accessed: Aug. 25, 2026].
 
 \bibitem{openai}
 OpenAI, ``Chat Completions API reference.'' [Online].
@@ -1624,9 +1630,12 @@ Weekly weekday & 0 (Monday) & Day on which the weekly roll-up also publishes \\
 Lookback days & 7 & Window covered by the weekly roll-up \\
 \addlinespace
 \multicolumn{3}{@{}l}{\textbf{\color{accent}Language model}} \\
-Base URL & local default & Address of the OpenAI-compatible endpoint \\
+Provider & google & Selects the OpenAI-compatible or the Gemini family \\
 Model name & configured & Model identifier requested from that endpoint \\
+Summariser model & empty & Cheaper model for context compression. Empty reuses the main model \\
+Base URL & local default & Address of the OpenAI-compatible endpoint \\
 API key & empty & Credential, where the endpoint requires one \\
+Gemini key & empty & Credential for the Gemini provider \\
 \addlinespace
 \multicolumn{3}{@{}l}{\textbf{\color{accent}Observability backends}} \\
 Metrics URL & local default & Address of the metrics server \\
@@ -1640,13 +1649,13 @@ Monitoring enabled & false & Whether containers are polled at all \\
 Name filter & empty & Scope substring. Empty places every container in scope \\
 \addlinespace
 \multicolumn{3}{@{}l}{\textbf{\color{accent}Loop limits}} \\
-Max tool steps & 10 & Model turns permitted per question \\
-Max context tokens & 12000 & Token budget per model call, driving history trimming \\
+Max tool steps & 10 & Operations permitted per question, counted per call \\
+Max context tokens & 12000 & Threshold above which history is compressed \\
 Log result limit & 500 & Maximum log lines returned by one query \\
 Range maximum & 6 h & Furthest back a range query may reach \\
 \addlinespace
 \multicolumn{3}{@{}l}{\textbf{\color{accent}Storage}} \\
-Database URL & local file & Location of the single storage file \\
+Database URL & local file & Location of the operational file. The conversation file is derived to sit beside it \\
 
 \end{longtable}
 
