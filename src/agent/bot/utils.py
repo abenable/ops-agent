@@ -10,7 +10,6 @@ def format_container_list(items: list[dict]) -> str:
         state = (c.get("State") or "unknown").lower()
         groups.setdefault(state, []).append(c)
 
-    # Show running first; keep the rest alphabetical.
     order = sorted(groups.keys(), key=lambda s: (0 if s == "running" else 1, s))
 
     lines: list[str] = []

@@ -78,6 +78,5 @@ def test_watch_list_lookup_rejects_an_ambiguous_partial_name(tmp_database):
         find_watched_container("api")
     assert caught.value.matches == ["marconi-agent-api", "marconi-api-gateway"]
 
-    # An unambiguous partial still resolves, and an exact name never goes fuzzy.
     assert find_watched_container("gateway") == "marconi-api-gateway"
     assert remove_watched_container("marconi-agent-api") is True

@@ -1,10 +1,4 @@
-"""Separator-agnostic name matching for service/container lookups.
-
-Users type service names like 'agent_api' while the real container is
-'marconi-agent-api'. Collapsing separator differences lets a lookup match
-regardless of spelling. ``resolve_one`` is the single matching rule every
-lookup goes through, so partial names behave the same everywhere.
-"""
+"""Separator-agnostic name matching for service/container lookups."""
 
 import re
 from collections.abc import Callable, Iterable
@@ -35,13 +29,7 @@ def resolve_one[T](
     key: Callable[[T], str] = str,
     kind: str = "names",
 ) -> T | None:
-    """The one candidate a (possibly partial) name refers to. None if no match.
-
-    An exact name always wins, so a container literally called `agent_api` beats
-    `marconi-agent-api-worker`. A partial name that matches several candidates
-    raises instead of returning whichever came first — silently picking one
-    reports the wrong thing under the name the caller asked for.
-    """
+    """The one candidate a (possibly partial) name refers to. None if no match."""
     needle = normalize(name)
     matches = [c for c in candidates if needle in normalize(key(c))]
     for candidate in matches:

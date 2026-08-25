@@ -13,7 +13,6 @@ def test_watch_list_roundtrip(tmp_database):
     assert add_watched_container("marconi-agent-api") is False
     assert list_watched_containers() == ["marconi-agent-api"]
 
-    # Separator-agnostic resolution on remove.
     assert remove_watched_container("agent_api") is True
     assert list_watched_containers() == []
     assert remove_watched_container("agent_api") is False

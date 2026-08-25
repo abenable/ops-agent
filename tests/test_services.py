@@ -59,8 +59,7 @@ def test_loki_token_sent_only_when_set(monkeypatch):
 
 
 def test_loki_query_uses_range_endpoint_not_instant():
-    """Regression: Loki's instant /query endpoint rejects plain log-stream
-    selectors, so query() must delegate to /query_range, not /query."""
+    """query() must delegate to /query_range, not the instant /query endpoint."""
     fake_client, cm = _fake_http_client(json_payload={"status": "success"})
     with patch.object(loki.httpx, "AsyncClient", return_value=cm):
         asyncio.run(loki.query('{container="x"}'))

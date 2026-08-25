@@ -1,5 +1,4 @@
-"""Background monitoring loop: polls containers and HTTP endpoints, and posts
-Discord alerts on down/recovery transitions."""
+"""Background monitoring loop: polls containers and HTTP endpoints, and posts Discord alerts on down/recovery transitions."""
 
 import httpx2 as httpx
 from discord.ext import tasks
@@ -9,9 +8,7 @@ from agent.config.settings import settings
 from agent.tools import docker
 from agent.watchlist.repository import list_watched_containers, record_event
 
-# container name -> last state (in-memory; fine for an MVP)
 _container_state: dict[str, str] = {}
-# endpoint name -> last reachability (in-memory, same lifetime as above)
 _endpoint_state: dict[str, bool] = {}
 
 
@@ -33,31 +30,19 @@ def get_monitored_endpoints() -> dict[str, str]:
 
 
 def in_scope(name: str, watched: set[str]) -> bool:
-    """True when a container is alerted on: it matches ``docker_name_filter``
-    (empty filter = every container) or is explicitly watched via ``/watch``."""
+    """True when a container is alerted on: matches ``docker_name_filter`` or is explicitly watched."""
     name_filter = settings.docker_name_filter.lower()
     return (not name_filter) or (name_filter in name.lower()) or (name in watched)
 
 
 async def _poll_containers(bot) -> None:
-    """Track containers each cycle and alert when one stops running.
-
-    Container alerting reads the Docker socket directly rather than PromQL —
-    Prometheus is kept for metrics, not alerting — so there is no scrape gap and
-    no PromQL edge to mis-fire on a Prometheus restart. A container is in
-    scope if it matches ``docker_name_filter`` (empty filter = every container)
-    or is explicitly watched via ``/watch``. A running -> not-running transition
-    sends a critical alert; not-running -> running sends a recovery note to
-    the status channel. The first poll after a monitor
-    restart baselines the current state without alerting (``prev`` is None), so
-    restarting the monitor never produces a false edge.
-    """
+    """Track containers each cycle and alert when one stops running."""
     if not settings.docker_monitor:
         return
     watched = set(list_watched_containers())
     try:
         containers = await docker.list_containers(all_containers=True)
-    except Exception:  # noqa: BLE001 - one bad poll must not kill the monitor loop
+    except Exception:  # noqa: BLE001
         return
 
     seen: set[str] = set()
@@ -90,7 +75,6 @@ async def _poll_containers(bot) -> None:
                 )
         _container_state[name] = state
 
-    # Forget containers no longer present or out of scope.
     for name in list(_container_state):
         if name not in seen:
             del _container_state[name]
@@ -107,13 +91,7 @@ async def probe(url: str) -> bool:
 
 
 async def _poll_endpoints(bot) -> None:
-    """Probe each configured endpoint and alert on down/recovery transitions.
-
-    Covers the systems that are not containers on this host (a URL on another
-    box, a service behind a proxy), which the Docker poll cannot see. Like the
-    container poll, the first observation of an endpoint only baselines it
-    (``prev`` is None), so a restart never produces a false alarm.
-    """
+    """Probe each configured endpoint and alert on down/recovery transitions."""
     endpoints = _endpoints()
     for name, url in endpoints.items():
         up = await probe(url)
@@ -139,7 +117,6 @@ async def _poll_endpoints(bot) -> None:
                 title="Endpoint up",
             )
 
-    # Forget endpoints removed from the configuration.
     for name in list(_endpoint_state):
         if name not in endpoints:
             del _endpoint_state[name]

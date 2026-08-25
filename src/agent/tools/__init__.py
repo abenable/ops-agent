@@ -1,5 +1,4 @@
-"""Read-only LangChain tools the LLM can call during an investigation, grouped
-by backend: docker, prometheus, loki."""
+"""Read-only LangChain tools the LLM can call during an investigation, grouped by backend: docker, prometheus, loki."""
 
 from agent.tools.docker import docker_logs, docker_status, list_services
 from agent.tools.loki import get_loki_label_values, query_loki, query_loki_range

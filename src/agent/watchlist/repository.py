@@ -1,5 +1,4 @@
-"""Minimal SQLite repository: the container watch list and the monitor's
-transition log (what the daily and weekly digests report on)."""
+"""Minimal SQLite repository: the container watch list and the monitor's transition log."""
 
 import sqlite3
 from datetime import datetime
@@ -12,8 +11,6 @@ def _connect():
     return sqlite3.connect(str(DB_PATH))
 
 
-# Transitions are rare, but a crash-looping container can log one per poll, so
-# the log is trimmed on write rather than growing for the life of the lab.
 _EVENT_RETENTION_DAYS = 90
 
 
@@ -72,16 +69,12 @@ def remove_watched_container(name: str) -> bool:
 
 
 def find_watched_container(name: str) -> str | None:
-    """Resolve a partial/separator-variant name to an exact watched container name.
-
-    Raises ``AmbiguousName`` when the partial name matches several entries.
-    """
+    """Resolve a partial/separator-variant name to an exact watched container name."""
     return resolve_one(name, list_watched_containers(), kind="watched containers")
 
 
 def record_event(target: str, kind: str, state: str) -> None:
-    """Log a monitor transition. ``kind`` is 'container' or 'endpoint',
-    ``state`` is 'down' or 'up'. Timestamps are SQLite UTC."""
+    """Log a monitor transition. ``kind`` is 'container' or 'endpoint', ``state`` is 'down' or 'up'. Timestamps are SQLite UTC."""
     init_db()
     with _connect() as conn:
         conn.execute(

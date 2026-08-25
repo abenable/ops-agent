@@ -1,8 +1,4 @@
-"""Tests for the natural-language (DM/@mention) workflow.
-
-Regression coverage for the bug where an exception in this path was
-swallowed by discord.py and never reached the user or the log channel.
-"""
+"""Tests for the natural-language (DM/@mention) workflow."""
 
 import asyncio
 import contextlib
@@ -53,7 +49,7 @@ def test_dm_answers_through_investigate(monkeypatch):
 
     monkeypatch.setattr(nl.investigator, "investigate", fake_investigate)
     bot = _FakeBot()
-    message = _FakeMessage("why is loki down?")  # guild=None -> DM
+    message = _FakeMessage("why is loki down?")
 
     asyncio.run(nl.handle_message(bot, message))
 

@@ -15,7 +15,6 @@ from agent.memory import close_memory
 
 logger = logging.getLogger(__name__)
 
-# Guard on_ready re-entrancy after Discord gateway reconnects.
 _setup_done = False
 _pump_task: asyncio.Task | None = None
 
@@ -30,32 +29,28 @@ class DiscordLogHandler(logging.Handler):
         self.queue: asyncio.Queue[str] = asyncio.Queue()
 
     def emit(self, record: logging.LogRecord) -> None:
-        # Never route discord.py's own logs back into Discord (avoid loops)
         if record.name.startswith("discord"):
             return
         try:
             self.queue.put_nowait(self.format(record))
-        except Exception:  # noqa: BLE001, S110 - logging.Handler.emit() must never raise
+        except Exception:  # noqa: BLE001, S110
             pass  # pragma: no cover
 
     async def pump(self) -> None:
-        # Resolve via cache, falling back to an API fetch — get_channel() is often
-        # None right at on_ready before the channel cache is populated.
         channel = self.bot.get_channel(self.channel_id)
         if channel is None:
             try:
                 channel = await self.bot.fetch_channel(self.channel_id)
-            except Exception as exc:  # noqa: BLE001 - discord.py can raise many types here
+            except Exception as exc:  # noqa: BLE001
                 print(
                     f"Discord log channel {self.channel_id} unreachable: {exc}",
                     file=sys.stderr,
                 )
                 return
 
-        # Confirm the wiring loudly so an empty channel means "nothing happening", not "broken".
         try:
             await channel.send("Log forwarding active (INFO and above).")
-        except Exception as exc:  # noqa: BLE001 - discord.py can raise many types here
+        except Exception as exc:  # noqa: BLE001
             print(f"Cannot send to Discord log channel: {exc}", file=sys.stderr)
             return
 
@@ -63,8 +58,7 @@ class DiscordLogHandler(logging.Handler):
             msg = await self.queue.get()
             try:
                 await channel.send(f"```{msg[:1900]}```")
-            except Exception as exc:  # noqa: BLE001 -- discord.py can raise many types here  # pragma: no cover
-                # Write to stderr, not the root logger, to avoid re-entering this handler.
+            except Exception as exc:  # noqa: BLE001
                 print(f"Failed to send log to Discord: {exc}", file=sys.stderr)
 
 
@@ -73,10 +67,6 @@ def _setup_logging() -> None:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    # Quiet the HTTP transport loggers: they emit one INFO line per request
-    # (every DeepSeek/Prometheus/Docker call), which floods the Discord log
-    # channel and the console without being useful activity signal. Warnings
-    # and errors still surface.
     for noisy in ("httpx", "httpx2"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
@@ -93,12 +83,7 @@ def _attach_discord_log_handler(bot: discord.Client) -> None:
 
 
 class _Bot(commands.Bot):
-    """The bot, plus the one shutdown step conversation memory needs.
-
-    The checkpointer holds an aiosqlite connection whose worker thread outlives
-    the event loop; closing it here is what keeps `docker stop` from hanging
-    until it gives up and sends SIGKILL.
-    """
+    """The bot, plus the one shutdown step conversation memory needs."""
 
     async def close(self) -> None:
         await close_memory()
@@ -123,8 +108,6 @@ def run_bot():
 
         start_monitor(bot)
         start_digests(bot)
-        # Sync slash commands once on startup. Guild sync is faster during testing;
-        # global sync is used when no guild id is configured.
         try:
             if settings.discord_guild_id:
                 guild = discord.Object(id=settings.discord_guild_id)
@@ -133,7 +116,7 @@ def run_bot():
             else:
                 synced = await bot.tree.sync()
             logger.info("Synced %d slash command(s)", len(synced))
-        except Exception as exc:  # noqa: BLE001 - discord.py can raise many types here
+        except Exception as exc:  # noqa: BLE001
             logger.warning("Slash-command sync failed: %s", exc)
 
         _attach_discord_log_handler(bot)

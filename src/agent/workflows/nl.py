@@ -1,13 +1,4 @@
-"""Natural-language questions: DMs and @mentions, routed through the same
-investigation loop as ``/investigate``.
-
-Used to live as a closure inside ``bot.client.run_bot`` — untestable, and any
-exception it raised was swallowed by discord.py's default error handler and
-logged to ``discord.client``, a logger this bot deliberately filters out of
-its own Discord log channel (see ``DiscordLogHandler.emit``). Net effect: a
-failure here looked like the bot silently not responding. Pulling it out
-into a plain function lets us wrap it in a try/except that always replies.
-"""
+"""Natural-language questions: DMs and @mentions, routed through the same investigation loop as ``/investigate``."""
 
 import logging
 import re
@@ -38,9 +29,8 @@ async def handle_message(bot: discord.Client, message: discord.Message) -> None:
 
     try:
         async with message.channel.typing():
-            # Thread per channel (per DM), so follow-up questions keep context.
             answer = await investigator.investigate(question, thread_id=str(message.channel.id))
-    except Exception as exc:  # noqa: BLE001 - must always answer, never go silent
+    except Exception as exc:
         logger.exception("natural-language handling failed")
         await message.reply(f"Something went wrong answering that: {exc}")
         return

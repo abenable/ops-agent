@@ -8,13 +8,8 @@ from langchain_core.tools import tool
 
 from agent.config.settings import settings
 
-# Prometheus label names: [a-zA-Z_][a-zA-Z0-9_]*. Reject anything that could
-# manipulate the URL path (/, ?, #, .., whitespace).
+# Rejects anything that could manipulate the URL path (/, ?, #, .., whitespace).
 _LABEL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-
-# ---------------------------------------------------------------------------
-# Client
-# ---------------------------------------------------------------------------
 
 
 def _headers() -> dict[str, str]:
@@ -74,38 +69,29 @@ async def query_range(promql: str, minutes: int) -> dict:
         return response.json()
 
 
-# ---------------------------------------------------------------------------
-# LangChain tools
-# ---------------------------------------------------------------------------
-
-
 @tool
 async def query_prometheus(promql: str) -> str:
-    """Run an instant PromQL query. Use for current values, e.g. 'up == 0' or
-    'rate(http_requests_total[5m])'. Returns the JSON result as a string."""
+    """Run an instant PromQL query. Use for current values, e.g. 'up == 0' or 'rate(http_requests_total[5m])'. Returns the JSON result as a string."""
     return str(await query(promql))[:4000]
 
 
 @tool
 async def list_metric_names(match: str = "") -> str:
-    """List available Prometheus metric names. Call this FIRST to discover what
-    metrics exist before writing a query. `match` optionally filters by substring."""
+    """List available Prometheus metric names. Call this FIRST to discover what metrics exist before writing a query. `match` optionally filters by substring."""
     names = await metric_names(match)
     return "\n".join(names[:250]) if names else "(no metrics found)"
 
 
 @tool
 async def get_label_values(label: str) -> str:
-    """List values for a Prometheus label such as 'service', 'job', or 'instance'.
-    Use this to discover valid label values before querying."""
+    """List values for a Prometheus label such as 'service', 'job', or 'instance'. Use this to discover valid label values before querying."""
     values = await label_values(label)
     return "\n".join(values[:250]) if values else f"(no values for label {label})"
 
 
 @tool
 async def query_prometheus_range(promql: str, minutes: int) -> str:
-    """Run a PromQL range query over the last `minutes`. Use for trends
-    (e.g. CPU over the last 30m). The window is clamped to the configured maximum."""
+    """Run a PromQL range query over the last `minutes`. Use for trends (e.g. CPU over the last 30m). The window is clamped to the configured maximum."""
     max_minutes = max(1, settings.range_max_hours * 60)
     minutes = max(1, min(minutes, max_minutes))
     return str(await query_range(promql, minutes))[:4000]

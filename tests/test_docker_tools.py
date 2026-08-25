@@ -62,8 +62,7 @@ def test_docker_logs_strips_control_bytes():
 
 
 def test_empty_docker_host_env_falls_back_to_default_socket(monkeypatch):
-    """Regression: DOCKER_HOST='' (a common .env/compose placeholder) must behave
-    as unset, not reach the transport layer and kill every Docker call."""
+    """Regression: DOCKER_HOST='' (a common .env/compose placeholder) must behave as unset, not reach the transport layer and kill every Docker call."""
     from agent.tools import docker
 
     monkeypatch.setenv("DOCKER_HOST", "")
