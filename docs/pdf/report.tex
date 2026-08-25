@@ -357,7 +357,6 @@ Container runtime & Docker Engine API & \cite{dockerapi} \\
 Orchestration & Docker Compose & \cite{compose} \\
 Metrics & Prometheus HTTP API and PromQL & \cite{promapi, promql} \\
 Logs & Grafana Loki HTTP API and LogQL & \cite{lokiapi, logql} \\
-Log shipping & Promtail container discovery & \cite{promtail} \\
 Packaging & uv dependency resolution and locking & \cite{uv} \\
 Testing & pytest & \cite{pytest} \\
 Evaluation & Jupyter notebooks & \cite{jupyter} \\
@@ -1205,36 +1204,30 @@ high-volume log data is expensive to serve, and an investigation almost never ne
 
 \subsection{Packaging}
 
-The agent is packaged as a container image on a slim Python~\cite{python} base. Dependencies are
+The agent is packaged as a single-service container image on a slim Python~\cite{python} base. Dependencies are
 resolved from a lock file~\cite{uv} and installed in a layer built before the
 application source is copied, so that editing source does not invalidate the dependency layer. Builds
 after a source change reuse the cached dependency installation.
 
-\subsection{The accompanying stack}
+\subsection{The observability backends}
 
-The deployment description~\cite{compose} brings up the agent alongside the
-observability components it queries: a metrics server, a log store, and a log shipping agent that discovers
-containers on the host and forwards their output to the log store.
+The deployment description~\cite{compose} brings up the agent and nothing else. The
+metrics server and the log store it queries are treated as pre-existing infrastructure,
+addressed by configuration rather than started alongside it.
 
-Configuration for the three observability components is supplied inline in the
-deployment description rather than as separate files on disk, which keeps the stack in
-one artefact.
+This follows from what the system is. It is a read-only client of an observability
+stack, not a distribution of one. A lab that already runs a metrics server has one
+configured, scraped and retained to suit itself, and a deployment description that
+brought up a second would either conflict with it or be ignored. Naming the addresses
+in configuration also means the two backends are independently optional: with either
+address unset the corresponding operations are absent from the tool set, and the agent
+answers from whatever remains.
 
-The log shipper discovers containers on the host and relabels their metadata before
-forwarding~\cite{promtail}. Its relabelling rules determine the labels available to
-log queries. It
-sets a service label from the container's compose service, a container label from the
-container name, and a fixed job label. These three labels are what a query selector
-may reference, which is the concrete form of the point made in Section~\ref{sec:tools}
-about label schemas not being shared.
-
-\begin{warnbox}{Scrape targets requiring additional services}
-The metrics server's scrape configuration includes targets for a host metrics
-exporter and a container metrics exporter. Neither service is included in the
-deployment description. Until they are added, those targets are configured but
-unreachable, so host-level and per-container resource metrics are unavailable while
-metrics from the server itself remain available.
-\end{warnbox}
+The log store's labels are set by whatever ships logs into it, not by this system.
+Which labels exist is therefore a property of the deployment, and is exactly why the
+agent is given a discovery operation for label values rather than a fixed list. This
+is the concrete form of the point made in Section~\ref{sec:tools} about label schemas
+not being shared between the metrics and log backends.
 
 \subsection{Networking}
 
@@ -1570,10 +1563,6 @@ Available: \url{https://grafana.com/docs/loki/latest/reference/loki-http-api/}. 
 \bibitem{logql}
 Grafana Labs, ``LogQL: Loki query language.'' [Online].
 Available: \url{https://grafana.com/docs/loki/latest/query/}. [Accessed: Aug. 18, 2026].
-
-\bibitem{promtail}
-Grafana Labs, ``Promtail configuration and service discovery.'' [Online].
-Available: \url{https://grafana.com/docs/loki/latest/send-data/promtail/}. [Accessed: Aug. 18, 2026].
 
 \bibitem{uv}
 Astral Software, Inc., ``uv: Python packaging documentation.'' [Online].

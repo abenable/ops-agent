@@ -23,15 +23,19 @@ oracle> tool call: list_services()
 
 ```bash
 cp .env.example .env      # set DISCORD_BOT_TOKEN and your LLM provider
-docker compose up -d      # bot + Prometheus + Loki + Promtail
+docker compose up -d      # the bot
 ```
 
-Or run just the bot against infrastructure you already have:
+Or without Docker:
 
 ```bash
 uv sync
 uv run agent bot
 ```
+
+Compose builds and runs the bot only. Point `PROMETHEUS_URL` and `LOKI_URL` at
+your existing metrics and log servers; with either unset, those tools are simply
+unavailable.
 
 ## What it can do
 

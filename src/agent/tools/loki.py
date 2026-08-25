@@ -52,7 +52,7 @@ async def query(logql: str, limit: int = 100) -> dict:
 
 @tool
 async def get_loki_label_values(label: str) -> str:
-    """List the values a Loki stream label takes. The labels Promtail sets in this stack are 'container', 'service_name', 'job' and 'detected_level' — there is no 'service' or 'level' label, and Loki's schema is not Prometheus's, so a label name from a PromQL query will not work here. Call this first to learn the real values before writing a LogQL selector."""
+    """List the values a Loki stream label takes. Loki's labels are set by whatever ships logs into it and are NOT Prometheus's labels, so a label name taken from a PromQL query will usually match nothing here. Call this first, on a label you believe exists ('container' and 'job' are common), to learn the real values before writing a LogQL selector."""
     values = await label_values(label)
     return "\n".join(values[:250]) if values else f"(no values for label {label})"
 

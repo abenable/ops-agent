@@ -8,36 +8,32 @@ docker compose up -d
 docker compose logs -f bot
 ```
 
-Four services come up:
+One service comes up: `bot`, named `marconi-agent-bot`, built from the local
+`Dockerfile`.
 
-| Service | Container | Purpose |
-|---|---|---|
-| `bot` | `marconi-agent-bot` | The agent. Built from the local `Dockerfile`. |
-| `prometheus` | `marconi-agent-prometheus` | Metrics, on `:9090`. Scrapes itself, node-exporter, cadvisor. |
-| `loki` | `marconi-agent-loki` | Logs, on `:3100`. |
-| `promtail` | `marconi-agent-promtail` | Ships every container's logs into Loki. |
-
-Prometheus, Loki, and Promtail configs are inlined as Compose `configs`, so
-there are no side files to keep in sync.
+Prometheus and Loki are not part of this stack. The agent queries whatever
+metrics and log servers already exist in your environment, addressed by
+`PROMETHEUS_URL` and `LOKI_URL`. With either unset, the corresponding tools are
+unavailable and the agent works from the remaining backends.
 
 ### Networking
 
-The bot runs `network_mode: host`. It needs to reach Prometheus and Loki on
-`localhost`, plus an LLM endpoint that may be anywhere on the network. The
-cost is that bridge-networked containers cannot reach the bot by service name,
-so they go through `host.docker.internal`, mapped via `extra_hosts`.
+The bot runs `network_mode: host`, so it reaches Prometheus, Loki, the Docker
+daemon and the LLM endpoint wherever they run, with no ports to publish and no
+service names to resolve. Addresses that work from a shell on the host work
+unchanged from inside the container.
 
-That is also why `MONITORED_ENDPOINTS` is set in the Compose file rather than
-`.env`: the right values depend on the host networking.
+`MONITORED_ENDPOINTS` comes from `.env` along with everything else. Its values
+are whatever the host can reach:
 
-```yaml
-MONITORED_ENDPOINTS: "prometheus=http://localhost:9090/-/healthy,loki=http://localhost:3100/ready"
+```
+MONITORED_ENDPOINTS=prometheus=http://localhost:9090/-/healthy,loki=http://localhost:3100/ready
 ```
 
 ### The Docker socket
 
-`/var/run/docker.sock` is mounted into `bot` and `promtail` so the container
-tools and log shipping can see host containers.
+`/var/run/docker.sock` is mounted into the container so the Docker tools see
+host containers.
 
 `:ro` on that mount makes the socket *file* read only. It does not restrict the
 Engine API behind it, and socket access is root-equivalent on the host. The
@@ -57,14 +53,15 @@ CMD ["python", "-m", "agent", "bot"]
 
 ## Without Compose
 
-If Prometheus, Loki, and Docker already exist elsewhere, run the bot alone:
+To run outside a container at all:
 
 ```bash
 uv sync
 uv run agent bot          # or: uv run python -m agent bot
 ```
 
-Point `PROMETHEUS_URL`, `LOKI_URL`, and `DOCKER_HOST` at them.
+The same environment variables apply, so `PROMETHEUS_URL`, `LOKI_URL`, and
+`DOCKER_HOST` point at the same places either way.
 
 ## Persistence
 
@@ -75,8 +72,7 @@ Point `PROMETHEUS_URL`, `LOKI_URL`, and `DOCKER_HOST` at them.
 | `agent.db` | The watch list and the transition history behind the digests are gone. |
 | `memory.db` | Every channel's conversation context is gone; the bot answers fresh. |
 
-Compose mounts `./data:/app/data`. Prometheus and Loki keep their own named
-volumes (`prom_data`, `loki_data`).
+Compose mounts `./data:/app/data`. Nothing else in this stack is stateful.
 
 Back up with the bot stopped:
 
@@ -103,10 +99,10 @@ without it, global sync can take up to an hour.
 ## Health checks
 
 ```bash
-docker compose ps                        # everything up?
+docker compose ps                        # bot up?
 docker compose logs -f bot               # bot logs
-curl -s localhost:9090/-/healthy         # Prometheus
-curl -s localhost:3100/ready             # Loki
+curl -s "$PROMETHEUS_URL/-/healthy"      # metrics server, wherever it runs
+curl -s "$LOKI_URL/ready"                # log server
 ```
 
 In Discord, `/status` is the end-to-end check. It lists containers over the
