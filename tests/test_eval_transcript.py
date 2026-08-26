@@ -142,9 +142,36 @@ def test_unknown_tool_is_reported_as_missing_not_as_a_failure(monkeypatch, isola
 def test_repeats_grade_through_the_shared_grader(monkeypatch, isolated):
     _fake_model(monkeypatch, [AIMessage(content="node-exporter is down")] * 2)
 
-    answers = asyncio.run(
+    summary = asyncio.run(
         et.run_eval_repeats("t:repeats", [ping], "sys", "q", ["node-exporter"], runs=2)
     )
 
-    assert answers == ["node-exporter is down"] * 2
-    assert all(_latest(isolated)["grade"]["passed"] for _ in answers)
+    assert summary["runs"] == 2
+    assert summary["graded"] == 2
+    assert summary["passed"] == 2
+    assert summary["pass_rate"] == 1.0
+    assert summary["distinct_answers"] == 1
+    assert _latest(isolated)["grade"]["passed"]
+
+
+def test_grader_accepts_alternatives_and_grades_tool_use():
+    """Any-of wording, required tools, and forbidden tools all gate the verdict."""
+    refusal = et._grade("I cannot check that", [et.REFUSAL], ["list_services"], ["list_services"])
+    assert refusal["passed"]
+
+    fabricated = et._grade("It is healthy", [et.REFUSAL], ["list_services"], ["list_services"])
+    assert not fabricated["passed"] and fabricated["missing"]
+
+    # an any-of tool entry passes on either alternative
+    either = et._grade("x", None, ["get_label_values"], [("list_metric_names", "get_label_values")])
+    assert either["passed"]
+
+    never_queried = et._grade("x", None, ["get_label_values"], ["query_prometheus"])
+    assert not never_queried["passed"]
+    assert never_queried["missing_tools"] == ["query_prometheus"]
+
+    used_forbidden = et._grade("x", None, ["docker_status"], None, ["docker_status"])
+    assert not used_forbidden["passed"]
+    assert used_forbidden["forbidden_used"] == ["docker_status"]
+
+    assert et._grade("x", None, [], None, None) is None
