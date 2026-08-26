@@ -44,7 +44,7 @@ class Settings(BaseSettings):
         validation_alias="LLM_PROVIDER",
     )
     llm_base_url: str = "http://100.64.0.7:4000/v1"
-    llm_model: str = "gemma-4-26b-a4b-it"
+    llm_model: str = "gemma-4-31b-it"
     llm_summarizer_model: str = ""
     llm_api_key: str = Field(
         default="",

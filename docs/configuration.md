@@ -25,7 +25,7 @@ Blank is treated as unset for string settings, so a placeholder like
 | Variable | Default | Purpose |
 |---|---|---|
 | `LLM_PROVIDER` | `google` | `openai` for any OpenAI-compatible endpoint, `google` for Gemini/Gemma. |
-| `LLM_MODEL` | `gemma-4-26b-a4b-it` | Model name, without a provider prefix. |
+| `LLM_MODEL` | `gemma-4-31b-it` | Model name, without a provider prefix. |
 | `LLM_SUMMARIZER_MODEL` | blank | Cheaper model for context summarization. Blank reuses `LLM_MODEL`. |
 | `LLM_BASE_URL` | `http://localhost:11434/v1` | `openai` provider only. Exported as `OPENAI_API_BASE`. |
 | `LLM_API_KEY` | blank | `openai` provider only. Exported as `OPENAI_API_KEY`. Many self-hosted endpoints accept any value. |

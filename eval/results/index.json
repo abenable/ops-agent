@@ -12,9 +12,9 @@
       "truncated_runs": 0,
       "tokens_total": 2556,
       "tokens_mean": 1278,
-      "latency_ms_mean": 2548,
-      "latency_ms_median": 2548,
-      "latency_ms_max": 2712
+      "latency_ms_mean": 2534,
+      "latency_ms_median": 2534,
+      "latency_ms_max": 2709
     },
     "02_docker_status": {
       "runs": 2,
@@ -26,11 +26,11 @@
       "tool_failures_total": 0,
       "empty_answers": 0,
       "truncated_runs": 0,
-      "tokens_total": 34113,
-      "tokens_mean": 17056,
-      "latency_ms_mean": 122639,
-      "latency_ms_median": 122639,
-      "latency_ms_max": 243034
+      "tokens_total": 1959,
+      "tokens_mean": 980,
+      "latency_ms_mean": 2212,
+      "latency_ms_median": 2212,
+      "latency_ms_max": 2250
     },
     "03_docker_logs": {
       "runs": 2,
@@ -42,27 +42,27 @@
       "tool_failures_total": 0,
       "empty_answers": 0,
       "truncated_runs": 0,
-      "tokens_total": 6355,
-      "tokens_mean": 3178,
-      "latency_ms_mean": 2931,
-      "latency_ms_median": 2931,
-      "latency_ms_max": 2982
+      "tokens_total": 6365,
+      "tokens_mean": 3182,
+      "latency_ms_mean": 2900,
+      "latency_ms_median": 2900,
+      "latency_ms_max": 3009
     },
     "04_query_prometheus": {
       "runs": 3,
       "graded": 3,
-      "passed": 1,
-      "pass_rate": 0.333,
+      "passed": 2,
+      "pass_rate": 0.667,
       "tool_calls_total": 7,
       "retries_total": 1,
       "tool_failures_total": 0,
       "empty_answers": 0,
       "truncated_runs": 0,
-      "tokens_total": 12592,
-      "tokens_mean": 4197,
-      "latency_ms_mean": 5096,
-      "latency_ms_median": 1906,
-      "latency_ms_max": 11744
+      "tokens_total": 12737,
+      "tokens_mean": 4246,
+      "latency_ms_mean": 5324,
+      "latency_ms_median": 1875,
+      "latency_ms_max": 12487
     },
     "05_query_prometheus_range": {
       "runs": 3,
@@ -74,11 +74,11 @@
       "tool_failures_total": 0,
       "empty_answers": 0,
       "truncated_runs": 0,
-      "tokens_total": 13027,
-      "tokens_mean": 4342,
-      "latency_ms_mean": 3379,
-      "latency_ms_median": 3413,
-      "latency_ms_max": 5069
+      "tokens_total": 13080,
+      "tokens_mean": 4360,
+      "latency_ms_mean": 3374,
+      "latency_ms_median": 3666,
+      "latency_ms_max": 4819
     },
     "06_query_loki": {
       "runs": 3,
@@ -88,13 +88,13 @@
       "tool_calls_total": 3,
       "retries_total": 0,
       "tool_failures_total": 0,
-      "empty_answers": 0,
-      "truncated_runs": 0,
-      "tokens_total": 42646,
-      "tokens_mean": 14215,
-      "latency_ms_mean": 83953,
-      "latency_ms_median": 6303,
-      "latency_ms_max": 241732
+      "empty_answers": 1,
+      "truncated_runs": 1,
+      "tokens_total": 12599,
+      "tokens_mean": 4200,
+      "latency_ms_mean": 8087,
+      "latency_ms_median": 5883,
+      "latency_ms_max": 14694
     },
     "07_query_loki_range": {
       "runs": 3,
@@ -104,29 +104,29 @@
       "tool_calls_total": 3,
       "retries_total": 0,
       "tool_failures_total": 0,
-      "empty_answers": 0,
-      "truncated_runs": 0,
-      "tokens_total": 42219,
-      "tokens_mean": 14073,
-      "latency_ms_mean": 83006,
-      "latency_ms_median": 3860,
-      "latency_ms_max": 241658
+      "empty_answers": 1,
+      "truncated_runs": 1,
+      "tokens_total": 12145,
+      "tokens_mean": 4048,
+      "latency_ms_mean": 7173,
+      "latency_ms_median": 3548,
+      "latency_ms_max": 14812
     }
   },
   "overall": {
     "runs": 18,
     "graded": 18,
-    "passed": 12,
-    "pass_rate": 0.667,
+    "passed": 13,
+    "pass_rate": 0.722,
     "tool_calls_total": 22,
     "retries_total": 1,
     "tool_failures_total": 0,
-    "empty_answers": 0,
-    "truncated_runs": 0,
-    "tokens_total": 153508,
-    "tokens_mean": 8528,
-    "latency_ms_mean": 43474,
-    "latency_ms_median": 3456,
-    "latency_ms_max": 243034
+    "empty_answers": 2,
+    "truncated_runs": 2,
+    "tokens_total": 61441,
+    "tokens_mean": 3413,
+    "latency_ms_mean": 4843,
+    "latency_ms_median": 3084,
+    "latency_ms_max": 14812
   }
 }
