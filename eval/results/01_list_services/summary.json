@@ -7,11 +7,13 @@
   "tool_calls_total": 2,
   "retries_total": 0,
   "tool_failures_total": 0,
+  "empty_answers": 0,
+  "truncated_runs": 0,
   "tokens_total": 2556,
   "tokens_mean": 1278,
-  "latency_ms_mean": 2534,
-  "latency_ms_median": 2534,
-  "latency_ms_max": 2708,
+  "latency_ms_mean": 2548,
+  "latency_ms_median": 2548,
+  "latency_ms_max": 2712,
   "sections": {
     "live-inscope": {
       "runs": 1,
@@ -21,11 +23,13 @@
       "tool_calls_total": 1,
       "retries_total": 0,
       "tool_failures_total": 0,
+      "empty_answers": 0,
+      "truncated_runs": 0,
       "tokens_total": 1251,
       "tokens_mean": 1251,
-      "latency_ms_mean": 2359,
-      "latency_ms_median": 2359,
-      "latency_ms_max": 2359
+      "latency_ms_mean": 2384,
+      "latency_ms_median": 2384,
+      "latency_ms_max": 2384
     },
     "live-outofscope": {
       "runs": 1,
@@ -35,11 +39,13 @@
       "tool_calls_total": 1,
       "retries_total": 0,
       "tool_failures_total": 0,
+      "empty_answers": 0,
+      "truncated_runs": 0,
       "tokens_total": 1305,
       "tokens_mean": 1305,
-      "latency_ms_mean": 2708,
-      "latency_ms_median": 2708,
-      "latency_ms_max": 2708
+      "latency_ms_mean": 2712,
+      "latency_ms_median": 2712,
+      "latency_ms_max": 2712
     }
   }
 }

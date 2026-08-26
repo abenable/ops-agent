@@ -75,7 +75,12 @@ def test_serialize_message_covers_every_role():
     }
     assert et._serialize_message(
         AIMessage(content="pong", tool_calls=[{"name": "f", "args": {"x": 1}, "id": "1"}])
-    ) == {"role": "ai", "content": "pong", "tool_calls": [{"name": "f", "args": {"x": 1}}]}
+    ) == {
+        "role": "ai",
+        "content": "pong",
+        "tool_calls": [{"name": "f", "args": {"x": 1}}],
+        "finish_reason": None,
+    }
 
 
 def test_usage_totals_default_to_zero_when_unreported():
@@ -175,3 +180,50 @@ def test_grader_accepts_alternatives_and_grades_tool_use():
     assert used_forbidden["forbidden_used"] == ["docker_status"]
 
     assert et._grade("x", None, [], None, None) is None
+
+
+def test_reasoning_output_is_kept_when_text_extraction_finds_nothing():
+    """A reasoning model's tokens must not be counted and then thrown away.
+
+    _text() keeps only blocks carrying a "text" key, so a run that produced
+    32k reasoning tokens serialised to "" and the content was unrecoverable.
+    """
+    blocks = [{"type": "reasoning", "reasoning": "thinking hard about loki"}]
+    out = et._serialize_message(AIMessage(content=blocks))
+    assert out["content"] == ""
+    assert out["raw_content"] == blocks
+
+    carried = et._serialize_message(
+        AIMessage(content="", additional_kwargs={"reasoning_content": "step 1..."})
+    )
+    assert carried["reasoning_content"] == "step 1..."
+
+    # a normal answer keeps nothing extra
+    plain = et._serialize_message(AIMessage(content="done"))
+    assert "raw_content" not in plain and "reasoning_content" not in plain
+
+
+def test_finish_reason_is_recorded():
+    truncated = et._serialize_message(
+        AIMessage(content="", response_metadata={"finish_reason": "length"})
+    )
+    assert truncated["finish_reason"] == "length"
+
+
+def test_an_empty_answer_never_passes_however_many_tools_ran():
+    """The run that returned "" passed on tool use alone; it must not again."""
+    graded = et._grade("", None, ["docker_status"], ["docker_status"])
+    assert graded["passed"] is False
+    assert graded["empty_answer"] is True
+    assert graded["missing_tools"] == []
+
+    whitespace = et._grade("   \n  ", None, ["docker_status"], ["docker_status"])
+    assert whitespace["passed"] is False
+
+    real = et._grade("the container is running", None, ["docker_status"], ["docker_status"])
+    assert real["passed"] is True
+    assert real["empty_answer"] is False
+
+
+def test_completion_is_bounded():
+    assert et.MAX_TOKENS == 2048

@@ -31,3 +31,4 @@ data/eval/
 
 # Per-run transcripts dumped by agent.eval_transcript.run_eval_loop
 eval/logs/
+eval/results/

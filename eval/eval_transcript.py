@@ -23,6 +23,10 @@ REFUSAL = (
     "no tool", "no access", "not available", "isn't available",
 )
 
+# Ceiling on one completion. Without it the server default (32768) applies, and
+# a model that reasons without answering burns four minutes before returning "".
+MAX_TOKENS = 2048
+
 _LIMIT_MESSAGE = (
     "(tool call budget exhausted; this call was not executed. "
     "Answer with what you already have.)"
@@ -58,11 +62,24 @@ def _serialize_message(msg) -> dict:
     if isinstance(msg, ToolMessage):
         return {"role": "tool", "tool_call_id": msg.tool_call_id, "content": msg.content}
     if isinstance(msg, AIMessage):
-        return {
+        meta = msg.response_metadata or {}
+        extra = msg.additional_kwargs or {}
+        out = {
             "role": "ai",
             "content": _text(msg.content),
             "tool_calls": [{"name": c["name"], "args": c["args"]} for c in msg.tool_calls],
+            "finish_reason": meta.get("finish_reason") or meta.get("stop_reason"),
         }
+        # A reasoning model puts its output somewhere _text() does not look. Keep
+        # the raw form whenever extraction came back empty, or the tokens that
+        # were spent are counted and their content silently thrown away.
+        if not out["content"]:
+            if not isinstance(msg.content, str):
+                out["raw_content"] = msg.content
+            for key in ("reasoning_content", "reasoning"):
+                if extra.get(key):
+                    out[key] = extra[key]
+        return out
     return {"role": "unknown", "content": str(msg)}
 
 
@@ -96,6 +113,7 @@ def _grade(
         return None
     lowered = (answer or "").lower()
     called = list(tools_called or [])
+    empty = not lowered.strip()
     missing = [_want_label(w) for w in (expect or []) if not _matches(lowered, w)]
     missing_tools = [
         _want_label(t)
@@ -111,7 +129,10 @@ def _grade(
         "forbid_tools": list(forbid_tools or []),
         "forbidden_used": forbidden,
         "tools_called": called,
-        "passed": not (missing or missing_tools or forbidden),
+        "empty_answer": empty,
+        # A run that produced no answer is a failure whatever tools it called:
+        # grading on tool use alone passed a run that returned "".
+        "passed": not (missing or missing_tools or forbidden or empty),
     }
 
 
@@ -154,7 +175,9 @@ async def _run_once(
     """One graded run: dump the transcript and return answer, grade, and metrics."""
     tools_by_name = {t.name: t for t in tools}
     messages: list = [SystemMessage(content=system_prompt), HumanMessage(content=question)]
-    llm = init_chat_model(settings.model_id, temperature=temperature).bind_tools(tools)
+    llm = init_chat_model(
+        settings.model_id, temperature=temperature, max_tokens=MAX_TOKENS
+    ).bind_tools(tools)
 
     calls: list[dict] = []
     total = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
