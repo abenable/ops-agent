@@ -9,7 +9,7 @@ from agent import agent as agent_mod
 from agent.config.settings import settings
 from agent.workflows import investigate
 from agent.workflows.report import report
-from tests.conftest import DeadLLM, LoopLLM, QueueLLM, RecordingLLM, use_fake_llm
+from tests.conftest import DeadLLM, LoopLLM, QueueLLM, RecordingLLM, SlowLLM, use_fake_llm
 
 
 def _tool_call(name="docker_status", args=None, call_id="call-1"):
@@ -85,8 +85,16 @@ def test_tool_limit_stops_the_loop(monkeypatch):
 
 
 def test_llm_failure_returns_error_message(monkeypatch):
+    """ModelRetryMiddleware exhausts its retries and returns an AIMessage, not a raise."""
     use_fake_llm(monkeypatch, DeadLLM())
-    assert asyncio.run(investigate.investigate("status?")).startswith("Investigation failed:")
+    assert "Model call failed" in asyncio.run(investigate.investigate("status?"))
+
+
+def test_llm_hang_times_out(monkeypatch):
+    """A hang (no exception raised) is still bounded by the outer wait_for ceiling."""
+    monkeypatch.setattr(investigate, "_INVESTIGATION_TIMEOUT", 0.05)
+    use_fake_llm(monkeypatch, SlowLLM())
+    assert asyncio.run(investigate.investigate("status?")) == "Investigation timed out after 0s."
 
 
 def test_report_uses_incident_template(monkeypatch):

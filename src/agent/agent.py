@@ -2,14 +2,19 @@
 
 from langchain.agents import create_agent
 from langchain.agents.middleware import (
+    ModelRetryMiddleware,
     SummarizationMiddleware,
     ToolCallLimitMiddleware,
     ToolErrorMiddleware,
+    ToolRetryMiddleware,
 )
+from langchain.chat_models import init_chat_model
 
 from agent.config.settings import settings
 from agent.memory import checkpointer
 from agent.tools import ALL_TOOLS, configured_tools
+
+_LLM_TIMEOUT = 30.0
 
 _TOOLS_BY_NAME = {t.name: t for t in ALL_TOOLS}
 
@@ -44,18 +49,22 @@ async def get_agent():
         _AGENT = (
             saver,
             create_agent(
-                model=settings.model_id,
+                model=init_chat_model(settings.model_id, timeout=_LLM_TIMEOUT),
                 # Via the registry, so a test that swaps one tool gets its swap.
                 tools=[_TOOLS_BY_NAME[t.name] for t in configured_tools()],
                 system_prompt=_SYSTEM_PROMPT,
                 middleware=[
+                    ModelRetryMiddleware(max_retries=2),
                     ToolCallLimitMiddleware(
                         run_limit=settings.max_tool_steps,
                         exit_behavior="end",
                     ),
+                    ToolRetryMiddleware(max_retries=1),
                     ToolErrorMiddleware(aon_error=_tool_error),
                     SummarizationMiddleware(
-                        model=settings.summarizer_model_id,
+                        model=init_chat_model(
+                            settings.summarizer_model_id, timeout=_LLM_TIMEOUT
+                        ),
                         trigger=("tokens", settings.max_context_tokens),
                         keep=("messages", 20),
                     ),
@@ -64,4 +73,3 @@ async def get_agent():
             ),
         )
     return _AGENT[1]
-

@@ -1,5 +1,6 @@
 """Free-form ops investigation: a question put to the Oracle agent."""
 
+import asyncio
 import logging
 
 from langchain_core.messages import HumanMessage
@@ -9,6 +10,8 @@ from agent.bot.summarize import discordify
 from agent.memory import thread_config
 
 logger = logging.getLogger(__name__)
+
+_INVESTIGATION_TIMEOUT = 60.0
 
 
 def _text(content) -> str:
@@ -24,10 +27,15 @@ async def investigate(question: str, thread_id: str | None = None) -> str:
     """Answer a free-form ops question."""
     try:
         agent = await get_agent()
-        final = await agent.ainvoke(
-            {"messages": [HumanMessage(content=question)]},
-            thread_config(thread_id),
+        final = await asyncio.wait_for(
+            agent.ainvoke(
+                {"messages": [HumanMessage(content=question)]},
+                thread_config(thread_id),
+            ),
+            timeout=_INVESTIGATION_TIMEOUT,
         )
+    except TimeoutError:
+        return f"Investigation timed out after {_INVESTIGATION_TIMEOUT:.0f}s."
     except Exception as exc:
         logger.exception("investigation failed")
         return f"Investigation failed: {exc}"

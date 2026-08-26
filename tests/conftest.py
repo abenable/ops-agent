@@ -1,5 +1,7 @@
 """Shared pytest fixtures and configuration."""
 
+import asyncio
+
 import pytest
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
@@ -63,6 +65,14 @@ class DeadLLM(FakeLLM):
         raise ConnectionError("endpoint down")
 
 
+class SlowLLM(FakeLLM):
+    """Never returns within any reasonable deadline, the way a network hang does."""
+
+    async def ainvoke(self, _messages, **kw):
+        await asyncio.sleep(3600)
+        raise AssertionError("should have been cancelled by a timeout")
+
+
 class LoopLLM(FakeLLM):
     """Always asks for ``tool_call`` again, never gives up — drives the budget."""
 
@@ -76,6 +86,7 @@ class LoopLLM(FakeLLM):
 def use_fake_llm(monkeypatch, llm):
     """Make every ``provider:model`` string resolve to ``llm``."""
     for module in (
+        "agent.agent",
         "langchain.agents.factory",
         "langchain.agents.middleware.summarization",
     ):
