@@ -22,9 +22,16 @@ Running alongside, unprompted:
 
 ```
 agent/bot/monitor.py   polls containers + endpoints ──> alerts, event log
+                       evaluates PromQL rules ────────> alerts + #incidents
 agent/bot/digest.py    daily/weekly reports ──────────> #reports
                        status snapshot every 2h ──────> #status-updates
 ```
+
+A second entry point, `agent api`, serves the same workflows over HTTP; see
+[api.md](api.md). It is optional and not part of the reference deployment. The
+bot and the API import the same loop, tool layer, and stores rather than talking
+to each other, so neither is a client of the other and there is still one
+implementation of every behaviour.
 
 ## The agent
 

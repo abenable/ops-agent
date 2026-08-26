@@ -16,6 +16,8 @@ Blank is treated as unset for string settings, so a placeholder like
 | `DISCORD_ALERT_CHANNEL_ID` | unset | Where down-alerts go. Unset disables them. |
 | `DISCORD_STATUS_CHANNEL_ID` | unset | Where recovery notices and the periodic status snapshot go. Unset disables the snapshot. |
 | `DISCORD_REPORTS_CHANNEL_ID` | unset | Where scheduled digests go. Unset disables them. A forum channel works, and each digest opens its own thread. |
+| `DISCORD_INCIDENT_CHANNEL_ID` | unset | Where an agent investigation is posted when a PromQL rule starts firing. Unset skips the investigation entirely. |
+| `DISCORD_TEST_SCENARIOS_CHANNEL_ID` | unset | Where `scripts/run_scenario.py` posts its verdicts. |
 | `DISCORD_LOG_CHANNEL_ID` | unset | Mirror INFO+ logs into Discord, batched into one message per second. |
 
 ## LLM
@@ -60,6 +62,7 @@ through the environment; see [architecture.md](architecture.md#the-model).
 | `DOCKER_NAME_FILTER` | blank | Only track containers whose name contains this. Blank tracks every container. The watch list is added on top either way. |
 | `MONITORED_ENDPOINTS` | blank | Comma-separated `name=url` pairs polled each cycle. Blank disables endpoint probes. |
 | `MONITOR_INTERVAL_SECONDS` | `60` | Poll interval. Floored at 10s. |
+| `PROMETHEUS_ALERT_RULES` | blank | Comma-separated `name=promql` rules evaluated each cycle. A rule fires when its query returns any series. Only the first `=` separates the name, so `up == 0` works. |
 
 ## Scheduled digests and status
 
@@ -73,6 +76,14 @@ through the environment; see [architecture.md](architecture.md#the-model).
 The digest hour is expressed in UTC, not local time, so a deployment in another
 zone has to convert. The weekly digest posts on its weekday in addition to the
 daily one, both at the same hour.
+
+## The HTTP API
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `API_HOST` | `0.0.0.0` | Interface `agent api` binds. |
+| `API_PORT` | `8000` | Port `agent api` binds. |
+| `API_KEY` | unset | When set, every route except `/health` requires a matching `X-API-Key`. Unset leaves the API open. |
 
 ## Storage
 

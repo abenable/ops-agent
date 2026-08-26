@@ -97,6 +97,40 @@ outside its scope. References are pinned to a dated infrastructure snapshot
 recorded at the top of the file. State drifts, so a mismatch is a prompt to
 recheck the tool call behind the reference rather than an automatic failure.
 
+## Staged scenarios
+
+The notebooks and the manual pass both read whatever state the lab happens to be
+in. `scripts/run_scenario.py` instead *creates* the state it wants, which is the
+only way to test a fault that is not currently happening:
+
+```bash
+uv run python scripts/run_scenario.py             # both scenarios
+uv run python scripts/run_scenario.py healthy     # one
+uv run python scripts/run_scenario.py container_down --keep
+```
+
+It starts a disposable `marconi-scenario-target` container, optionally stops it,
+asks the agent whether that container is healthy, and grades the answer. Results
+land in `eval/results/scenarios/`, and go to `DISCORD_TEST_SCENARIOS_CHANNEL_ID`
+when one is configured. Cleanup runs in a `finally`, so a crashed run does not
+leave the container behind; `--keep` opts out for debugging.
+
+Two scenarios, and the second is the important one:
+
+| Scenario | Staged state | Passes when |
+|---|---|---|
+| `container_down` | container stopped | the agent says exited / stopped / not running |
+| `healthy` | container running | the agent says running / up, and does **not** say exited |
+
+`healthy` is the control. Without it, an agent that answered "something is down"
+to every question would score full marks on the fault scenario. Testing only the
+failure case measures nothing, because the trivially broken agent passes it.
+
+This script creates and stops containers, so it is deliberately not an agent
+tool and lives in `scripts/`. The read-only guarantee is that no such call
+exists in the tool table — putting a mutating call there to make testing easier
+would remove the property the tests are meant to protect.
+
 ## Testing the harness
 
 `tests/test_eval_transcript.py` covers the loop itself: budget counting, the

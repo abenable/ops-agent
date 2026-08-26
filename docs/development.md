@@ -23,6 +23,7 @@ src/agent/
   config/settings.py  pydantic-settings, DB paths, provider env export
   tools/            the 10 read-only tools: docker, prometheus, loki
   workflows/        investigate, report, nl: question in, answer out
+  api.py            the HTTP API (optional second entry point)
   bot/              slash commands, mentions, monitor, digests, status, client
   alerting/         Discord embeds for alerts and reports
   watchlist/        SQLite repository: watch list + event log
@@ -82,6 +83,8 @@ The dict exists for exactly that.
 | `test_eval_transcript.py` | The eval harness: budget counting, crash transcripts, unknown tools, grading |
 | `test_monitor.py` | Baseline vs transition, scope, pruning, endpoint probes, event logging |
 | `test_digest.py` | Daily/weekly bodies, downtime pairing, flap narrative, scheduling, status snapshots |
+| `test_api.py` | Every HTTP route, the API-key gate, and the 503-not-500 rule when Docker is down |
+| `test_scenarios.py` | The staged-scenario grader (including the control case) and PromQL rule parsing |
 | `test_docker_tools.py`, `test_services.py`, `test_normalize.py` | Tool behaviour, HTTP clients, name matching |
 | `test_summarize.py`, `test_alerting.py`, `test_bot.py`, `test_nl.py`, `test_watchlist.py` | Discord formatting, embeds, command wiring, mentions, the watch list |
 

@@ -55,8 +55,12 @@ The same thing is available as slash commands:
 | `/help` | The above, in Discord |
 
 It also runs unprompted: a background monitor alerts when a watched container
-stops or an endpoint stops answering, a status snapshot posts every two hours,
-and a scheduled digest posts daily and weekly summaries.
+stops, an endpoint stops answering, or a configured PromQL rule starts firing; a
+status snapshot posts every two hours; and a scheduled digest posts daily and
+weekly summaries.
+
+`agent api` serves the same workflows over HTTP for anything that is not Discord
+— see [docs/api.md](docs/api.md).
 
 ## Read-only by design
 
@@ -72,6 +76,7 @@ them out. See [docs/architecture.md](docs/architecture.md#read-only-by-design).
 | [configuration.md](docs/configuration.md) | Every environment variable |
 | [deployment.md](docs/deployment.md) | Docker Compose, the image, backups |
 | [usage.md](docs/usage.md) | Commands and how to talk to it |
+| [api.md](docs/api.md) | The HTTP API: routes, authentication, status codes |
 | [monitoring.md](docs/monitoring.md) | Alerts, the watch list, scheduled digests |
 | [development.md](docs/development.md) | Layout, tests, conventions |
 | [evaluation.md](docs/evaluation.md) | The eval notebooks and transcript harness |

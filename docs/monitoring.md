@@ -7,7 +7,7 @@ snapshot.
 ## The monitor
 
 `agent/bot/monitor.py` runs every `MONITOR_INTERVAL_SECONDS` (floored at 10s)
-and does two independent passes.
+and does three independent passes.
 
 ### Containers
 
@@ -41,6 +41,29 @@ MONITORED_ENDPOINTS=prometheus=http://localhost:9090/-/healthy,loki=http://local
 Each is probed every cycle. Anything below a 4xx counts as up; a 4xx, 5xx, or a
 connection failure counts as down. The same baseline-then-edge rule applies, to
 the same two channels. Malformed entries are skipped.
+
+### PromQL alert rules
+
+`PROMETHEUS_ALERT_RULES` is a comma-separated list of `name=promql`:
+
+```
+PROMETHEUS_ALERT_RULES=target_down=up == 0,saturated=rate(cpu[5m]) > 0.9
+```
+
+Only the first `=` separates the name from the expression, because a PromQL
+expression usually contains one. A rule fires when its query returns any series
+at all, so the expression should be a condition (`up == 0`), not a value
+(`up`), or it fires forever.
+
+The same baseline-then-edge rule applies: a rule already firing at startup is
+recorded, not alerted. A query Prometheus rejects, or that cannot be run because
+the backend is unreachable, is logged and skipped — it never counts as resolved,
+since "we could not check" and "it is fine" are different facts.
+
+A rule that starts firing alerts `DISCORD_ALERT_CHANNEL_ID` and, when
+`DISCORD_INCIDENT_CHANNEL_ID` is set, hands the rule to the agent and posts the
+resulting investigation there. That costs one agent run per firing edge, not per
+cycle. Unset the incident channel and no investigation runs.
 
 ## The watch list
 
