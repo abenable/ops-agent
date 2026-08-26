@@ -1,6 +1,7 @@
 services:
   bot:
     container_name: marconi-agent-bot
+    image: marconi-agent:latest
     build: .
     env_file: .env
     network_mode: host
@@ -11,3 +12,32 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     command: ["python", "-m", "agent", "bot"]
     restart: unless-stopped
+
+  api:
+    container_name: marconi-agent-api
+    image: marconi-agent:latest
+    build: .
+    env_file: .env
+    network_mode: host
+    volumes:
+      - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      # Loopback by default: host networking binds the port on every interface,
+      # and this host has a LAN address. Widen it only together with API_KEY.
+      API_HOST: ${API_HOST:-127.0.0.1}
+    command: ["python", "-m", "agent", "api"]
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import os, urllib.request
+          port = os.environ.get("API_PORT", "8000")
+          urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=5)
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3

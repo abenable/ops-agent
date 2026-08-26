@@ -1,0 +1,7 @@
+label,suite,section,model,verdict,missing,turns,tool_calls,tool_calls_requested,retries,tool_failures,tools_called,input_tokens,output_tokens,total_tokens,duration_ms,slowest_call_ms,error,file
+01_list_services:live-inscope#1,01_list_services,live-inscope,marconi-llm,PASS,,2,1,1,0,0,list_services,952,289,1241,2348,1419,,20260826T131105507193__01_list_services-live-inscope#1.json
+01_list_services:live-inscope#2,01_list_services,live-inscope,marconi-llm,PASS,,2,1,1,0,0,list_services,952,289,1241,2298,1442,,20260826T131107807725__01_list_services-live-inscope#2.json
+01_list_services:live-inscope#3,01_list_services,live-inscope,marconi-llm,PASS,,2,1,1,0,0,list_services,952,289,1241,2272,1424,,20260826T131110082138__01_list_services-live-inscope#3.json
+01_list_services:live-outofscope#1,01_list_services,live-outofscope,marconi-llm,PASS,,2,1,1,0,0,list_services,948,394,1342,3015,1640,,20260826T131113109551__01_list_services-live-outofscope#1.json
+01_list_services:live-outofscope#2,01_list_services,live-outofscope,marconi-llm,PASS,,2,1,1,0,0,list_services,948,394,1342,3013,1634,,20260826T131116125457__01_list_services-live-outofscope#2.json
+01_list_services:live-outofscope#3,01_list_services,live-outofscope,marconi-llm,PASS,,2,1,1,0,0,list_services,948,394,1342,3022,1640,,20260826T131119149617__01_list_services-live-outofscope#3.json
