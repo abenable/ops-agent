@@ -32,9 +32,12 @@ class Settings(BaseSettings):
     discord_status_channel_id: int | None = None
     discord_reports_channel_id: int | None = None
     discord_log_channel_id: int | None = None
+    discord_incident_channel_id: int | None = None
+    discord_test_scenarios_channel_id: int | None = None
 
     monitored_endpoints: str = ""
     monitor_interval_seconds: int = 60
+    prometheus_alert_rules: str = ""
 
     llm_provider: str = Field(
         default="google",
@@ -81,6 +84,10 @@ class Settings(BaseSettings):
 
     docker_monitor: bool = False
     docker_name_filter: str = ""
+
+    api_host: str = "0.0.0.0"
+    api_port: int = 8000
+    api_key: str = Field(default="", validation_alias="API_KEY")
 
     database_url: str = "sqlite:///data/agent.db"
 
