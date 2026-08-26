@@ -74,5 +74,5 @@ unavailable, and the agent works from Docker alone.
 
 ## When it runs on its own
 
-Alerts, recovery notices, and daily/weekly digests are covered in
-[monitoring.md](monitoring.md).
+Alerts, recovery notices, two-hourly status snapshots, and daily/weekly digests
+are covered in [monitoring.md](monitoring.md).

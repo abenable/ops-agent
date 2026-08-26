@@ -55,8 +55,8 @@ The same thing is available as slash commands:
 | `/help` | The above, in Discord |
 
 It also runs unprompted: a background monitor alerts when a watched container
-stops or an endpoint stops answering, and a scheduled digest posts daily and
-weekly summaries.
+stops or an endpoint stops answering, a status snapshot posts every two hours,
+and a scheduled digest posts daily and weekly summaries.
 
 ## Read-only by design
 

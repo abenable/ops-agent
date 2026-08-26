@@ -14,9 +14,9 @@ Blank is treated as unset for string settings, so a placeholder like
 | `DISCORD_BOT_TOKEN` | none | Required. The bot token. |
 | `DISCORD_GUILD_ID` | unset | Sync slash commands to one guild (instant) instead of globally (up to an hour). |
 | `DISCORD_ALERT_CHANNEL_ID` | unset | Where down-alerts go. Unset disables them. |
-| `DISCORD_STATUS_CHANNEL_ID` | unset | Where recovery notices go. |
+| `DISCORD_STATUS_CHANNEL_ID` | unset | Where recovery notices and the periodic status snapshot go. Unset disables the snapshot. |
 | `DISCORD_REPORTS_CHANNEL_ID` | unset | Where scheduled digests go. Unset disables them. A forum channel works, and each digest opens its own thread. |
-| `DISCORD_LOG_CHANNEL_ID` | unset | Mirror INFO+ logs into Discord. Noisy; useful during a demo. |
+| `DISCORD_LOG_CHANNEL_ID` | unset | Mirror INFO+ logs into Discord, batched into one message per second. |
 
 ## LLM
 
@@ -61,13 +61,18 @@ through the environment; see [architecture.md](architecture.md#the-model).
 | `MONITORED_ENDPOINTS` | blank | Comma-separated `name=url` pairs polled each cycle. Blank disables endpoint probes. |
 | `MONITOR_INTERVAL_SECONDS` | `60` | Poll interval. Floored at 10s. |
 
-## Scheduled digests
+## Scheduled digests and status
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `REPORT_HOUR_UTC` | `5` | Hour (UTC) the daily digest posts. |
+| `REPORT_HOUR_UTC` | `5` | Hour (UTC) the daily digest posts. `5` is 08:00 in EAT (UTC+3). |
 | `WEEKLY_REPORT_WEEKDAY` | `0` (Monday) | Weekday the weekly digest also posts. |
 | `DIGEST_LOOKBACK_DAYS` | `7` | Window the weekly digest summarizes. |
+| `STATUS_INTERVAL_HOURS` | `2` | How often the status snapshot posts. Floored at 1h. |
+
+The digest hour is expressed in UTC, not local time, so a deployment in another
+zone has to convert. The weekly digest posts on its weekday in addition to the
+daily one, both at the same hour.
 
 ## Storage
 

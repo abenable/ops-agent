@@ -83,6 +83,20 @@ transcript captures a conclusion. Production simply ends. That turn is tagged
 `query_eval_metrics` and `query_eval_logs`, so notebooks can generate and test
 tasks against captured data without live infrastructure.
 
+## Manual QA
+
+`eval/manual_qa_eval.md` is the end-to-end pass the notebooks cannot cover: the
+agent answering through Discord, with memory and formatting in play. Each entry
+pairs a question — asked by DM or mention for the conversational ones, by slash
+command for the rest — with a reference answer computed by calling the same tool
+functions directly against the same live state.
+
+The questions cover factual correctness, behaviour when a backend is down,
+per-channel memory, tool-call economy, and whether the agent admits what falls
+outside its scope. References are pinned to a dated infrastructure snapshot
+recorded at the top of the file. State drifts, so a mismatch is a prompt to
+recheck the tool call behind the reference rather than an automatic failure.
+
 ## Testing the harness
 
 `tests/test_eval_transcript.py` covers the loop itself: budget counting, the

@@ -23,6 +23,7 @@ Running alongside, unprompted:
 ```
 agent/bot/monitor.py   polls containers + endpoints ──> alerts, event log
 agent/bot/digest.py    daily/weekly reports ──────────> #reports
+                       status snapshot every 2h ──────> #status-updates
 ```
 
 ## The agent
@@ -32,13 +33,15 @@ and cached.
 
 ```python
 create_agent(
-    model=settings.model_id,                 # "openai:marconi-llm"
-    tools=list(_TOOLS_BY_NAME.values()),
+    model=init_chat_model(settings.model_id, timeout=_LLM_TIMEOUT),   # 30s
+    tools=[_TOOLS_BY_NAME[t.name] for t in configured_tools()],
     system_prompt=_SYSTEM_PROMPT,            # the Oracle persona
     middleware=[
+        ModelRetryMiddleware(max_retries=2),
         ToolCallLimitMiddleware(run_limit=settings.max_tool_steps, exit_behavior="end"),
+        ToolRetryMiddleware(max_retries=1),
         ToolErrorMiddleware(aon_error=_tool_error),
-        SummarizationMiddleware(model=settings.summarizer_model_id, ...),
+        SummarizationMiddleware(model=init_chat_model(...), ...),
     ],
     checkpointer=saver,
 )
@@ -56,22 +59,29 @@ a second agent.
 
 | Middleware | What it does |
 |---|---|
+| `ModelRetryMiddleware` | Retries a failed model call up to twice. A run that exhausts the retries ends with `Model call failed`. |
 | `ToolCallLimitMiddleware` | Caps a run at `MAX_TOOL_STEPS` **tool calls**. The call that would exceed it is not executed, nor are its siblings on the same message; the run ends with an explanation. |
-| `ToolErrorMiddleware` | A raising tool becomes a `ToolMessage` the model can read and react to, instead of an exception that kills the turn. |
+| `ToolRetryMiddleware` | Retries a raising tool once before the error is handed on. Covers the transient case — a backend that refuses one connection and answers the next. |
+| `ToolErrorMiddleware` | A tool still raising after its retry becomes a `ToolMessage` the model can read and react to, instead of an exception that kills the turn. |
 | `SummarizationMiddleware` | When the thread passes `MAX_CONTEXT_TOKENS`, older turns are replaced by a summary. That happens in the checkpoint itself, so stored history stays bounded. Runs on `LLM_SUMMARIZER_MODEL` if set. |
 
 ### The model
 
 `settings.model_id` is a `provider:model` string, either `openai:...` or
-`google_genai:...`, which `init_chat_model` resolves internally.
+`google_genai:...`, which `init_chat_model` resolves into a client. Building the
+client here rather than passing the string to `create_agent` is what makes a
+request `timeout` reachable; it is set to 30s for both the answering model and
+the summarizer. `temperature` is left at the provider default.
 
-Because `create_agent` builds the client itself, configuration can only reach
-it through the environment. `settings._export_provider_env()` publishes
+Credentials and endpoint still travel through the environment rather than
+through arguments. `settings._export_provider_env()` publishes
 `OPENAI_API_BASE`, `OPENAI_API_KEY`, and `GOOGLE_API_KEY` at import, which is
-what lets the string form work against a self-hosted endpoint.
+what points a `provider:model` string at a self-hosted endpoint.
 
-Two consequences of the string form: `temperature` and request `timeout` are
-not set, so provider defaults apply.
+Two ceilings sit above the client. `ModelRetryMiddleware` retries a failed call
+twice, and `investigate()` wraps the whole run in `asyncio.wait_for` at 60s, so
+a provider that hangs past the retries returns `Investigation timed out after
+60s` rather than holding the Discord interaction open.
 
 ## Memory
 

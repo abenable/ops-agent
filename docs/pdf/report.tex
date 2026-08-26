@@ -538,7 +538,7 @@ loop can otherwise produce one row per polling cycle indefinitely.
 \subsection{The harness}
 
 The agent is one call to the framework's agent factory, made once and cached. The call
-names five things: the model identifier, the tool set, the operations persona, a
+names five things: the model client, the tool set, the operations persona, a
 middleware stack, and the conversation store. Everything the loop does between a
 question arriving and an answer leaving is the framework's, shown in
 Figure~\ref{fig:machine}.
@@ -552,7 +552,10 @@ Figure~\ref{fig:machine}.
 \node[statn, right=13mm of before] (model) {model};
 \node[statn, below=14mm of model, text width=22mm] (after) {\footnotesize budget\\\footnotesize check};
 \node[statn, left=13mm of after] (tools) {tools};
-\node[term, right=15mm of model] (end) {answer};
+\node[term, right=30mm of model] (end) {answer};
+
+\draw[fl] (model) to[out=115,in=65,looseness=7] node[lbl,above]{\scriptsize retry, twice} (model);
+\draw[fl] (tools) to[out=245,in=295,looseness=7] node[lbl,below]{\scriptsize retry, once} (tools);
 
 \draw[fl] (start) -- (before);
 \draw[fl] (before) -- (model);
@@ -563,9 +566,12 @@ Figure~\ref{fig:machine}.
 \draw[fl] (after.east) to[out=0,in=-90] node[lbl,right]{\scriptsize budget spent} (end.south);
 
 \end{tikzpicture}
-\caption{The agent as configured. Two middleware components bracket the model call:
-one compresses the history before it, one enforces the tool budget after it. The
-unlabelled path back through the tools is the ordinary loop.}
+\caption{The agent as configured. Middleware brackets both nodes: the history is
+compressed before the model call and the call retried twice on failure; the tool budget
+is enforced after it, and an operation that raises is retried once before its failure
+becomes the result text on the return edge. The cycle through the tools and back is the
+ordinary loop. Not drawn: each model request carries a thirty-second timeout and the
+whole run a sixty-second one, both outside the graph.}
 \label{fig:machine}
 \end{figure}
 
@@ -576,11 +582,19 @@ no maximum imposed on the answer itself.
 
 \subsection{The middleware stack}
 
-Three middleware components are configured. Each replaced code that was previously
+Five middleware components are configured. Each replaced code that was previously
 written by hand in this system, which is the strongest argument for adopting the
 harness: the behaviours were all needed, and none of them were novel.
 
 \begin{enumerate}
+  \item \textbf{Model retries.} A failed model call is retried up to twice before the
+        run is abandoned. Language-model endpoints fail transiently often enough that
+        a single attempt makes the whole system look less reliable than the model it
+        depends on.
+  \item \textbf{Operation retries.} An operation that raises is retried once before its
+        error is handed on. This covers the transient case, a backend that refuses one
+        connection and answers the next, without hiding a backend that is genuinely
+        down: the second failure propagates normally.
   \item \textbf{Context summarisation.} When the accumulated history exceeds the
         configured token budget, older turns are replaced with a generated summary
         before the model is consulted. It may be pointed at a cheaper model than the
@@ -627,6 +641,19 @@ Distinguishing the two matters more than it appears. Reporting a non-existent
 operation as a failed one would tell the model that a capability exists and is broken,
 when the truth is that it was never offered. That distinction is exactly what the
 evaluation notebooks in Section~\ref{sec:eval} measure.
+
+Bounded retries sit beneath both. A failing model call is attempted up to three times
+in total and a raising operation twice, after which the failure is reported as
+described above rather than retried indefinitely. Retrying without a bound would turn
+a backend outage into an unbounded stall, which is the failure mode the ceilings below
+exist to prevent.
+
+Two time ceilings bound the run itself. Each model request carries a thirty-second
+timeout, and the investigation as a whole is bounded at sixty seconds. A provider that
+accepts a connection and never answers therefore yields a statement that the
+investigation timed out, at a predictable moment, rather than holding a chat
+interaction open until the platform expires it. The ceilings compose: retries may not
+collectively outlast the outer bound.
 
 Failures above the loop are handled differently. The investigation workflow catches
 everything and returns a description of the failure as its answer, so that a caller
@@ -978,6 +1005,23 @@ scheduled hour skips that day rather than publishing late on restart. A digest
 covering the previous day, delivered at an arbitrary hour two days later, is a
 distraction rather than a report.
 
+\subsection{Periodic status}
+
+Alongside the daily task, a second loop publishes a status snapshot at a configured
+interval, two hours by default, to the status channel. It reports the current state of
+every in-scope container and endpoint and is suppressed when no status channel is
+configured.
+
+The snapshot is a level rather than an edge. It reports what is true at the moment it
+fires whether or not anything has changed, which is what distinguishes an idle channel
+from a broken one: a snapshot arriving on schedule showing every target healthy is
+positive evidence that the observer is alive, whereas silence from a transition-driven
+alerter is ambiguous between nothing happening and nothing working. The first snapshot
+fires on startup, which also confirms the scope the monitor came up with.
+
+It renders the same current-state section the daily digest opens with, so a status post
+and the head of a digest cannot disagree.
+
 \subsection{Contents}
 
 The daily digest gives current state for every in-scope container and endpoint,
@@ -1110,7 +1154,22 @@ details make this safe.
         and returns immediately; a separate task drains the queue and sends. A logging
         call therefore never blocks on a network round trip, and a slow or unreachable
         channel degrades log delivery rather than stalling the code that logged.
+  \item \textbf{Records are batched.} The drain task collects for one second and packs
+        what it finds into as few messages as the platform's length limit allows,
+        rather than sending one message per record. A burst of activity costs one or
+        two messages instead of a dozen, which keeps the forwarder clear of the
+        per-channel rate limit that a message-per-line design walks straight into.
+  \item \textbf{The queue is bounded.} It holds a thousand records; beyond that,
+        records are dropped. A log storm the channel cannot absorb costs visibility
+        into that storm, which is recoverable, rather than unbounded memory in the
+        process being observed, which is not.
 \end{enumerate}
+
+What reaches the channel is the operational trail rather than debug noise: every
+monitored transition, every alert and report published, and for each question the
+origin channel, the operations the run called, and its wall-clock duration. Failures
+inside the drain task are written to standard error instead of logged, since logging a
+forwarding failure would feed the forwarder that failed.
 
 On startup the bridge announces itself in the channel. An empty channel then means
 nothing is happening, rather than being indistinguishable from a broken configuration.
@@ -1284,10 +1343,10 @@ flood both destinations.
 
 The test suite~\cite{pytest} runs entirely offline. It contacts no network service, requires no
 container runtime, no chat workspace and no model endpoint. This is a property of the
-architecture rather than of extensive mocking infrastructure. Because the agent is
-given a model identifier rather than a client, a single fixture redirects the model
-factory to a scripted substitute, and because the tool set is a named mapping, a test
-replaces one entry without disturbing the rest.
+architecture rather than of extensive mocking infrastructure. Because the agent builds
+its client through a single factory call, one fixture redirects that factory to a
+scripted substitute wherever it is used, and because the tool set is a named mapping, a
+test replaces one entry without disturbing the rest.
 
 A fixture applied to every test redirects both the operational store and the
 conversation store to a temporary location and substitutes an in-memory conversation
@@ -1299,13 +1358,19 @@ Coverage spans the areas where behaviour is not obvious from reading the code:
   \item \textbf{Loop behaviour.} A turn that requests an operation before answering, a
         turn that answers immediately, an operation failure being fed back rather than
         raised, the operation budget halting the loop at exactly its limit, a model
-        failure returning a message, and threads remaining isolated from one another.
+        failure returning a message, a model that never answers hitting the outer time
+        ceiling, and threads remaining isolated from one another.
   \item \textbf{Conversation memory.} Thread configuration, and a thread surviving a
         closed and reopened connection, verified by asking a second question and
         checking that the first reached the model.
   \item \textbf{Transition detection.} Both edges, the absence of an alert on first
         observation, scope changes pruning stale state, and an end-to-end incident
         scenario.
+  \item \textbf{Status publication.} A snapshot carrying the current-state section to
+        the status channel, and its suppression when no status channel is configured.
+  \item \textbf{Log forwarding.} Records packing into as few messages as the length
+        limit allows, an over-long record being truncated rather than dropped, and no
+        message exceeding the limit.
   \item \textbf{Report generation.} Outage pairing, unclosed-outage accounting, the
         flapping narrative and its absence when nothing flapped, weekday gating, and
         publication to the reports channel.
@@ -1605,7 +1670,7 @@ Available: \url{https://docs.jupyter.org/}. [Accessed: Aug. 18, 2026].
 Bot token & none & Authentication credential. Required; startup fails without it \\
 Guild identifier & unset & Target workspace. When set, commands register there directly \\
 Alert channel & unset & Receives failure notifications \\
-Status channel & unset & Receives recovery notifications \\
+Status channel & unset & Receives recovery notifications and the periodic snapshot \\
 Reports channel & unset & Receives scheduled digests. Unset disables them \\
 Log channel & unset & Receives forwarded application logs \\
 \addlinespace
@@ -1614,9 +1679,10 @@ Monitored endpoints & empty & Comma-separated name and URL pairs \\
 Monitor interval & 60 s & Poll cycle period, floored at 10 seconds \\
 \addlinespace
 \multicolumn{3}{@{}l}{\textbf{\color{accent}Scheduled reports}} \\
-Report hour & 05 UTC & Hour at which the daily task fires \\
+Report hour & 05 UTC & Hour at which the daily task fires. Expressed in UTC, not local time \\
 Weekly weekday & 0 (Monday) & Day on which the weekly roll-up also publishes \\
 Lookback days & 7 & Window covered by the weekly roll-up \\
+Status interval & 2 h & Period of the status snapshot, floored at one hour \\
 \addlinespace
 \multicolumn{3}{@{}l}{\textbf{\color{accent}Language model}} \\
 Provider & google & Selects the OpenAI-compatible or the Gemini family \\
@@ -1639,6 +1705,8 @@ Name filter & empty & Scope substring. Empty places every container in scope \\
 \addlinespace
 \multicolumn{3}{@{}l}{\textbf{\color{accent}Loop limits}} \\
 Max tool steps & 10 & Operations permitted per question, counted per call \\
+Model request timeout & 30 s & Ceiling on one model request \\
+Investigation timeout & 60 s & Ceiling on a whole question, retries included \\
 Max context tokens & 12000 & Threshold above which history is compressed \\
 Log result limit & 500 & Maximum log lines returned by one query \\
 Range maximum & 6 h & Furthest back a range query may reach \\

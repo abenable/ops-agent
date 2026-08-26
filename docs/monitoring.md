@@ -1,7 +1,8 @@
 # Monitoring, alerts, and digests
 
-Two background jobs start with the bot: a poller that watches infrastructure,
-and a scheduler that posts summaries.
+Three background jobs start with the bot: a poller that watches infrastructure,
+a scheduler that posts summaries, and a loop that posts a periodic status
+snapshot.
 
 ## The monitor
 
@@ -87,9 +88,37 @@ Discord's embed limit; in a forum channel the whole digest becomes one thread.
 
 Render either on demand with `/digest daily` or `/digest weekly`.
 
+## Status snapshots
+
+`agent/bot/digest.py` also runs a loop on `STATUS_INTERVAL_HOURS` that posts the
+current state of every watched container and endpoint to
+`DISCORD_STATUS_CHANNEL_ID`. Unset that channel and the loop posts nothing.
+
+It renders the same snapshot the daily digest opens with, so a status post and
+the top of a digest agree by construction. The first one fires when the bot
+starts, which doubles as confirmation that the monitor came up with the scope
+it was meant to have.
+
+This is a level, not an edge. It reports what is true now whether or not
+anything changed, which is what makes an idle channel meaningful: a snapshot
+that arrives on schedule showing everything up is evidence the bot is alive,
+where silence is not. Transitions remain the monitor's job, and recovery
+notices land in the same channel.
+
 ## Log forwarding
 
 Setting `DISCORD_LOG_CHANNEL_ID` mirrors INFO-and-above logs into a channel,
 which makes tool calls visible live during a demo. `discord.*` loggers are
 excluded and `httpx`/`httpx2` are quieted to WARNING, since one INFO line per
 HTTP request would flood the channel.
+
+Records are queued rather than sent from `emit()`, so logging never blocks on
+Discord. A pump drains the queue on a one-second window and packs what it finds
+into as few 1900-character code blocks as fit, which keeps a burst to one or two
+messages instead of one per line. The queue holds 1000 records; past that,
+records are dropped rather than allowed to grow without bound.
+
+What lands there is the operational trail: every monitor transition, every alert
+and report posted, and for each question the channel it came from, the tools the
+run called, and how long it took. Failures inside the pump print to stderr, not
+to the log, since logging a forwarding failure would feed the forwarder.

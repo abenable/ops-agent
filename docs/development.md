@@ -23,7 +23,7 @@ src/agent/
   config/settings.py  pydantic-settings, DB paths, provider env export
   tools/            the 10 read-only tools: docker, prometheus, loki
   workflows/        investigate, report, nl: question in, answer out
-  bot/              slash commands, mentions, monitor, digests, client
+  bot/              slash commands, mentions, monitor, digests, status, client
   alerting/         Discord embeds for alerts and reports
   watchlist/        SQLite repository: watch list + event log
 eval/               eval notebooks + eval_transcript.py harness
@@ -59,10 +59,10 @@ Integration tests hit real endpoints and are deselected by `addopts` in
 ### How the agent is faked
 
 `tests/conftest.py` holds the shared seam. `use_fake_llm(monkeypatch, llm)`
-patches `init_chat_model` in both places the library binds it:
-`langchain.agents.factory` and `langchain.agents.middleware.summarization`. The
-agent passes a model *string*, so the factory is the seam rather than a client
-object.
+patches `init_chat_model` in all three places it is bound: `agent.agent`, where
+the client is built, plus `langchain.agents.factory` and
+`langchain.agents.middleware.summarization` inside the library. The factory is
+the seam rather than a client object, so a fake needs no provider wiring.
 
 The fakes are there too: `QueueLLM` (replays a script), `FlatLLM` (answers at
 once), `RecordingLLM` (captures what the model was handed), `DeadLLM` (fails),
@@ -81,7 +81,7 @@ The dict exists for exactly that.
 | `test_memory.py` | `thread_config`, and a thread surviving a closed connection |
 | `test_eval_transcript.py` | The eval harness: budget counting, crash transcripts, unknown tools, grading |
 | `test_monitor.py` | Baseline vs transition, scope, pruning, endpoint probes, event logging |
-| `test_digest.py` | Daily/weekly bodies, downtime pairing, flap narrative, scheduling |
+| `test_digest.py` | Daily/weekly bodies, downtime pairing, flap narrative, scheduling, status snapshots |
 | `test_docker_tools.py`, `test_services.py`, `test_normalize.py` | Tool behaviour, HTTP clients, name matching |
 | `test_summarize.py`, `test_alerting.py`, `test_bot.py`, `test_nl.py`, `test_watchlist.py` | Discord formatting, embeds, command wiring, mentions, the watch list |
 
