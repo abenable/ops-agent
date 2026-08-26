@@ -27,6 +27,12 @@ async def handle_message(bot: discord.Client, message: discord.Message) -> None:
         await message.reply("What should I look into? Try `/status` or `/investigate`.")
         return
 
+    logger.info(
+        "question from %s in %s: %s",
+        message.author,
+        "DM" if is_dm else f"#{getattr(message.channel, 'name', message.channel.id)}",
+        question[:200],
+    )
     try:
         async with message.channel.typing():
             answer = await investigator.investigate(question, thread_id=str(message.channel.id))

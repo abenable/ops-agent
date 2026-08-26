@@ -130,3 +130,30 @@ def test_events_since_ignores_anything_before_the_cutoff():
 def test_posting_a_report_sends_its_body_to_the_reports_channel(quiet_infra, sent):
     asyncio.run(digest.post(None, "daily", _MONDAY))
     assert sent and "no changes" in sent[0][1][0]
+
+
+def test_status_post_carries_the_snapshot(quiet_infra, monkeypatch):
+    """The 2-hourly status update reuses the digest snapshot."""
+    sent: list[tuple[int, str, str]] = []
+
+    async def _capture(channel_id, message, _bot, **kwargs):
+        sent.append((channel_id, message, kwargs.get("title", "")))
+
+    monkeypatch.setattr(digest.discord_alert, "send_alert", _capture)
+    monkeypatch.setattr(digest.settings, "discord_status_channel_id", 456)
+
+    asyncio.run(digest.post_status(None, _MONDAY))
+
+    assert len(sent) == 1
+    channel_id, body, title = sent[0]
+    assert channel_id == 456
+    assert "**Containers**" in body and "**Endpoints**" in body
+    assert "2026-08-17 05:00" in title
+
+
+def test_status_post_skipped_without_a_channel(quiet_infra, monkeypatch):
+    sent = []
+    monkeypatch.setattr(digest.discord_alert, "send_alert", AsyncMock(side_effect=sent.append))
+    monkeypatch.setattr(digest.settings, "discord_status_channel_id", None)
+    asyncio.run(digest.post_status(None, _MONDAY))
+    assert sent == []

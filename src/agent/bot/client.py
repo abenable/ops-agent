@@ -7,7 +7,7 @@ import sys
 import discord
 from discord.ext import commands
 
-from agent.bot.digest import start_digests
+from agent.bot.digest import start_digests, start_status
 from agent.bot.monitor import start_monitor
 from agent.bot.slash import setup_slash_commands
 from agent.config.settings import settings
@@ -18,6 +18,25 @@ logger = logging.getLogger(__name__)
 _setup_done = False
 _pump_task: asyncio.Task | None = None
 
+_BLOCK_LIMIT = 1900
+_BATCH_WINDOW = 1.0
+
+
+def pack(lines: list[str], limit: int = _BLOCK_LIMIT) -> list[str]:
+    """Join log lines into as few code blocks as the message limit allows."""
+    blocks: list[str] = []
+    current = ""
+    for line in lines:
+        line = line[:limit]
+        if current and len(current) + len(line) + 1 > limit:
+            blocks.append(current)
+            current = line
+        else:
+            current = f"{current}\n{line}" if current else line
+    if current:
+        blocks.append(current)
+    return blocks
+
 
 class DiscordLogHandler(logging.Handler):
     """Forward INFO+ logs to a Discord channel without blocking emit()."""
@@ -26,7 +45,8 @@ class DiscordLogHandler(logging.Handler):
         super().__init__(level=logging.INFO)
         self.bot = bot
         self.channel_id = channel_id
-        self.queue: asyncio.Queue[str] = asyncio.Queue()
+        # ponytail: bounded so a log storm drops lines instead of eating memory
+        self.queue: asyncio.Queue[str] = asyncio.Queue(maxsize=1000)
 
     def emit(self, record: logging.LogRecord) -> None:
         if record.name.startswith("discord"):
@@ -55,11 +75,16 @@ class DiscordLogHandler(logging.Handler):
             return
 
         while True:
-            msg = await self.queue.get()
-            try:
-                await channel.send(f"```{msg[:1900]}```")
-            except Exception as exc:  # noqa: BLE001
-                print(f"Failed to send log to Discord: {exc}", file=sys.stderr)
+            batch = [await self.queue.get()]
+            await asyncio.sleep(_BATCH_WINDOW)  # let a burst gather into one message
+            while not self.queue.empty():
+                batch.append(self.queue.get_nowait())
+            for block in pack(batch):
+                try:
+                    await channel.send(f"```{block}```")
+                except Exception as exc:  # noqa: BLE001
+                    # print, not log: logging here would feed itself
+                    print(f"Failed to send log to Discord: {exc}", file=sys.stderr)
 
 
 def _setup_logging() -> None:
@@ -106,8 +131,11 @@ def run_bot():
             return
         _setup_done = True
 
+        _attach_discord_log_handler(bot)
+
         start_monitor(bot)
         start_digests(bot)
+        start_status(bot)
         try:
             if settings.discord_guild_id:
                 guild = discord.Object(id=settings.discord_guild_id)
@@ -118,8 +146,6 @@ def run_bot():
             logger.info("Synced %d slash command(s)", len(synced))
         except Exception as exc:  # noqa: BLE001
             logger.warning("Slash-command sync failed: %s", exc)
-
-        _attach_discord_log_handler(bot)
 
     @bot.event
     async def on_message(message: discord.Message):

@@ -75,6 +75,7 @@ class Settings(BaseSettings):
     range_max_hours: int = 6
 
     report_hour_utc: int = 5
+    status_interval_hours: int = 2
     weekly_report_weekday: int = 0
     digest_lookback_days: int = 7
 

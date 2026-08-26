@@ -156,6 +156,7 @@ async def post(bot, kind: str = "daily", now: datetime | None = None) -> None:
         body = await build_daily(now)
         title = f"Daily report — {now:%Y-%m-%d}"
     chunks = [body[i : i + 3900] for i in range(0, len(body), 3900)] or [body]
+    logger.info("posting %s digest (%d chars) to channel %s", kind, len(body), channel_id)
     await discord_alert.post_report(channel_id, title, chunks, bot)
 
 
@@ -175,3 +176,31 @@ def start_digests(bot):
         await run_tick(bot)
 
     _digest.start()
+
+
+async def post_status(bot, now: datetime | None = None) -> None:
+    """Post the current snapshot to the status channel."""
+    channel_id = settings.discord_status_channel_id
+    if not channel_id:
+        logger.info("skipping status update: DISCORD_STATUS_CHANNEL_ID is unset")
+        return
+    now = now or datetime.now(UTC)
+    body = "\n".join(await _snapshot())
+    logger.info("posting status update to channel %s", channel_id)
+    await discord_alert.send_alert(
+        channel_id,
+        body,
+        bot,
+        severity="info",
+        title=f"Status \u2014 {now:%Y-%m-%d %H:%M} UTC",
+    )
+
+
+def start_status(bot):
+    """Start the periodic status snapshot; the first one fires on startup."""
+
+    @tasks.loop(hours=max(settings.status_interval_hours, 1))
+    async def _status():
+        await post_status(bot)
+
+    _status.start()

@@ -45,10 +45,11 @@ def test_slash_commands_registered():
         assert name in bot.tree.commands
 
 
-def test_discord_log_handler_forwards_info_and_quiets_httpx():
+def test_discord_log_handler_forwards_info_and_quiets_httpx(monkeypatch):
     import asyncio
     import logging
 
+    from agent.bot import client
     from agent.bot.client import DiscordLogHandler, _setup_logging
 
     _setup_logging()
@@ -74,6 +75,7 @@ def test_discord_log_handler_forwards_info_and_quiets_httpx():
 
     ch = FakeChannel()
     bot = FakeBot(ch)
+    monkeypatch.setattr(client, "_BATCH_WINDOW", 0.01)
     handler = DiscordLogHandler(bot, 123)
     handler.setFormatter(logging.Formatter("%(levelname)s %(name)s\n%(message)s"))
     test_logger = logging.getLogger("agent.test")
@@ -94,3 +96,19 @@ def test_discord_log_handler_forwards_info_and_quiets_httpx():
     asyncio.run(run())
     assert any("Log forwarding active (INFO and above)." in m for m in ch.sent)
     assert any("tool call happened" in m for m in ch.sent)
+
+
+def test_pack_joins_lines_and_respects_the_limit():
+    """Log lines batch into as few blocks as fit, and never exceed the limit."""
+    from agent.bot.client import pack
+
+    assert pack([]) == []
+    assert pack(["a", "b", "c"], limit=20) == ["a\nb\nc"]
+
+    lines = ["x" * 40 for _ in range(5)]
+    blocks = pack(lines, limit=100)
+    assert all(len(b) <= 100 for b in blocks)
+    assert "\n".join(blocks).replace("\n", "") == "".join(lines)
+
+    # a single over-long line is truncated, not dropped
+    assert pack(["y" * 500], limit=100) == ["y" * 100]

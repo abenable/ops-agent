@@ -40,6 +40,7 @@ async def send_alert(
     )
     try:
         await channel.send(embed=embed)
+        logger.info("alert sent to %s [%s] %s", channel_id, severity, title)
     except discord.DiscordException as exc:
         logger.warning("Failed to send alert to channel %s: %s", channel_id, exc)
 
@@ -49,6 +50,7 @@ async def post_report(channel_id: int, title: str, chunks: list[str], bot: disco
     channel = await _resolve_channel(channel_id, bot)
     if channel is None:
         return
+    logger.info("posting report to %s: %s (%d chunk(s))", channel_id, title, len(chunks))
     try:
         if isinstance(channel, discord.ForumChannel):
             opened = await channel.create_thread(

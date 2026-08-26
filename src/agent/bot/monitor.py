@@ -1,5 +1,7 @@
 """Background monitoring loop: polls containers and HTTP endpoints, and posts Discord alerts on down/recovery transitions."""
 
+import logging
+
 import httpx2 as httpx
 from discord.ext import tasks
 
@@ -7,6 +9,8 @@ from agent.alerting import discord as discord_alert
 from agent.config.settings import settings
 from agent.tools import docker
 from agent.watchlist.repository import list_watched_containers, record_event
+
+logger = logging.getLogger(__name__)
 
 _container_state: dict[str, str] = {}
 _endpoint_state: dict[str, bool] = {}
@@ -42,7 +46,8 @@ async def _poll_containers(bot) -> None:
     watched = set(list_watched_containers())
     try:
         containers = await docker.list_containers(all_containers=True)
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("container poll failed: %s", exc)
         return
 
     seen: set[str] = set()
@@ -54,6 +59,7 @@ async def _poll_containers(bot) -> None:
         state = c.get("State", "unknown")
         prev = _container_state.get(name)
         if prev == "running" and state != "running":
+            logger.info("container %s: running -> %s", name, state)
             record_event(name, "container", "down")
             if settings.discord_alert_channel_id:
                 await discord_alert.send_alert(
@@ -64,6 +70,7 @@ async def _poll_containers(bot) -> None:
                     title="Container down",
                 )
         elif prev is not None and prev != "running" and state == "running":
+            logger.info("container %s: %s -> running", name, prev)
             record_event(name, "container", "up")
             if settings.discord_status_channel_id:
                 await discord_alert.send_alert(
@@ -99,6 +106,7 @@ async def _poll_endpoints(bot) -> None:
         _endpoint_state[name] = up
         if prev is None or prev == up:
             continue
+        logger.info("endpoint %s: %s", name, "up" if up else "down")
         record_event(name, "endpoint", "up" if up else "down")
         if not up and settings.discord_alert_channel_id:
             await discord_alert.send_alert(
@@ -129,5 +137,10 @@ def start_monitor(bot):
     async def _poll():
         await _poll_containers(bot)
         await _poll_endpoints(bot)
+        logger.debug(
+            "poll done: %d container(s), %d endpoint(s)",
+            len(_container_state),
+            len(_endpoint_state),
+        )
 
     _poll.start()
