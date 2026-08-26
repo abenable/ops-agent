@@ -1,32 +1,32 @@
 {
   "suites": {
     "01_list_services": {
-      "runs": 6,
-      "graded": 6,
-      "passed": 6,
+      "runs": 2,
+      "graded": 2,
+      "passed": 2,
       "pass_rate": 1.0,
-      "tool_calls_total": 6,
+      "tool_calls_total": 2,
       "retries_total": 0,
       "tool_failures_total": 0,
-      "tokens_total": 7749,
-      "tokens_mean": 1292,
-      "latency_ms_mean": 2661,
-      "latency_ms_median": 2680,
-      "latency_ms_max": 3022
+      "tokens_total": 2556,
+      "tokens_mean": 1278,
+      "latency_ms_mean": 2534,
+      "latency_ms_median": 2534,
+      "latency_ms_max": 2708
     }
   },
   "overall": {
-    "runs": 6,
-    "graded": 6,
-    "passed": 6,
+    "runs": 2,
+    "graded": 2,
+    "passed": 2,
     "pass_rate": 1.0,
-    "tool_calls_total": 6,
+    "tool_calls_total": 2,
     "retries_total": 0,
     "tool_failures_total": 0,
-    "tokens_total": 7749,
-    "tokens_mean": 1292,
-    "latency_ms_mean": 2661,
-    "latency_ms_median": 2680,
-    "latency_ms_max": 3022
+    "tokens_total": 2556,
+    "tokens_mean": 1278,
+    "latency_ms_mean": 2534,
+    "latency_ms_median": 2534,
+    "latency_ms_max": 2708
   }
 }
