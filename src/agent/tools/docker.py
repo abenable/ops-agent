@@ -98,7 +98,7 @@ async def container_logs(container_id: str, tail: int = 50) -> str:
 
 @tool
 async def list_services() -> str:
-    """List known infrastructure targets by their real names: Docker container names and configured monitored endpoints. Call this FIRST when you are unsure of the exact service name, then use the names it returns for your queries."""
+    """List known infrastructure targets by their real names: Docker container names and configured monitored endpoints. Call this FIRST when you are unsure of the exact service name."""
     containers = await list_containers(all_containers=True)
     names = [container_name(c) for c in containers]
     endpoints: list[str] = []
