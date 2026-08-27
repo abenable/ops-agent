@@ -1,7 +1,8 @@
 # Evaluation
 
-`eval/` holds notebooks that measure how the model behaves on each backend, and
-a shared harness that records every run.
+`eval/` holds notebooks that measure how the model behaves on each backend, a
+shared harness that records every run, and the tooling to run the whole suite
+against two models and compare them.
 
 ## The notebooks
 
@@ -14,67 +15,86 @@ a shared harness that records every run.
 | `05_query_prometheus_range` | as above, with `query_prometheus_range` |
 | `06_query_loki` | `get_loki_label_values`, `query_loki` |
 | `07_query_loki_range` | `get_loki_label_values`, `query_loki_range` |
-| `08_all_tools` | all ten, through the real agent |
+| `08_all_tools` | all configured tools, through the real production agent |
 
 `01` through `07` each bind one backend and ask two questions: one the tools can
 answer, and one they cannot. The second is the interesting one, because it
 measures whether the model admits the limit or hallucinates past it.
 
 `08` is different. It imports the production agent (`from agent.agent import
-get_agent`) and drives it with memory, so it tests which tool the model reaches
-for when nothing is taken away, and whether context carries across turns on a
-thread.
+get_agent`) and drives it with memory. It asks a broad question, then a
+follow-up naming nothing (`resume=True` — the one place a thread is continued on
+purpose), then repeats that follow-up on a fresh thread, which should fail,
+demonstrating isolation.
 
 Run them from `eval/`. The kernel's working directory is what makes
-`from eval_transcript import run_eval_loop` resolve.
+`from eval_transcript import run_agent_eval` resolve.
 
 ## The harness
 
-`eval/eval_transcript.py` runs a question against a tool set and records
-everything:
+`eval/eval_transcript.py` runs one question against a tool set through the real
+agent and records everything:
 
 ```python
-answer = await run_eval_loop(
-    "04_query_prometheus:live", TOOLS, SYSTEM_PROMPT,
+answer = await run_agent_eval(
+    "04_query_prometheus:live-inscope",
     "What is the current value of the 'up' metric?",
-    expect=["node-exporter"],          # optional
+    thread_id="04_query_prometheus:live-inscope",
+    tools=TOOLS,              # None means every configured tool
+    resume=False,             # True continues the thread a previous call created
 )
 ```
 
-Every run writes `eval/logs/<timestamp>__<label>.json` containing each turn's
-sent messages, the response, tool calls and results, per-call token usage and
-duration, and the grade.
+Every run writes `eval/logs/<model>/<timestamp>__<label>.json` — one
+subdirectory per model — containing the system prompt, the bound tools, each
+turn's response with tool calls (including call ids) and results, per-turn
+token usage, and duration. `print_summary()` prints one row per transcript
+across all model directories.
+
+Threads are isolated by default: the harness suffixes a unique run id onto the
+caller's `thread_id`, so re-running a case can never replay a previous
+conversation into the model's context. `resume=True` opts back into the thread
+a previous call with the same `thread_id` argument created — that is how the
+`08` memory case works.
 
 The dump is in a `finally`, so a run that dies from an endpoint 500, a context
 overflow, or a timeout still leaves the turns it completed, with the error
 recorded. Those are usually the runs worth reading.
 
-`run_eval_repeats(..., runs=3)` asks the same question several times and reports
-how many passed and how many distinct answers came back. One sample proves
-nothing: temperature 0 is not a determinism guarantee on any of these providers.
+There is deliberately no automated grading in the harness. A substring check
+catches only the crudest failure, and the interesting failure modes — a
+hallucinated tool name, a health verdict with no evidence, an empty answer —
+need a human read of the transcript. `eval/manual_qa_eval.md` is the rubric.
 
-## Grading
+## Running the whole suite
 
-`expect` is a list of substrings the answer must contain. This is deliberately crude,
-since a substring list is not a rubric. It catches the failure mode worth
-catching automatically: a fluent, well-structured answer that never mentions the
-dominant evidence at all. Whether what it *did* say is correct is still a human
-read of the transcript.
+`eval/run_suite.py` executes every notebook's cases in one process, on whatever
+model the environment selects, exactly like production:
+
+```bash
+cd eval
+LLM_PROVIDER=google LLM_MODEL=gemma-4-31b-it python run_suite.py
+LLM_PROVIDER=openai LLM_MODEL=marconi-llm python run_suite.py   # the proxy
+```
+
+`eval/analyze.py <model> [<model> ...]` reads the transcripts and prints a
+per-case comparison, per-model averages (valid vs hallucinated calls, tokens,
+duration), and tokens per tool — the calling turn's cost plus the next turn's
+input, which carries the tool result. It is how the Loki tools were identified
+as the dominant token sink.
+
+Results and conclusions from the 2026-08-27 run: `docs/model-comparison-20260827.md`.
+One run per case proves nothing — temperature 0 is not a determinism guarantee
+on any of these providers; re-run before deciding anything.
 
 ## Budget semantics
 
-The harness counts `MAX_TOOL_STEPS` as **tool calls**, matching production's
-`ToolCallLimitMiddleware(run_limit=...)`. A call that would exceed the budget is
-not executed, nor are its siblings on the same message.
-
-Transcripts record both `tool_calls` (actually dispatched) and
-`tool_calls_requested` (what the model asked for, the budget unit); an
-unavailable tool or a budget-blocked call spends budget without running.
-
-One deliberate difference from production: after the budget is spent the harness
-makes one extra call asking the model to summarize what it found, so the
-transcript captures a conclusion. Production simply ends. That turn is tagged
-`"tool-call-budget summary (harness-added; production ends here instead)"`.
+The budget is production's: `ToolCallLimitMiddleware(run_limit=10,
+exit_behavior="end")` counts tool calls and ends the run when it is exhausted.
+The transcript records the limit message as the final turn, which is also what
+an operator would see. Both models in the comparison reached the limit on
+"check everything" questions — see the comparison report's recommendations
+before raising it.
 
 ## Offline dataset
 
@@ -133,6 +153,7 @@ would remove the property the tests are meant to protect.
 
 ## Testing the harness
 
-`tests/test_eval_transcript.py` covers the loop itself: budget counting, the
-crash-path transcript, unknown tool names, and grading. It runs against a fake
-model with transcripts redirected to `tmp_path`.
+`tests/test_eval_transcript.py` covers the loop itself: message serialisation
+and reasoning extraction, usage accounting, and that `run_agent_eval` drives
+the real agent, defaults to the configured tool set, and measures only the new
+turns of a reused thread.
