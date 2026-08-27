@@ -2,6 +2,7 @@ import json
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from uuid import uuid4
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
@@ -94,7 +95,7 @@ async def run_agent_eval(
     tools: list | None = None,
 ) -> str:
     """Run `question` through the real production agent and dump the transcript."""
-    from agent.agent import get_agent
+    from agent.agent import _SYSTEM_PROMPT, get_agent
     from agent.memory import thread_config
     from agent.tools import configured_tools
 
@@ -104,9 +105,13 @@ async def run_agent_eval(
         if tools is not None
         else [t.name for t in configured_tools()]
     )
+    system_prompt = _SYSTEM_PROMPT
+    # Never resume a persisted thread: a reused thread_id would replay prior
+    # turns into the model's context and the dump would mix old and new messages.
+    run_thread_id = f"{thread_id}:{uuid4().hex[:8]}" if thread_id else None
     started = time.monotonic()
     final = await agent.ainvoke(
-        {"messages": [HumanMessage(content=question)]}, thread_config(thread_id)
+        {"messages": [HumanMessage(content=question)]}, thread_config(run_thread_id)
     )
     messages = final["messages"]
     seen = _AGENT_SEEN.get(thread_id, 0)
@@ -128,7 +133,7 @@ async def run_agent_eval(
 
     answer = _text(messages[-1].content)
     meta = {
-        "thread_id": thread_id,
+        "thread_id": run_thread_id or thread_id,
         "duration_ms": round((time.monotonic() - started) * 1000),
         "tool_calls": len(tool_names),
         "tool_names": tool_names,
@@ -142,7 +147,7 @@ async def run_agent_eval(
         f"out={total['output_tokens']} total={total['total_tokens']}"
     )
     path = _dump_transcript(
-        label, question, "(production system prompt)", bound_tools, calls, answer, total, meta, settings.model_id
+        label, question, system_prompt, bound_tools, calls, answer, total, meta, settings.model_id
     )
     shown = path.relative_to(_REPO_ROOT) if path.is_relative_to(_REPO_ROOT) else path
     print(f"[transcript] saved to {shown}")
