@@ -13,6 +13,9 @@ _REPO_ROOT = _HERE.parent
 TRANSCRIPT_DIR = _HERE / "logs"
 
 _AGENT_SEEN: dict[str, int] = {}
+# Maps the caller's thread_id argument to the actual (suffixed) thread used, so
+# a later call with resume=True can find the thread an earlier call created.
+_THREAD_ALIASES: dict[str, str] = {}
 
 
 def _text(content) -> str:
@@ -44,7 +47,10 @@ def _serialize_message(msg) -> dict:
         out = {
             "role": "ai",
             "content": _text(msg.content),
-            "tool_calls": [{"name": c["name"], "args": c["args"]} for c in msg.tool_calls],
+            "tool_calls": [
+                {"id": c.get("id"), "name": c["name"], "args": c["args"]}
+                for c in msg.tool_calls
+            ],
             "finish_reason": meta.get("finish_reason") or meta.get("stop_reason"),
         }
         # A reasoning model puts its output somewhere _text() does not look. Keep
@@ -65,9 +71,13 @@ def _dump_transcript(
     calls: list, answer: str, total: dict, meta: dict, model: str,
 ) -> Path:
     TRANSCRIPT_DIR.mkdir(parents=True, exist_ok=True)
+    # One subdirectory per model so parallel model comparisons don't interleave.
+    model_tag = model.split(":", 1)[-1].replace("/", "-")
+    run_dir = TRANSCRIPT_DIR / model_tag
+    run_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%f")
     safe_label = label.replace(":", "-").replace("/", "-")
-    path = TRANSCRIPT_DIR / f"{stamp}__{safe_label}.json"
+    path = run_dir / f"{stamp}__{safe_label}.json"
     path.write_text(
         json.dumps(
             {
@@ -93,6 +103,7 @@ async def run_agent_eval(
     question: str,
     thread_id: str = "notebook",
     tools: list | None = None,
+    resume: bool = False,
 ) -> str:
     """Run `question` through the real production agent and dump the transcript."""
     from agent.agent import _SYSTEM_PROMPT, get_agent
@@ -106,9 +117,16 @@ async def run_agent_eval(
         else [t.name for t in configured_tools()]
     )
     system_prompt = _SYSTEM_PROMPT
-    # Never resume a persisted thread: a reused thread_id would replay prior
-    # turns into the model's context and the dump would mix old and new messages.
-    run_thread_id = f"{thread_id}:{uuid4().hex[:8]}" if thread_id else None
+    # Never resume a persisted thread by accident: a reused thread_id would
+    # replay prior turns into the model's context and the dump would mix old
+    # and new messages. Opt in with resume=True when memory is under test;
+    # that resumes the thread a previous call created for this same id.
+    if resume and thread_id in _THREAD_ALIASES:
+        run_thread_id = _THREAD_ALIASES[thread_id]
+    else:
+        run_thread_id = f"{thread_id}:{uuid4().hex[:8]}" if thread_id else None
+        if run_thread_id:
+            _THREAD_ALIASES[thread_id] = run_thread_id
     started = time.monotonic()
     final = await agent.ainvoke(
         {"messages": [HumanMessage(content=question)]}, thread_config(run_thread_id)
@@ -155,9 +173,9 @@ async def run_agent_eval(
 
 
 def print_summary(pattern: str = "*.json") -> None:
-    """Read every transcript in eval/logs/ and print one row per run plus totals."""
+    """Read every transcript in eval/logs/ (any model subdir) and print one row per run."""
     rows = []
-    for path in sorted(TRANSCRIPT_DIR.glob(pattern)):
+    for path in sorted(TRANSCRIPT_DIR.rglob(pattern)):
         try:
             data = json.loads(path.read_text())
         except (OSError, json.JSONDecodeError):
@@ -166,6 +184,7 @@ def print_summary(pattern: str = "*.json") -> None:
         rows.append(
             {
                 "label": data.get("label", path.stem),
+                "model": data.get("model", "?").split(":")[-1],
                 "tool_calls": data.get("tool_calls"),
                 "total_tokens": usage.get("total_tokens", 0),
                 "duration_ms": data.get("duration_ms"),
@@ -174,8 +193,8 @@ def print_summary(pattern: str = "*.json") -> None:
     if not rows:
         print("no transcripts in eval/logs/ yet")
         return
-    print(f"{'label':<34}{'tools':<7}{'tokens':<9}{'ms':<8}")
+    print(f"{'label':<34}{'model':<16}{'tools':<7}{'tokens':<9}{'ms':<8}")
     for r in rows:
-        print(f"{r['label'][:33]:<34}{r['tool_calls']!s:<7}"
+        print(f"{r['label'][:33]:<34}{r['model'][:15]:<16}{r['tool_calls']!s:<7}"
               f"{r['total_tokens']!s:<9}{r['duration_ms']!s:<8}")
     print(f"\ntotal tokens {sum(r['total_tokens'] for r in rows)}, {len(rows)} run(s)")
