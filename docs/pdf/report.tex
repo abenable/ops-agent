@@ -8,7 +8,6 @@
 \usepackage{tabularx}
 \usepackage{longtable}
 \usepackage{xcolor}
-\usepackage{tcolorbox}
 \usepackage{fancyhdr}
 \usepackage{titlesec}
 \usepackage{enumitem}
@@ -86,18 +85,6 @@
 }
 \lstset{style=plain}
 
-% ---------------------------------------------------------------- boxes
-\newtcolorbox{keybox}[1]{
-  colback=accentlight, colframe=accent, boxrule=0.6pt,
-  left=8pt,right=8pt,top=6pt,bottom=6pt,
-  fonttitle=\bfseries\small, title={#1}, sharp corners=downhill
-}
-\newtcolorbox{warnbox}[1]{
-  colback=warnbg, colframe=warnrule, boxrule=0.6pt,
-  left=8pt,right=8pt,top=6pt,bottom=6pt,
-  fonttitle=\bfseries\small, title={#1}, sharp corners=downhill
-}
-
 % ---------------------------------------------------------------- tikz styles
 \tikzset{
   layer/.style={draw=accent, fill=accentlight, rounded corners=2pt,
@@ -116,22 +103,17 @@
 
 \begin{document}
 
-% ================================================================ TITLE
-\begin{titlepage}
-\centering
-\vspace*{4.5cm}
-
-{\Huge\bfseries\color{accent} Marconi Research and\\[0.25em] Innovations Lab\par}
-\vspace{1.3cm}
-{\LARGE\bfseries Infrastructure Operations Agent\par}
-\vspace{0.7cm}
-{\Large\itshape Design and Implementation\par}
-
-\vfill
-\end{titlepage}
-
-% ================================================================ ABSTRACT
+% ================================================================ TITLE + ABSTRACT
 \pagenumbering{roman}
+\begin{center}
+{\Huge\bfseries\color{accent} Marconi Research and Innovations Lab\par}
+\vspace{0.5em}
+{\LARGE\bfseries Infrastructure Operations Agent\par}
+\vspace{0.3em}
+{\Large\itshape Design and Implementation\par}
+\end{center}
+\vspace{1.5em}
+
 \section*{Abstract}
 \addcontentsline{toc}{section}{Abstract}
 \markboth{Abstract}{}
@@ -139,35 +121,28 @@
 Diagnosing a fault in a small self-hosted environment usually means opening three
 separate interfaces and correlating them by hand: the container runtime for process
 state, a metrics server for resource behaviour, and a log store for what the service
-itself reported. The work is mechanical and has to be repeated for every incident. It also takes
-longest at the point where an operator can least afford the delay.
+itself reported. The work is mechanical, repeats every incident, and takes longest
+exactly when an operator can least afford the delay.
 
 This report describes a system that performs that correlation on request. An operator
-asks a question in ordinary language from a chat client. A language model, given a
+asks a question in ordinary language from a chat client; a language model, given a
 fixed set of read-only query tools, decides which backends to consult, issues the
-queries, reads the results, and returns an answer with the evidence it rests on, a
-likely cause, and recommended next steps for a human.
-
-The design has one governing constraint: the agent can observe but cannot act. No tool
-in the system issues a mutating call to any backend. The worst outcome of a mistaken
-model turn is an incorrect answer rather than a stopped service. This constraint is
-enforced by the set of operations exposed to the model, not by instructions given to
-it, which is a materially different guarantee.
+queries, and returns an answer with the evidence it rests on, a likely cause, and
+recommended next steps. The design has one governing constraint: the agent can
+observe but cannot act. No tool in the system issues a mutating call to any backend,
+so the worst outcome of a mistaken model turn is an incorrect answer rather than a
+stopped service --- a guarantee enforced by the set of operations exposed to the model,
+not by instructions given to it.
 
 Beyond the conversational path, the system polls container and endpoint health on a
-fixed cycle, alerts on transitions, records those transitions durably, and publishes
-daily and weekly reports. The reports separate measured data, rendered directly from
-the recorded events and never paraphrased by the model, from generated prose that
-summarises it. That separation keeps the numbers exact while still giving a reader a
-short narrative.
+fixed cycle, alerts on transitions, records them durably, and publishes daily and
+weekly reports that keep measured data separate from the generated prose summarising
+it. The report describes how the system is built and why, and closes with the design
+decisions behind it, what each one costs, and the limitations that remain.
 
-The report describes how the system is built and why it is built that way. It closes
-with the design decisions behind it, what each one costs, and the limitations that
-remain.
-
-\vspace{1em}
+\clearpage
+\setcounter{tocdepth}{1}
 \tableofcontents
-\listoffigures
 
 \clearpage
 \pagenumbering{arabic}
@@ -177,92 +152,57 @@ remain.
 
 \subsection{The operational problem}
 
-A small self-hosted environment running on the order of ten services accumulates
-three separate sources of truth about its own health. The container runtime knows
-which processes exist, whether they are running, and what exit status they last
-reported. A metrics server holds numeric time series describing resource consumption
-and application behaviour. A log store holds the text each service emitted.
-
-Any non-trivial question spans all three. Establishing why a service restarted
-requires its current state from the runtime, its output immediately before the
-restart from the log store, and its resource behaviour over the preceding interval
-from the metrics server. None of these systems answers the question alone, and none
-of them knows the others exist.
-
-The correlation work is routine. An experienced operator performs roughly the same
-sequence every time: confirm the exact service name, check whether the process is
-running, read the recent output, then look at resource curves over the relevant
-window. The sequence is well defined enough to describe in a paragraph, which makes
-it a reasonable candidate for automation, but it branches on what each step returns,
-which is why a fixed script handles it poorly.
+A small self-hosted environment has three separate sources of truth about its
+health: the container runtime (process state), a metrics server (time series), and
+a log store (what each service reported). None answers a non-trivial question
+alone. Diagnosing a restart needs runtime state, the logs immediately before it,
+and the resource curve over the preceding interval, and an experienced operator
+runs roughly that sequence for every incident, which branches on what each step
+returns and so resists a fixed script.
 
 \subsection{Approach}
 
-The system places a language model between the operator and the backends. The
-operator asks a question in ordinary language. The model has a fixed set of query
-operations available, each documented with a description written for the model rather
-than for a human reader. It selects operations, receives their output as text, and
-either issues further queries or produces an answer.
+The model discovers the environment rather than being told about it: enumeration
+operations (services, metric names, label values) exist alongside query operations,
+and the model is instructed to enumerate before it queries, since a guessed name
+returns nothing.
 
-The model is not asked to know the environment. It is asked to discover it. The
-available operations include enumeration calls (list the services, list the metric
-names, list the values of a label) and the guidance given to the model requires
-discovery before querying. A model that guesses a metric name produces an empty
-result; a model that enumerates first produces a real one.
-
-Access is through an existing chat workspace rather than a purpose-built interface.
-This is a deliberate economy. The workspace already has accounts, permissions,
-notification routing, mobile clients and message history. A question asked in a
-channel, an alert posted to that channel, and the scheduled report published there
-all sit in one place, which is where an operator already looks.
+Access runs through the existing chat workspace rather than a purpose-built
+interface, so a question, an alert, and a scheduled report all land in the place an
+operator already watches.
 
 \subsection{Scope}
 
-The system provides four capabilities.
-
 \begin{enumerate}
-  \item \textbf{Conversational investigation.} A free-form question is answered by an
-        agent loop with every read-only operation available to it. Context is retained
-        per conversation, so follow-up questions do not need to restate the subject.
-  \item \textbf{Structured incident reporting.} A fixed template drives the same loop
-        toward a report with defined sections: summary, observed behaviour, supporting
-        evidence, likely cause, and recommended next steps.
-  \item \textbf{Continuous monitoring.} Container state and configured HTTP endpoints
-        are polled on a fixed cycle. Transitions produce alerts and durable records.
-  \item \textbf{Scheduled reporting.} Daily and weekly digests summarise current state
-        and the transitions recorded over the reporting window.
+  \item \textbf{Conversational investigation.} Free-form questions, answered with
+        every read-only operation available, context retained per conversation.
+  \item \textbf{Structured incident reporting.} The same loop on a fixed template:
+        summary, observed behaviour, evidence, likely cause, next steps.
+  \item \textbf{Continuous monitoring.} Container and endpoint state polled on a
+        fixed cycle; transitions produce alerts and durable records.
+  \item \textbf{Scheduled reporting.} Daily and weekly digests of current state and
+        the transitions recorded over the window.
 \end{enumerate}
 
 \subsection{Out of scope}
 
-Several things are excluded by design, and knowing which is necessary to read the
-rest of this report correctly.
-
 \begin{enumerate}
-  \item \textbf{No write operations.} The agent cannot restart, scale, reconfigure or
-        delete anything. Where an action is warranted it names the action and leaves it
-        to a human. This is not a temporary limitation pending a permissions model. It
-        is the central design constraint, and Section~\ref{sec:readonly} explains how
-        it is enforced.
-  \item \textbf{Single tenant.} The system assumes one environment, one chat
-        workspace, and an operator population that trusts one another. There is no
-        per-user authorisation beyond what the chat workspace itself provides.
-  \item \textbf{No alerting rule engine.} Alerts fire on observed state transitions of
-        containers and endpoints, not on threshold expressions over metric data.
-        Metrics are available to the reasoning loop for diagnosis and are not used to
-        drive alerts. Section~\ref{sec:socket-vs-query} explains why.
-  \item \textbf{No model training.} No component trains, fine-tunes or otherwise
-        modifies a model. The model is an external service reached over a network API.
+  \item \textbf{No write operations.} Nothing restarts, scales, reconfigures, or
+        deletes; the design constraint Section~\ref{sec:readonly} enforces.
+  \item \textbf{Single tenant.} One environment, one chat workspace, no per-user
+        authorisation beyond what the workspace provides.
+  \item \textbf{No alerting rule engine.} Alerts fire on state transitions, not
+        threshold expressions; metrics feed diagnosis only (Section~\ref{sec:socket-vs-query}).
+  \item \textbf{No model training.} The model is an external service reached over
+        a network API.
 \end{enumerate}
 
 % ================================================================ 2
-\section{System overview}
+\subsection{System overview}
 
-The system runs as a single long-lived process holding four concurrent
-responsibilities: a connection to the chat workspace that receives commands and
-messages, a reasoning loop that answers questions, a polling loop that watches health,
-and a scheduled task that publishes reports. Figure~\ref{fig:overview} shows the
-arrangement.
+The system runs as a single long-lived process: a chat connection, a reasoning loop
+that answers questions, a polling loop that watches health, and a scheduled report
+task. Figure~\ref{fig:overview} shows the arrangement.
 
 \begin{figure}[H]
 \centering
@@ -306,73 +246,33 @@ only.}
 \label{fig:overview}
 \end{figure}
 
-\subsection{The conversational path}
+\subsubsection{The conversational path}
 
-An operator issues a slash command, sends a direct message, or mentions the agent in
-a channel. All three converge on the same reasoning loop. The loop consults the model,
-executes whatever operations the model requests, feeds the results back, and repeats
-until the model produces an answer without requesting further operations. The answer
-is reformatted for the chat platform and sent, split across several messages when it
-exceeds the platform's per-message limit.
+A slash command, direct message, or mention all reach the same reasoning loop:
+consult the model, execute the requested operations, feed back the results, repeat
+until it answers without requesting more. The answer is reformatted for the
+platform and split across messages past the length limit.
 
-\subsection{The monitoring path}
+\subsubsection{The monitoring path}
 
-Independently of any conversation, a polling task runs on a fixed interval. It reads
-container state from the runtime and probes each configured HTTP endpoint. It compares
-what it observes against what it observed on the previous cycle. A change from running
-to not running, or from reachable to unreachable, is a transition. Transitions are
-written to a durable event log and posted as alerts. Recovery transitions are posted
-to a separate channel so that failures and recoveries do not compete for attention in
-one stream.
+A polling task on a fixed interval reads container state and probes each
+configured endpoint, comparing against the last cycle. A change (running/not,
+reachable/not) is a transition: logged durably and posted as an alert, with
+recoveries on a separate channel.
 
-\subsection{The reporting path}
+\subsubsection{The reporting path}
 
-A scheduled task fires once daily at a configured hour. It renders a digest of current
-state and the transitions recorded in the preceding day, and on one configured weekday
-it additionally renders a weekly roll-up with per-service outage counts and cumulative
-downtime. Reports are published to a dedicated channel. Where that channel is a forum, each
-digest opens its own thread, which keeps a series of reports separable rather than
-interleaved in one stream.
-
-\subsection{Implementation stack}
-
-The system is assembled from established components rather than bespoke ones.
-Table~\ref{tab:stack} names each and cites its documentation.
-
-\begin{table}[H]
-\centering\small
-\begin{tabularx}{\textwidth}{@{}lXl@{}}
-\toprule
-\textbf{Concern} & \textbf{Component} & \textbf{Reference} \\
-\midrule
-Runtime & Python 3.13 & \cite{python} \\
-Agent harness & LangChain \texttt{create\_agent} and its middleware & \cite{langchain} \\
-Conversation store & LangGraph checkpointing & \cite{langgraph} \\
-Model protocol & OpenAI-compatible chat completions & \cite{openai} \\
-Chat interface & discord.py over the Discord API & \cite{discordpy, discordapi} \\
-Configuration & Pydantic settings management & \cite{pydantic} \\
-HTTP transport & HTTPX asynchronous client & \cite{httpx} \\
-Storage & SQLite & \cite{sqlite} \\
-Container runtime & Docker Engine API & \cite{dockerapi} \\
-Orchestration & Docker Compose & \cite{compose} \\
-Metrics & Prometheus HTTP API and PromQL & \cite{promapi, promql} \\
-Logs & Grafana Loki HTTP API and LogQL & \cite{lokiapi, logql} \\
-Packaging & uv dependency resolution and locking & \cite{uv} \\
-Testing & pytest & \cite{pytest} \\
-Evaluation & Jupyter notebooks & \cite{jupyter} \\
-\bottomrule
-\end{tabularx}
-\caption{Implementation stack and the documentation for each component.}
-\label{tab:stack}
-\end{table}
+A scheduled task fires daily, rendering current state and the day's transitions,
+plus a weekly roll-up of per-service outage counts and downtime on one configured
+weekday. Where the publish channel is a forum, each digest opens its own thread.
 
 % ================================================================ 3
 \section{Architecture}
 
 \subsection{Layering}
 
-The system is arranged in layers with imports running strictly downward, shown in
-Figure~\ref{fig:layers}. Each layer is defined as much by what it refuses to know as
+The system is arranged in layers with imports running strictly downward
+(Figure~\ref{fig:layers}); each is defined as much by what it refuses to know as
 by what it does.
 
 \begin{figure}[H]
@@ -402,72 +302,49 @@ call it and above the tools it is constructed with.}
 
 \subsubsection{Foundations}
 
-The settings component reads configuration from the process environment and an
-optional environment file, exposing it as a validated, typed object constructed once
-at import. It also resolves both storage paths a single time so that every component
-agrees on which file is which.
-
-The settings component also derives the model identifier. The configured provider and
-model name are combined into a single \texttt{provider:model} string, which the model
-library resolves to a client on its own. Because the harness constructs that client
-internally, configuration reaches it only through the process environment, so the
-credential and the endpoint address are published there at import. Any server speaking
-the widely implemented OpenAI-compatible protocol~\cite{openai} is usable, which is
-what makes a self-hosted model practical here.
-
-Name resolution provides the single matching rule used for every service lookup in
-the system. Section~\ref{sec:names} describes it.
-
-The event store is a small persistence component over the transition log and the
-watch list.
+Settings read configuration from the environment once at import into a validated,
+typed object, resolving both storage paths so every component agrees which file is
+which. It also derives the model identifier (a \texttt{provider:model} string) and
+publishes the credential and endpoint to the process environment, so any server
+speaking the OpenAI-compatible protocol~\cite{openai} is usable, including a
+self-hosted model. Name resolution provides the one matching rule used for every
+service lookup (Section~\ref{sec:names}). The event store persists the transition
+log and the watch list.
 
 \subsubsection{Tools}
 
-Each tool module pairs a thin asynchronous HTTP client~\cite{httpx} for one backend with the
-model-callable operations built on top of it. The split matters: the client half is
-ordinary code that other components call directly, and the tool half adds the schema,
-the description written for the model, and the clamping of arguments to safe ranges.
-
-This layer knows nothing about conversations, chat platforms or scheduling. It also
-contains no operation that changes anything.
+Each tool module pairs a thin asynchronous HTTP client~\cite{httpx} for one backend
+with the model-callable operations built on it: the client is ordinary code other
+components call directly, the tool half adds the schema, the model-facing
+description, and argument clamping. This layer knows nothing about conversations,
+chat platforms, or scheduling, and contains no operation that changes anything
+(Section~\ref{sec:readonly}).
 
 \subsubsection{Agent and memory}
 
-One module constructs the agent, and it is the only place in the system where an agent
-is constructed. It names the model, the tool set, the operations persona, the
-middleware stack and the conversation store in a single call to the framework's agent
-factory. The result is built once and cached, and every workflow shares that instance.
-
-Concentrating construction in one place is the most consequential structural decision
-in the system. A workflow cannot configure the agent differently from any other, so
-there is exactly one answer to what tools the model has and what instructions it runs
-under, and that answer is readable in one file. Section~\ref{sec:decisions} states what
-this costs.
-
-Memory holds conversation state, keyed by thread. It is a peer of the agent rather
-than a part of it, so that the store's lifetime belongs to the process rather than to
-any one conversation.
+One module constructs the agent --- the only place in the system that does --- naming
+the model, tool set, operations persona, middleware stack, and conversation store in
+a single call to the framework's factory. Built once and cached, every workflow
+shares the instance, so there is exactly one answer to what tools the model has and
+what instructions it runs under (cost: Section~\ref{sec:decisions}). Memory holds
+conversation state keyed by thread, as a peer of the agent rather than a part of it,
+so its lifetime belongs to the process rather than to any one conversation.
 
 \subsubsection{Workflows}
 
-A workflow is one unit of work. The investigation workflow binds the full tool set to the operations persona, using
-the model-facing tool schema abstractions~\cite{langchain}. The incident report workflow calls the
-investigation workflow with a fixed template. Both are plain asynchronous functions
-returning a string, with no chat platform types in their signatures, which is what
-allows the chat layer to remain a thin adapter.
-
-One workflow is an exception worth naming. Message handling for direct messages and
-mentions necessarily receives platform message objects, because its job is to decide
-whether an arbitrary incoming message is addressed to the agent at all. It is placed
-in this layer rather than inside the chat client for a specific reason discussed in
-Section~\ref{sec:silent}.
+A workflow is one unit of work. Investigation binds the full tool set to the
+operations persona~\cite{langchain}; incident reporting calls it with a fixed
+template. Both are plain async functions returning a string, with no chat platform
+types in their signature, which keeps the chat layer a thin adapter. The one
+exception is message handling: it receives platform message objects because its job
+is deciding whether an arbitrary incoming message is addressed to the agent at all
+(placed here rather than in the chat client for the reason in Section~\ref{sec:silent}).
 
 \subsubsection{Chat layer}
 
-Everything that knows the chat platform's types lives here: the client and its
-lifecycle, the command definitions, the monitoring task, the report scheduler, output
-shaping for the platform's markdown dialect and message length limits, and the bridge
-that forwards application logs into a channel.
+Everything that knows the platform's types lives here: the client and its
+lifecycle, commands, the monitoring task, the report scheduler, output shaping, and
+the bridge forwarding application logs into a channel.
 
 \subsection{Request flow}
 
@@ -505,43 +382,32 @@ result as text.}
 \label{fig:sequence}
 \end{figure}
 
-The property worth noting is that the model issues no network calls. It emits a
-structured request naming an operation and its arguments. The harness looks that name
-up in the tool set the agent was built with and executes it. An operation that is not
-in that set cannot be invoked regardless of what the model emits, which makes the tool
-set an enforcement point rather than a convention.
+The model issues no network calls: it emits a structured request naming an
+operation and its arguments, and the harness looks that name up in the tool set the
+agent was built with. An operation outside that set cannot be invoked regardless of
+what the model emits, making the tool set an enforcement point, not a convention.
 
 \subsection{Data model}
 
 Two embedded database files sit side by side, each opened by exactly one component.
-
-The operational file holds the watch list, naming services an operator has explicitly
-asked to be monitored regardless of the general scope rule, and the transition log,
-carrying one row per observed state change with the target, its kind, the new state
-and a timestamp. Both are read and written synchronously by the event store.
-
-The conversation file holds the checkpoints written by the memory component: the
-message history for each thread. Nothing else opens it.
-
-The separation matters because the two files are written by different mechanisms: the
-event store writes synchronously from the polling task, and the conversation store
-writes asynchronously from the model turn. Sharing one file would put those two in
-contention for a single write lock, so a watch-list update could stall an answer.
-Section~\ref{sec:decisions} states what the split costs.
-
-The transition log is trimmed on write, retaining ninety days. A service in a restart
-loop can otherwise produce one row per polling cycle indefinitely.
+The operational file holds the watch list (services explicitly monitored regardless
+of the general scope rule) and the transition log (one row per observed state
+change), written synchronously by the event store. The conversation file holds the
+memory component's per-thread checkpoints; nothing else opens it. The split avoids
+putting an asynchronous model-turn write and a synchronous polling-task write in
+contention for one lock (cost: Section~\ref{sec:decisions}). The transition log is
+trimmed on write, retaining ninety days, since a restart loop would otherwise grow
+it indefinitely.
 
 % ================================================================ 4
-\section{The agent}
+\subsection{The agent}
 
-\subsection{The harness}
+\subsubsection{The harness}
 
-The agent is one call to the framework's agent factory, made once and cached. The call
-names five things: the model client, the tool set, the operations persona, a
-middleware stack, and the conversation store. Everything the loop does between a
-question arriving and an answer leaving is the framework's, shown in
-Figure~\ref{fig:machine}.
+The agent is one call to the framework's factory, made once and cached, naming the
+model client, tool set, operations persona, middleware stack, and conversation
+store. Everything the loop does between a question and an answer is the
+framework's, shown in Figure~\ref{fig:machine}.
 
 \begin{figure}[H]
 \centering
@@ -576,343 +442,220 @@ whole run a sixty-second one, both outside the graph.}
 \end{figure}
 
 Termination is decided by whether the model's most recent message requested any
-operations. If it did, the requested operations run and control returns to the model.
-If it did not, that message is the answer. There is no separate stopping heuristic and
-no maximum imposed on the answer itself.
+operations: if so, they run and control returns to the model; if not, that message
+is the answer. No separate stopping heuristic, no cap on the answer itself.
 
-\subsection{The middleware stack}
+\subsubsection{The middleware stack}
 
-Five middleware components are configured. Each replaced code that was previously
-written by hand in this system, which is the strongest argument for adopting the
-harness: the behaviours were all needed, and none of them were novel.
+Five middleware components, each replacing code this system previously wrote by
+hand:
 
-\begin{enumerate}
-  \item \textbf{Model retries.} A failed model call is retried up to twice before the
-        run is abandoned. Language-model endpoints fail transiently often enough that
-        a single attempt makes the whole system look less reliable than the model it
-        depends on.
-  \item \textbf{Operation retries.} An operation that raises is retried once before its
-        error is handed on. This covers the transient case, a backend that refuses one
-        connection and answers the next, without hiding a backend that is genuinely
-        down: the second failure propagates normally.
-  \item \textbf{Context summarisation.} When the accumulated history exceeds the
-        configured token budget, older turns are replaced with a generated summary
-        before the model is consulted. It may be pointed at a cheaper model than the
-        one answering, since compressing a transcript is a lesser task than diagnosing
-        an incident.
-  \item \textbf{Tool budget.} A run may spend a fixed number of operations. The call
-        that would exceed the limit is not executed, and neither is any sibling call
-        issued in the same turn; the run ends with an explanation instead.
-  \item \textbf{Operation errors.} An operation that raises is converted into an
-        ordinary result carrying the failure text, which the model reads and continues
-        from.
-\end{enumerate}
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{|p{32mm}|p{95mm}|}
+\hline
+\textbf{Middleware} & \textbf{Behaviour} \\
+\hline
+Model retries & Failed model call retried up to twice before the run is abandoned. \\
+\hline
+Operation retries & A raising operation retried once before its error is handed on. \\
+\hline
+Context summarisation & History over the token budget is replaced with a generated
+  summary before the model call; may target a cheaper model than the one answering. \\
+\hline
+Tool budget & A run may spend a fixed number of operations; the call that would
+  exceed it, and any sibling call in the same turn, is not executed. \\
+\hline
+Operation errors & A raising operation becomes an ordinary result carrying the
+  failure text, which the model reads and continues from. \\
+\hline
+\end{tabular}
+\end{table}
 
-\subsection{The tool budget}
+\subsubsection{The tool budget}
 
-Unbounded loops against a paid or rate-limited endpoint are a liability, so the number
-of operations one question may consume is bounded.
+Unbounded loops against a paid or rate-limited endpoint are a liability, so the
+number of operations one question may consume is bounded, counting operations
+rather than turns (a turn requesting three operations in parallel spends three).
+Exceeding the budget produces no error: the run ends with the model's own account
+of what it had established, and that partial answer is delivered normally.
 
-\begin{keybox}{The budget counts operations, not turns}
-The unit is one operation call. A turn in which the model requests three operations in
-parallel spends three, not one. Bounding model turns instead would leave the quantity
-that actually costs money unbounded, since a single turn may request any number of
-operations. It would also have to be expressed against the shape of the underlying
-graph, where a change to the graph silently changes the budget.
-\end{keybox}
+\subsubsection{Failure handling}
 
-Exceeding the budget does not produce an error for the operator. The run ends with the
-model's own account of what it had established, and the partial answer is delivered
-normally. What the operator loses is the work that was not done, not the work that was.
-
-\subsection{Failure handling}
-
-Two failure modes are handled inside the loop rather than allowed to propagate. An
-operation that raises has its exception text returned as the operation's result. An
-operation the model names but that does not exist is reported as not existing.
-
-In both cases the model receives a description of what went wrong as ordinary input
-and continues. This is preferable to aborting: a query against an unreachable backend
-is information the model can use, and it frequently is the answer. A model told that a
-log query failed because the log store refused the connection can reasonably conclude
-that the log store is down, which is a correct and useful diagnosis.
-
-Distinguishing the two matters more than it appears. Reporting a non-existent
-operation as a failed one would tell the model that a capability exists and is broken,
-when the truth is that it was never offered. That distinction is exactly what the
-evaluation notebooks in Section~\ref{sec:eval} measure.
-
-Bounded retries sit beneath both. A failing model call is attempted up to three times
-in total and a raising operation twice, after which the failure is reported as
-described above rather than retried indefinitely. Retrying without a bound would turn
-a backend outage into an unbounded stall, which is the failure mode the ceilings below
-exist to prevent.
-
-Two time ceilings bound the run itself. Each model request carries a thirty-second
-timeout, and the investigation as a whole is bounded at sixty seconds. A provider that
-accepts a connection and never answers therefore yields a statement that the
-investigation timed out, at a predictable moment, rather than holding a chat
-interaction open until the platform expires it. The ceilings compose: retries may not
-collectively outlast the outer bound.
-
-Failures above the loop are handled differently. The investigation workflow catches
-everything and returns a description of the failure as its answer, so that a caller
-always receives a string to send.
+An operation that raises returns its exception text as the result; a nonexistent
+operation the model names is reported as such rather than as a failure ---
+the distinction Section~\ref{sec:eval}'s notebooks measure. Retries bound both: a
+model call up to three times total, an operation twice. Two time ceilings bound the
+run: thirty seconds per model request, sixty seconds overall. The investigation
+workflow catches everything above the loop and returns the failure as its answer,
+so a caller always gets a string (why: Section~\ref{sec:decisions}).
 
 % ================================================================ 5
-\section{Conversation memory}
+\section{Agent state and tools}
 \label{sec:memory}
 
 \subsection{Threads}
 
-Conversation state is keyed by a thread identifier. The chat layer supplies the
-identifier of the channel or direct message the question arrived in, so a channel is a
-conversation. Two channels sharing nothing is what keeps one team's investigation out
-of another's.
-
-A caller that omits an identifier receives a freshly generated one, giving a one-shot
-interaction with no history and no persistence beyond the call. Incident report
-generation uses this path deliberately: a report should describe the service, not
-whatever was discussed in that channel earlier.
-
-The thread identifier is the only handle on a conversation. There is no interface for
-reading a stored thread back, writing into one from outside, or deleting one, which
-keeps the stored history reachable only through the component that owns it.
+Conversation state is keyed by the channel or direct message the question arrived in,
+so two channels never share history. Omitting a thread id gives a one-shot exchange
+with no persistence, incident reports use this path so a report describes the
+service, not whatever the channel discussed earlier. There is no interface to read,
+write, or delete a stored thread from outside the component that owns it.
 
 \subsection{Durability}
 
-Conversation state is written to its own embedded database file~\cite{sqlite}, so a
-thread survives a process restart. An operator who asked a question before a
-deployment can ask a follow-up after it.
-
-The storage component owns a connection bound to the event loop it was opened in,
-which requires it to be created inside the running loop rather than at import. It is
-consequently created on first use and held for the process lifetime. It is also the
-only opener of that file, which is what makes a single connection sufficient.
-
-\begin{warnbox}{Shutdown ordering}
-The connection runs on a worker thread that continues waiting on its queue after the
-event loop stops. If it is not closed before shutdown, the process does not exit; it
-hangs until the supervising runtime gives up and kills it. The chat client's shutdown
-path closes it explicitly for this reason.
-\end{warnbox}
+Conversation state lives in its own database file~\cite{sqlite}, so a thread
+survives a restart. The storage component holds one connection, opened on first use
+inside its event loop and kept for the process lifetime.
 
 \subsection{Bounding a long conversation}
 
-A thread grows without bound while a model's context does not. The history is
-therefore compressed once it exceeds the configured token budget: older turns are
-replaced by a generated summary, and recent turns are kept verbatim.
-
-\begin{keybox}{Compression rewrites the record, not just the prompt}
-The summary replaces the older turns in the stored thread, not merely in the message
-list on its way to the model. The distinction decides whether storage is bounded: a
-scheme that shortens only the prompt leaves the stored thread holding every message
-ever exchanged, so a long-lived channel grows a database row without limit. Rewriting
-in place also discards less than trimming would, since a trimmed thread loses its
-oldest turns outright while a summarised one keeps a compressed account of them.
-\end{keybox}
-
-Trimming had a second constraint that summarisation removes. A model turn requesting
-operations and the results of those operations form a unit in the protocol, and
-delivering one without the other is rejected as malformed, so trim boundaries had to
-be chosen to keep those pairs intact.
+A thread grows without bound while the model's context does not, so history past a
+configured token budget is compressed: older turns become a generated summary,
+recent turns stay verbatim.
 
 \subsection{Stated limits}
 
-Memory here means one conversation replayed per thread. There is no recall across
-threads and no retrieval over past conversations. A fact established in one channel is
-unavailable in another.
-
-Compression is lossy by construction. A long conversation retains a summary of its
-early turns rather than the turns themselves, so a detail mentioned once and not
-repeated may survive only as whatever the summarising model judged worth keeping.
+Memory means one conversation replayed per thread: no recall across threads, no
+retrieval over past ones. Compression is also lossy by construction, a long
+conversation keeps only a summary of its early turns, not the turns themselves.
 
 % ================================================================ 6
-\section{The tool surface}
+\subsection{The tool surface}
 \label{sec:tools}
 
-\subsection{Composition}
+\subsubsection{Composition}
 
 Ten operations are available to the model, covering three backends. Table~\ref{tab:tools}
-summarises them; Appendix~\ref{app:tools} gives the full reference.
+summarises them.
 
 \begin{table}[H]
 \centering\small
-\begin{tabularx}{\textwidth}{@{}llX@{}}
-\toprule
-\textbf{Operation} & \textbf{Backend} & \textbf{Purpose} \\
-\midrule
-\texttt{list\_services} & runtime & Enumerate container names and configured endpoints \\
-\texttt{docker\_status} & runtime & State, status and image of one container \\
-\texttt{docker\_logs} & runtime & Recent output of one container \\
-\texttt{list\_metric\_names} & metrics & Enumerate available metric names \\
-\texttt{get\_label\_values} & metrics & Enumerate values of a metric label \\
-\texttt{query\_prometheus} & metrics & Instant query for current values \\
-\texttt{query\_prometheus\_range} & metrics & Range query for behaviour over a window \\
-\texttt{get\_loki\_label\_values} & logs & Enumerate values of a stream label \\
-\texttt{query\_loki} & logs & Log query over a short recent window \\
-\texttt{query\_loki\_range} & logs & Log query over an explicit window \\
-\bottomrule
+\begin{tabularx}{\textwidth}{|l|X|}
+\hline
+\textbf{Operation} & \textbf{Purpose} \\
+\hline
+\texttt{list\_services} & Enumerate container names and configured endpoints \\
+\hline
+\texttt{docker\_status} & State, status and image of one container \\
+\hline
+\texttt{docker\_logs} & Recent output of one container \\
+\hline
+\texttt{list\_metric\_names} & Enumerate available metric names \\
+\hline
+\texttt{get\_label\_values} & Enumerate values of a metric label \\
+\hline
+\texttt{query\_prometheus} & Instant query for current values \\
+\hline
+\texttt{query\_prometheus\_range} & Range query for behaviour over a window \\
+\hline
+\texttt{get\_loki\_label\_values} & Enumerate values of a stream label \\
+\hline
+\texttt{query\_loki} & Log query over a short recent window \\
+\hline
+\texttt{query\_loki\_range} & Log query over an explicit window \\
+\hline
 \end{tabularx}
 \caption{The ten read-only operations available to the model.}
 \label{tab:tools}
 \end{table}
 
-Four of the ten exist purely for discovery. This proportion is intentional. A model
-asked about resource usage will otherwise write a query against a plausible-sounding
-metric name that does not exist in this environment, receive an empty result, and
-report that usage is zero. Making enumeration cheap and instructing the model to
-enumerate first converts a confident wrong answer into a correct one.
+Four of the ten exist purely for discovery, deliberately: a model asked about
+resource usage will otherwise query a plausible-sounding metric name that does not
+exist, get an empty result, and report usage as zero. Cheap enumeration, with an
+instruction to enumerate first, turns that confident wrong answer into a correct one.
 
-\subsection{Output discipline}
+\subsubsection{Output discipline}
 
-Every operation returns text, and every operation bounds what it returns. Query
-results are truncated to a fixed character count; enumerations are capped at a fixed
-number of entries. Without these caps a single query against a busy log stream would
-consume the entire context window and leave no room for the reasoning that follows.
+Every operation returns text and bounds it: results truncate to a fixed length,
+enumerations cap at a fixed count, protecting the context window a busy log stream
+would otherwise consume outright. Range arguments clamp rather than reject, a
+twenty-four-hour log request against a six-hour maximum returns six hours, not an
+error.
 
-Arguments that describe a range are clamped rather than rejected. A request for
-twenty-four hours of log data against a six-hour maximum returns six hours, not an
-error. The model receives usable data and the backend is protected from an expensive
-query.
+\subsubsection{Backend notes}
 
-\subsection{Container runtime}
+\begin{itemize}
+  \item \textbf{Container runtime~\cite{dockerapi}.} Reached over a local socket or
+        network address; an unreachable runtime returns an empty list, not an error,
+        so a metrics question stays answerable without it. Output framing is parsed
+        and stripped before the text reaches the model.
+  \item \textbf{Metrics~\cite{promapi,promql}.} Instant queries return current
+        values; range queries return a series at a resolution derived from the
+        window length, so a thirty-minute and a six-hour query cost about the same
+        to transmit and read.
+  \item \textbf{Logs~\cite{lokiapi,logql}.} The instant endpoint rejects plain stream
+        selectors, so instant queries run as a short-window range query instead.
+        Stream labels share no vocabulary with container names or metric labels, so
+        the log operations tell the model to enumerate real labels before writing a
+        selector.
+\end{itemize}
 
-The runtime is queried over its HTTP API~\cite{dockerapi}, reached either through a
-local socket or a network address. Enumeration returns an empty list when the runtime is unreachable
-rather than raising, so a question about metrics remains answerable on a host where
-the runtime is unavailable.
+\subsubsection{Input validation}
 
-Container output requires one piece of protocol handling. A container without an
-attached terminal has its output framed: each chunk carries an eight-byte header
-identifying the stream and giving the payload length. Returning the raw bytes would
-interleave binary headers with the log text. The framing is parsed and stripped, and
-remaining non-printable bytes are removed, before the text reaches the model.
+Label names reach a URL path segment, so they are validated against the backends'
+permitted character set before use; a name that fails validation returns an empty
+result, not a request. This is a trust boundary, model output is shaped by tool
+results that themselves derive from log lines an arbitrary service produced, so it
+is not trusted input, and path separators, query markers, and whitespace are all
+rejected.
 
-\subsection{Metrics}
-
-The metrics server exposes both instant and range query endpoints over
-HTTP~\cite{promapi}, addressed in its own query language~\cite{promql}. Instant
-queries return current values; range queries return a series over a window.
-The resolution of a range query is derived from the requested window so that the
-result contains a roughly constant number of points regardless of window length. A
-thirty-minute window and a six-hour window therefore cost about the same to transmit
-and to read.
-
-\subsection{Logs}
-
-Log queries are issued over the log store's HTTP API~\cite{lokiapi} in its own
-selector and filter language~\cite{logql}. They carry one non-obvious behaviour. The
-instant query endpoint rejects plain stream selectors, accepting only queries that
-aggregate. Since a
-selector returning recent lines is exactly what an investigation wants, the instant
-operation is implemented as a range query over a short recent window. The model sees
-an instant query and gets the lines it expected.
-
-\begin{keybox}{Label schemas are not shared}
-The labels attached to log streams are set by the log shipping agent's configuration.
-They are not the container runtime's names and not the metric server's labels. A model
-that assumes the three systems share a vocabulary writes selectors that match nothing.
-The log operations' descriptions state this explicitly and instruct the model to
-enumerate the real labels before writing a selector.
-\end{keybox}
-
-\subsection{Input validation}
-
-Label names supplied by the model are placed into a URL path segment when enumerating
-their values. They are validated against the backends' own permitted character set,
-letters, digits and underscore, beginning with a letter or underscore, before use. A
-name failing validation yields an empty result rather than a request.
-
-This is a trust boundary. The model's output is not trusted input: it is generated
-text influenced by tool results that themselves derive from log lines an arbitrary
-service produced. Path separators, query and fragment markers, relative path segments
-and whitespace are all rejected, which prevents a constructed label name from
-redirecting the request to a different endpoint.
-
-\subsection{Read only by construction}
+\subsubsection{Read only by construction}
 \label{sec:readonly}
 
-The guarantee that the agent cannot act rests on the composition of
-Table~\ref{tab:tools} and nothing else. Every operation is a query. None accepts a
-parameter that would change state, and none is routed to a mutating endpoint.
-
-The instructions given to the model also state that it is read only and should
-recommend actions to a human rather than claim to perform them. That text improves the
-quality of answers. It is not the guarantee. Instructions constrain what a model tries
-to do; the tool table constrains what it can do. A model that ignores its instructions
-entirely and requests a restart receives a message stating that no such operation
-exists.
-
-This distinction matters when reasoning about deployment. Section~\ref{sec:socketsec}
-returns to it in the context of runtime socket access, where an appealing but
-misleading alternative guarantee is available.
+The guarantee that the agent cannot act rests on Table~\ref{tab:tools} alone: every
+operation is a query, none accepts a state-changing parameter, none reaches a
+mutating endpoint. The model is also instructed to recommend actions rather than
+perform them, which improves answers but is not the guarantee, instructions
+constrain what a model tries, the tool table constrains what it can do.
+Section~\ref{sec:socketsec} returns to this for runtime socket access.
 
 % ================================================================ 7
-\section{Name resolution}
+\subsection{Name resolution}
 \label{sec:names}
 
-Operators do not type exact container names. A service known conversationally as the
-API might be deployed under a name carrying a project prefix and a role suffix, and
-the separator convention is inconsistent across tools: hyphens in one place,
-underscores in another.
-
-One rule handles this everywhere. A name is reduced by removing separator characters
-and lowercasing, and a candidate matches if the reduced query appears within the
-reduced candidate. Under this rule three spellings of the same name are equivalent,
-and a partial name matches the full one.
-
-Two refinements make it safe.
+Operators type approximate names, a project prefix here, a role suffix there, hyphens
+in one tool and underscores in another. One rule handles it everywhere: a name is
+reduced by stripping separators and lowercasing, and a candidate matches if the
+reduced query appears inside the reduced candidate.
 
 \begin{enumerate}
-  \item \textbf{Exact match wins.} If any candidate's reduced form equals the query's
-        reduced form exactly, that candidate is selected regardless of other partial
-        matches. Without this, a service whose name is a prefix of a longer service's
-        name would become unaddressable.
-  \item \textbf{Ambiguity is an error.} If a partial name matches several candidates
-        and none matches exactly, the lookup fails with a message listing the
-        candidates and asking for a specific one. It does not select the first.
+  \item \textbf{Exact match wins}, so a service whose name is a prefix of a longer
+        one stays addressable.
+  \item \textbf{Ambiguity is an error}: several partial matches with no exact match
+        fail with a message listing the candidates, rather than silently picking
+        one.
 \end{enumerate}
 
-The second refinement is the one that matters operationally. Silently choosing among
-several matches produces a status report about the wrong service, labelled with the
-name the operator asked about. That is worse than an error, because it is believable.
-An explicit ambiguity message costs the operator one round trip and cannot mislead.
-
-The same rule is applied to watch list lookups, so removing a service from monitoring
-behaves exactly as querying it does.
+The second rule is the one that matters operationally: silently choosing among
+matches would produce a believable status report about the wrong service. An
+explicit ambiguity message costs one round trip and cannot mislead. The same rule
+applies to watch list lookups.
 
 % ================================================================ 8
-\section{Monitoring and alerting}
+\section{Monitoring and reporting}
 
 \subsection{The poll cycle}
 
-A single task runs on a configured interval with a floor applied, so that a
-misconfigured interval cannot produce a tight polling loop. Each cycle reads all
-container states from the runtime and probes each configured HTTP endpoint in turn.
+A single task runs on a configured interval with a floor applied, so a misconfigured
+interval cannot produce a tight polling loop. Each cycle reads all container states
+and probes each configured HTTP endpoint.
 
 \subsection{Scope}
 
-Container monitoring is disabled by default and enabled explicitly. When enabled, a
-container is in scope if its name contains a configured filter substring, or if an
-operator added it to the watch list through a command. An empty filter places every
-container in scope.
-
-The union of a broad rule and explicit additions covers the two real cases. An
-environment where every container matters sets an empty filter. An environment sharing
-a host with unrelated workloads sets a filter matching its own naming convention and
-adds anything else that matters individually.
+Container monitoring is off by default. A container is in scope if its name contains
+a configured filter substring, or an operator added it to the watch list; an empty
+filter puts every container in scope, covering both a single-purpose host and one
+sharing unrelated workloads.
 
 \subsection{Transition detection}
 
-The task holds the previous observation of each target in memory and compares. A
-container observed as running and now observed otherwise is a failure transition. The
-reverse is a recovery. Endpoints follow the same pattern over a reachable flag, where
-reachable means a response with a non-error status and unreachable means an error
-status, a connection failure, or a timeout.
-
-Figure~\ref{fig:transitions} shows the resulting behaviour, including the case that
-produces no output.
+The task holds each target's previous observation and compares: running to
+not-running is a failure, the reverse a recovery, and endpoints follow the same
+pattern over a reachable flag (a non-error response is reachable; an error status, a
+connection failure, or a timeout is not). Figure~\ref{fig:transitions} shows the
+resulting behaviour, including the case that produces no output.
 
 \begin{figure}[H]
 \centering
@@ -936,151 +679,86 @@ The first observation of a target establishes a baseline and produces no alert.}
 
 \subsection{Baselining}
 
-The first observation of any target records its state and emits nothing. Only a change
-from a known previous state is a transition.
-
-Without this, every process restart would announce every container that happens to be
-stopped and every endpoint that happens to be down. That is precisely the behaviour
-that teaches operators to mute an alert channel, at which point the entire subsystem
-has negative value.
-
-The cost is stated honestly: a container that fails while the agent is not running
-produces no alert and no event. When the agent returns it observes the stopped
-container, treats that as a baseline, and stays silent. The failure is still visible
-in the scheduled report's current-state section, marked as not running, but it is not
-announced.
+The first observation of any target records its state and emits nothing, otherwise
+every restart would announce every container already down, training operators to
+mute the alert channel. The cost: a container that fails while the agent is not
+running is baselined silently once the agent returns, though it still shows, marked
+not running, in the report's current-state section.
 
 \subsection{Reading state from the runtime rather than querying metrics}
 \label{sec:socket-vs-query}
 
-Container liveness could be derived from a metrics query, since the metrics server
-tracks whether its scrape targets respond. The system reads the runtime directly
-instead, for two reasons.
-
-\begin{enumerate}
-  \item \textbf{Latency.} A metrics-derived signal is delayed by the scrape interval,
-        and the transition it reports is the transition of a scrape, not of a process.
-  \item \textbf{Failure correlation.} If the metrics server itself restarts, every
-        target it scrapes appears to fail simultaneously. An alerting path built on
-        metric queries announces a total environment outage when what actually happened
-        is that the monitoring system bounced. Reading the runtime directly means the
-        metrics server is just another monitored service, and its restart is reported
-        as one service restarting.
-\end{enumerate}
-
-Metrics remain fully available to the reasoning loop for diagnosis. The decision here
-is only about what drives an alert.
+Liveness could be derived from a metrics query instead, since the metrics server
+already tracks whether its scrape targets respond. The runtime is read directly for
+two reasons: a metrics-derived signal lags the scrape interval and reports the
+transition of a scrape rather than of a process, and if the metrics server itself
+restarts, every target it scrapes appears to fail at once, an alert built on metric
+queries would announce a total outage when the monitoring system just bounced.
+Metrics stay available to the reasoning loop for diagnosis; this decision only
+concerns what drives an alert.
 
 \subsection{Endpoint probing}
 
-Endpoint checks cover what runtime inspection cannot see: a service on another host, a
-service behind a proxy, or an externally observable health path whose success depends
-on more than the process being alive. A container can be running while the application
-inside it returns errors, and only a probe distinguishes those.
+Endpoint checks catch what runtime inspection cannot: a service on another host,
+behind a proxy, or a health path whose success depends on more than the process
+being alive.
 
 \subsection{The event log}
 
-Every transition is recorded durably with its target, kind, new state and timestamp.
-The recording happens before the alert is dispatched, so an environment configured
-with no alert channel still accumulates a complete history. Silencing notifications
-does not silence the record the reports are built from.
-
-Live state is held only in memory. This is a deliberate asymmetry: the current
-observation is cheap to rebuild on the next cycle, whereas history cannot be
-reconstructed. Targets that leave scope have their in-memory state discarded, so a
-service that returns later is baselined afresh rather than compared against a stale
-observation from before it left.
+Every transition is recorded durably before its alert is dispatched, so a
+channel-less environment still accumulates a full history. Live state is held only
+in memory and rebuilt each cycle; a target leaving scope drops its state, so a
+service returning later is baselined fresh rather than compared to something stale.
 
 % ================================================================ 9
-\section{Scheduled reporting}
+\subsection{Scheduled reporting}
 
-\subsection{Schedule}
+\subsubsection{Schedule}
 
-A single task fires once daily at a configured hour. It always publishes the daily
-digest, and on one configured weekday it additionally publishes the weekly roll-up.
-Both are suppressed entirely when no reports channel is configured.
+A single task fires once daily at a configured hour, always publishing the daily
+digest and, on one configured weekday, the weekly roll-up too; both are suppressed
+with no reports channel configured. There is no catch-up for a missed firing, a
+digest delivered late on restart is a distraction rather than a report.
 
-The scheduler has no catch-up for missed firings. An agent that is not running at the
-scheduled hour skips that day rather than publishing late on restart. A digest
-covering the previous day, delivered at an arbitrary hour two days later, is a
-distraction rather than a report.
+\subsubsection{Periodic status}
 
-\subsection{Periodic status}
+A second loop publishes a status snapshot at a configured interval (two hours by
+default) to the status channel, reporting current state for every in-scope target;
+suppressed with no status channel configured. Unlike a transition alert the snapshot
+is a level, it fires whether or not anything changed, so a healthy snapshot is
+positive evidence the observer is alive. The first fires on startup and renders the
+same current-state section the daily digest opens with.
 
-Alongside the daily task, a second loop publishes a status snapshot at a configured
-interval, two hours by default, to the status channel. It reports the current state of
-every in-scope container and endpoint and is suppressed when no status channel is
-configured.
+\subsubsection{Contents}
 
-The snapshot is a level rather than an edge. It reports what is true at the moment it
-fires whether or not anything has changed, which is what distinguishes an idle channel
-from a broken one: a snapshot arriving on schedule showing every target healthy is
-positive evidence that the observer is alive, whereas silence from a transition-driven
-alerter is ambiguous between nothing happening and nothing working. The first snapshot
-fires on startup, which also confirms the scope the monitor came up with.
+The daily digest gives current state plus every transition from the preceding
+twenty-four hours, in order. The weekly roll-up gives the same current state plus
+per-target totals: outage count and cumulative downtime over the window.
 
-It renders the same current-state section the daily digest opens with, so a status post
-and the head of a digest cannot disagree.
+\subsubsection{Downtime accounting}
 
-\subsection{Contents}
+Totals pair each failure event with the recovery that follows it. An unmatched
+failure means the target is still down, that outage is measured to the present and
+flagged rather than dropped, discarding it would report a three-day outage as no
+downtime at all.
 
-The daily digest gives current state for every in-scope container and endpoint,
-followed by every transition recorded in the preceding twenty-four hours in
-chronological order.
+\subsubsection{Measured data and generated prose}
 
-The weekly roll-up gives the same current-state section, followed by per-target
-totals over the lookback window: how many separate outages the target had and how much
-cumulative downtime they represent.
+Digests separate two kinds of content, and the boundary is enforced. The detail
+section is rendered directly from recorded events, the model never sees or rewrites
+it, passing an exact value through a language model can only preserve or damage it.
+A summary section is generated on top of it for a short narrative before the
+numbers, and degrades to the raw detail if the model is unavailable.
 
-\subsection{Downtime accounting}
+\subsubsection{Publication and follow-up}
 
-Totals are computed by pairing failure events with the recovery events that follow
-them. Each unmatched failure opens an outage, and the matching recovery closes it and
-contributes its duration.
-
-A failure with no following recovery means the target is still down. That outage is
-measured to the present moment and flagged accordingly, rather than being discarded
-for lack of a closing event. Discarding it would report the most serious case, a
-service that has been down for three days, as no downtime at all.
-
-\subsection{Measured data and generated prose}
-
-Digests separate two kinds of content, and the boundary is enforced rather than
-conventional.
-
-The detail section is rendered directly from recorded events and current observations.
-The model does not see it before it is written and does not rewrite it. These are
-exact values, and passing an exact value through a language model can only preserve it
-or damage it.
-
-A summary section is generated on top of the rendered detail, giving a reader a short
-narrative before the numbers. If the model is unavailable, the summary degrades to the
-raw detail rather than failing the report.
-
-\begin{keybox}{The one exception}
-The weekly roll-up contains a narrative section that is genuinely model-generated.
-When a target has failed at least twice within the window, it is flapping, and the
-agent is asked to investigate that specific target: read its recent output, look at
-its resource behaviour, and give a short account of the likely cause.
-
-This is the one question a template cannot answer. A template can count outages; it
-cannot read a log. If that investigation fails, the failure is caught and noted, and
-the rest of the report is published intact.
-\end{keybox}
-
-\subsection{Publication and follow-up}
-
-A report is published as a unit. Where the target channel supports threads, the whole
-report becomes one thread rather than a series of loose messages. Long reports are
-split to respect the platform's per-message size limit.
-
-The publication step returns the identifier of whatever container now holds the
-report, and the report body is written into that thread's conversation memory. An
-operator replying to the published report and asking why a service flapped is asking a
-question against a conversation that already contains the report.
+A report publishes as one unit, one thread where the platform supports it, split
+only for the per-message size limit. The report body is written into that thread's
+conversation memory, so a reply asking why a service flapped lands in a conversation
+that already contains the report.
 
 % ================================================================ 10
-\section{The chat interface}
+\section{Interface and configuration}
 
 \subsection{Commands}
 
@@ -1091,21 +769,30 @@ fill a shared channel.
 
 \begin{table}[H]
 \centering\small
-\begin{tabularx}{\textwidth}{@{}llX@{}}
-\toprule
+\begin{tabularx}{\textwidth}{|l|l|X|}
+\hline
 \textbf{Command} & \textbf{Argument} & \textbf{Effect} \\
-\midrule
+\hline
 \texttt{status} & none & Current containers and endpoints, summarised \\
+\hline
 \texttt{investigate} & question & Free-form investigation with all operations \\
+\hline
 \texttt{report} & service & Structured incident report for one service \\
+\hline
 \texttt{digest} & period, publish flag & Render a scheduled report immediately \\
+\hline
 \texttt{containers} & none & Containers grouped by state \\
+\hline
 \texttt{watching} & none & Endpoints the monitor probes \\
+\hline
 \texttt{watch} & container & Add a container to the watch list \\
+\hline
 \texttt{unwatch} & container & Remove a container from the watch list \\
+\hline
 \texttt{watchlist} & none & Containers currently watched \\
+\hline
 \texttt{help} & none & List the commands \\
-\bottomrule
+\hline
 \end{tabularx}
 \caption{The command set.}
 \label{tab:commands}
@@ -1113,321 +800,116 @@ fill a shared channel.
 
 \subsection{Conversational access}
 
-A direct message, or a mention in a channel the agent can see, is treated as a
-question and routed through the same investigation path as the explicit command. The
-mention markup is stripped before the text reaches the model. A mention carrying no
-question receives a prompt for one rather than an investigation of an empty string.
-
-Because the conversation identifier is the channel, an operator can hold an ordinary
-exchange: ask a broad question, then ask why, then ask for the evidence, without
+A direct message, or a mention in a channel the agent can see, routes through the
+same investigation path as the explicit command, mention markup stripped first; a
+mention with no question prompts for one. Because the thread id is the channel, an
+operator can hold an ordinary exchange, ask, then why, then for evidence, without
 restating the subject.
 
 \subsection{Output shaping}
 \label{sec:shaping}
 
-Model output requires two corrections before it is fit to send.
-
-\begin{enumerate}
-  \item \textbf{Markdown dialect.} The platform renders a restricted dialect. Heading
-        syntax is displayed literally rather than rendered, and tables are not
-        supported at all, appearing as rows of pipe characters. Small models emit both
-        regularly even when instructed not to. Headings are rewritten to bold text and
-        tables are converted into labelled bullet lines. Content inside code fences is
-        exempt, so that a log line containing a pipe character or a configuration
-        comment beginning with a hash is not corrupted.
-  \item \textbf{Message length.} The platform caps message length. Answers exceeding
-        it are split, preferring line boundaries so that a split does not fall inside a
-        word or a code block.
-\end{enumerate}
+Model output needs two corrections before it is fit to send: the platform's
+restricted markdown dialect shows heading syntax literally and renders tables as
+pipe-character rows, so headings are rewritten to bold text and tables to labelled
+bullet lines (code fences are exempt); and answers over the platform's message-length
+cap are split, preferring line boundaries so a split does not land inside a word.
 
 \subsection{Log forwarding}
 
-Application logs at informational level and above are forwarded to a configured
-channel, which makes the agent observable through the same interface it serves. Two
-details make this safe.
-
-\begin{enumerate}
-  \item \textbf{Library records are dropped.} Records emitted by the chat library
-        itself are not forwarded, since forwarding them would produce a feedback loop:
-        sending a message logs an event, which sends a message.
-  \item \textbf{Forwarding is asynchronous.} Log emission places the record on a queue
-        and returns immediately; a separate task drains the queue and sends. A logging
-        call therefore never blocks on a network round trip, and a slow or unreachable
-        channel degrades log delivery rather than stalling the code that logged.
-  \item \textbf{Records are batched.} The drain task collects for one second and packs
-        what it finds into as few messages as the platform's length limit allows,
-        rather than sending one message per record. A burst of activity costs one or
-        two messages instead of a dozen, which keeps the forwarder clear of the
-        per-channel rate limit that a message-per-line design walks straight into.
-  \item \textbf{The queue is bounded.} It holds a thousand records; beyond that,
-        records are dropped. A log storm the channel cannot absorb costs visibility
-        into that storm, which is recoverable, rather than unbounded memory in the
-        process being observed, which is not.
-\end{enumerate}
-
-What reaches the channel is the operational trail rather than debug noise: every
-monitored transition, every alert and report published, and for each question the
-origin channel, the operations the run called, and its wall-clock duration. Failures
-inside the drain task are written to standard error instead of logged, since logging a
-forwarding failure would feed the forwarder that failed.
-
-On startup the bridge announces itself in the channel. An empty channel then means
-nothing is happening, rather than being indistinguishable from a broken configuration.
+Informational-and-above application logs forward to a configured channel, making the
+agent observable through the interface it serves. Library records are dropped, to
+avoid the feedback loop of a sent message logging an event that sends a message;
+forwarding is asynchronous and batched for one second per message; the queue is
+bounded at a thousand records, beyond that records drop rather than growing memory.
+What reaches the channel is the operational trail, transitions, alerts, reports, and
+per-question call counts and duration, not debug noise. A drain failure is written to
+standard error rather than logged, to avoid feeding the forwarder that failed.
 
 \subsection{Failure must be visible}
 \label{sec:silent}
 
-Message handling is deliberately structured so that no incoming question can be
-answered with silence.
-
-The chat library's default handling of an exception raised inside an event handler is
-to log it against the library's own logger and continue. That logger is exactly the
-one excluded from channel forwarding to prevent the loop described above. The two
-behaviours compose badly: a failure while answering a mention would be logged where no
-operator was watching, and the visible result would be an agent that simply did not
-reply.
-
-Handling is therefore placed in a workflow function wrapped in explicit exception
-handling that always sends a reply, stating that something went wrong and what. An
-error message is a worse answer than a correct one and a far better outcome than
-silence, because silence is indistinguishable from the agent being offline.
+The chat library logs a handler exception to its own logger, exactly the logger
+excluded from forwarding above, so a failure answering a mention would go unseen and
+the agent would simply not reply. Message handling is instead wrapped in a workflow
+that always sends an explicit reply on failure. Section~\ref{sec:decisions} states why
+an error message beats silence.
 
 % ================================================================ 11
-\section{Configuration}
-
-All configuration is read from the process environment, optionally populated from an
-environment file, and validated once at startup into a typed object by a settings
-management library~\cite{pydantic}.
-Table~\ref{tab:config} groups the settings; Appendix~\ref{app:settings} gives the full
-reference with defaults.
-
-\begin{table}[H]
-\centering\small
-\begin{tabularx}{\textwidth}{@{}lX@{}}
-\toprule
-\textbf{Group} & \textbf{Governs} \\
-\midrule
-Chat workspace & Authentication token, target workspace, and the four channel roles \\
-Endpoint monitoring & Which endpoints are probed and how often \\
-Scheduled reports & Publication hour, weekly day, lookback window \\
-Language model & Provider, endpoint address, model names, credential \\
-Observability backends & Metric and log server addresses and optional credentials \\
-Container discovery & Runtime address, monitoring toggle, name filter \\
-Loop limits & Operation budget, context budget, result and window caps \\
-Storage & Location of the operational file; the conversation file sits beside it \\
-\bottomrule
-\end{tabularx}
-\caption{Configuration groups.}
-\label{tab:config}
-\end{table}
-
-\subsection{Required and optional}
-
-One setting is required: the chat workspace authentication token. Its absence is a
-startup failure with an explicit message rather than an obscure error later.
-
-Several capabilities are gated on optional settings and stay off when those are unset.
-No alert channel means transitions are recorded but not announced. No reports channel
-means digests are not published. No log channel means logs go only to standard output.
-Container monitoring is off unless explicitly enabled.
-
-Absence is treated as a configuration choice rather than an error. An operator who
-wants monitoring without notifications, or reports without a log bridge, expresses
-that by leaving the corresponding setting empty.
-
-\subsection{Handling of empty values}
-
-Optional numeric settings such as channel identifiers must distinguish unset from
-zero, so an empty environment variable is parsed as absent rather than as an empty
-string. Plain text settings need the opposite treatment, since an empty string is a
-valid value meaning no filter or no credential. Validation therefore restores empty
-strings for text settings after the general parsing rule has run.
-
-The storage location is resolved once at import: the configured path is made absolute
-relative to the installation root, and its containing directory is created. The
-conversation file is derived from it rather than configured separately, so the two
-always sit together and no deployment can point them at different volumes.
-
-\subsection{Loop limits}
-
-Four settings bound resource use per question. The operation budget bounds how many
-operations one question may spend, as described earlier. The context budget sets the
-threshold at which history is compressed. A result limit bounds returned log lines. A
-window maximum bounds how far back a range query may reach.
-
-The last two protect the backends rather than the model. A range query over a week of
-high-volume log data is expensive to serve, and an investigation almost never needs it.
-
 % ================================================================ 12
 \section{Deployment}
 
 \subsection{Packaging}
 
-The agent is packaged as a single-service container image on a slim Python~\cite{python} base. Dependencies are
-resolved from a lock file~\cite{uv} and installed in a layer built before the
-application source is copied, so that editing source does not invalidate the dependency layer. Builds
-after a source change reuse the cached dependency installation.
+One container image, on a slim Python~\cite{python} base, with dependencies resolved
+from a lock file~\cite{uv} and installed in a layer built before the application
+source is copied, so a source change reuses the cached dependency layer. The compose
+description~\cite{compose} runs two services from that image: the Discord bot, and a
+read-only HTTP API mirroring the same status, investigation, report, and watch-list
+workflows, every route but \texttt{/health} guarded by an optional key header. The
+API binds loopback only by default; host networking would otherwise expose it on the
+LAN.
 
 \subsection{The observability backends}
 
-The deployment description~\cite{compose} brings up the agent and nothing else. The
-metrics server and the log store it queries are treated as pre-existing infrastructure,
-addressed by configuration rather than started alongside it.
+Neither service starts the metrics server or log store; both are pre-existing
+infrastructure addressed by configuration, and each is independently optional ---
+with either address unset, its operations drop from the tool set. The log store's
+labels are set by whatever ships logs into it, not by this system, which is why label
+values are discovered rather than hard-coded (Section~\ref{sec:tools}).
 
-This follows from what the system is. It is a read-only client of an observability
-stack, not a distribution of one. A lab that already runs a metrics server has one
-configured, scraped and retained to suit itself, and a deployment description that
-brought up a second would either conflict with it or be ignored. Naming the addresses
-in configuration also means the two backends are independently optional: with either
-address unset the corresponding operations are absent from the tool set, and the agent
-answers from whatever remains.
+\subsection{Networking and persistence}
 
-The log store's labels are set by whatever ships logs into it, not by this system.
-Which labels exist is therefore a property of the deployment, and is exactly why the
-agent is given a discovery operation for label values rather than a fixed list. This
-is the concrete form of the point made in Section~\ref{sec:tools} about label schemas
-not being shared between the metrics and log backends.
-
-\subsection{Networking}
-
-The agent shares the host's network namespace, which lets it reach the observability
-backends and the external model endpoint at local addresses without further
-configuration. The consequence is that the bridge-networked components cannot address
-the agent by service name and reach it through the host gateway instead.
-
-\subsection{Persistence}
-
-The storage file is held on a mounted directory so that the watch list, the transition
-history and all conversation threads survive replacement of the container. Losing this
-directory loses the reporting history, which cannot be reconstructed from any other
-source.
+The agent shares the host's network namespace, reaching the backends and the model
+endpoint at local addresses; bridge-networked components reach it through the host
+gateway instead of by service name. The storage file lives on a mounted directory so
+the watch list, transition history, and conversation threads survive container
+replacement --- losing that directory loses the reporting history irrecoverably.
 
 \subsection{Runtime socket access}
 \label{sec:socketsec}
 
-The agent requires access to the container runtime's API socket to read container
-state and output. This deserves an accurate description, because a natural reading of
-the deployment description is misleading.
-
-The socket is mounted with a read-only flag. That flag applies to the socket file. It
-does not constrain the API reachable through it: the runtime API remains fully
-writable, and access to that socket is equivalent to root on the host.
-
-\begin{keybox}{Where the guarantee actually comes from}
-The read-only guarantee rests entirely on the tool surface, described in
-Section~\ref{sec:readonly}. No operation available to the model performs a mutating
-call. The mount flag contributes nothing to that guarantee and should not be cited as
-though it did.
-
-The operational consequence is ordinary: grant this access on the same basis as any
-other root-equivalent privilege on the host, and treat the containing host as the
-security boundary.
-\end{keybox}
+The agent needs the container runtime's API socket to read container state and
+output. The socket is mounted read-only, but that flag governs only the socket file:
+the API reachable through it stays fully writable, and access to it is equivalent to
+root on the host.
 
 \subsection{Operating the system}
 
-The process restarts automatically unless explicitly stopped. Shutdown closes the
-conversation store before the event loop ends, as described earlier, so that
-termination is prompt rather than requiring a forced kill.
-
-For diagnosis, the log channel carries informational records and above in real time.
-The container's own output carries the same records and is the place to look when the
-chat connection itself is the problem. Transport-level logging is pinned to warnings,
-because informational logging of every backend request would emit a line per call and
-flood both destinations.
+The process restarts automatically unless explicitly stopped, and shutdown closes the
+conversation store before the event loop ends. The log channel and the container's
+own output both carry informational records and above in real time; the container
+output is where to look when the chat connection itself is the problem.
+Transport-level logging stays pinned to warnings to avoid flooding both destinations.
 
 % ================================================================ 13
-\section{Verification}
-
-\subsection{Automated tests}
-
-The test suite~\cite{pytest} runs entirely offline. It contacts no network service, requires no
-container runtime, no chat workspace and no model endpoint. This is a property of the
-architecture rather than of extensive mocking infrastructure. Because the agent builds
-its client through a single factory call, one fixture redirects that factory to a
-scripted substitute wherever it is used, and because the tool set is a named mapping, a
-test replaces one entry without disturbing the rest.
-
-A fixture applied to every test redirects both the operational store and the
-conversation store to a temporary location and substitutes an in-memory conversation
-store. No test can reach production data even by mistake.
-
-Coverage spans the areas where behaviour is not obvious from reading the code:
-
-\begin{enumerate}
-  \item \textbf{Loop behaviour.} A turn that requests an operation before answering, a
-        turn that answers immediately, an operation failure being fed back rather than
-        raised, the operation budget halting the loop at exactly its limit, a model
-        failure returning a message, a model that never answers hitting the outer time
-        ceiling, and threads remaining isolated from one another.
-  \item \textbf{Conversation memory.} Thread configuration, and a thread surviving a
-        closed and reopened connection, verified by asking a second question and
-        checking that the first reached the model.
-  \item \textbf{Transition detection.} Both edges, the absence of an alert on first
-        observation, scope changes pruning stale state, and an end-to-end incident
-        scenario.
-  \item \textbf{Status publication.} A snapshot carrying the current-state section to
-        the status channel, and its suppression when no status channel is configured.
-  \item \textbf{Log forwarding.} Records packing into as few messages as the length
-        limit allows, an over-long record being truncated rather than dropped, and no
-        message exceeding the limit.
-  \item \textbf{Report generation.} Outage pairing, unclosed-outage accounting, the
-        flapping narrative and its absence when nothing flapped, weekday gating, and
-        publication to the reports channel.
-  \item \textbf{Output shaping.} Heading and table conversion, exemption of fenced
-        content, length capping, and the fallbacks when the model is unavailable or
-        returns nothing.
-  \item \textbf{Name resolution.} Separator variants, exact-match precedence, and
-        ambiguity raising.
-  \item \textbf{Backend clients.} Credential headers being sent only when configured,
-        label validation rejecting malformed names, the log store's range delegation,
-        and output frame parsing.
-  \item \textbf{The evaluation harness.} Message serialisation and reasoning
-        extraction, per-turn token accounting, a run that fails part way still
-        writing its transcript, that a run drives the real production agent with
-        the configured tool set by default, and that a reused thread measures
-        only the turns the run itself produced.
-\end{enumerate}
-
-Checks requiring live services are marked and excluded from the default run, so that
-the ordinary case needs no environment at all.
+\section{Evaluation}
 
 \subsection{Model behaviour evaluation}
 \label{sec:eval}
 
-Tests verify the code. They cannot verify that a given model chooses sensible
-operations, and a model substitution changes that materially while leaving every test
-passing. A separate notebook harness~\cite{jupyter} addresses this, and is read by a human
-rather than asserted on.
+Tests verify the code, not whether a given model chooses sensible operations, and a
+model substitution changes that while leaving every test passing. A separate notebook
+harness~\cite{jupyter} addresses this, read by a human rather than asserted on. Seven
+notebooks each isolate one operation, binding it plus the discovery calls it requires
+and nothing else, driving the production agent through a shared instrumented entry
+point so every run's transcript records the same fields: system prompt, bound
+operations, each call and result, token cost, and duration.
 
-Seven notebooks each isolate one subject operation, binding it, plus the discovery
-calls it requires, and nothing else. All seven drive the production agent through a
-shared instrumented entry point, so a change to how runs are measured applies to every
-notebook at once. Every run is recorded to a transcript file: the system prompt in
-force, the bound operations, every response with its calls and their results, and the
-token cost and duration of each turn.
+Each isolation notebook asks two questions: one answerable with the bound operations,
+and one requiring evidence from a backend that isn't bound --- the more informative
+case, since it measures whether the model states the limit or fabricates an answer
+(a service reported healthy from name enumeration alone, for instance). Runs are
+thread-isolated by default, so re-running a case can't replay a prior conversation
+into the model's context; continuing a thread is an explicit opt-in reserved for
+cases where memory is itself the subject.
 
-Each isolation notebook asks two questions. The first is answerable with the bound
-operations. The second requires evidence from a backend that is not bound, and is the
-more informative of the two: it measures whether the model states the limit or answers
-anyway. A model that reports a service healthy when it can only enumerate names has
-fabricated a verdict, and no automated test detects that.
-
-Runs are thread-isolated by default: each invocation receives a fresh conversation
-thread, so re-running a case cannot replay a previous conversation into the model's
-context. Continuing a thread is an explicit opt-in reserved for the cases where memory
-is itself the subject.
-
-An eighth notebook is different in kind: it imports the production agent itself and
-drives it with memory. It exercises what isolation cannot: which backend the model
-selects when nothing is withheld, and whether conversation context carries. Its sequence asks a
-broad question, then a follow-up naming nothing, which is answerable only if history
-carried forward, then repeats that follow-up on a fresh thread, which should fail,
-demonstrating isolation.
-
-A suite runner executes every notebook's cases in one process against whichever model
-the environment selects, and an analysis script reads the transcripts and reports a
-per-case comparison, per-model averages, and token cost attributed to each operation.
+An eighth notebook drives the production agent directly with memory, exercising what
+isolation cannot: which backend the model selects when nothing is withheld, and
+whether context carries across a follow-up on the same thread versus a fresh one. A
+suite runner executes every notebook's cases in one process against whichever model
+is configured, and an analysis script reads the transcripts into a per-case
+comparison, per-model averages, and token cost by operation.
 
 \subsubsection{A conclusive model comparison}
 \label{sec:eval-comparison}
@@ -1436,53 +918,150 @@ After the tool-name hallucination incident described in Section~\ref{sec:silent}
 traced to a stale in-process prompt and a workflow that mandated operations which were
 not bound, both defects were fixed, and the full suite --- seventeen cases: two per
 isolation notebook plus the three memory cases --- was run against the two candidate
-models with live backends. The results are summarised in
-Table~\ref{tab:model-comparison}; the full per-case record is kept with the evaluation
-documents.
+models with live backends. Tables~\ref{tab:per-case-inscope}--\ref{tab:per-case-memory} give the full per-case record;
+Table~\ref{tab:model-comparison} summarises it; Table~\ref{tab:tool-cost} attributes
+token cost to each operation.
+
+\begin{table}[H]
+\centering
+\footnotesize
+\begin{tabular}{|p{3.4cm}|p{5.6cm}|p{5.6cm}|}
+\hline
+\textbf{In-scope case} & \textbf{gemma-4-31b-it} & \textbf{marconi-llm} \\
+\hline
+list services & 1v · 1{,}326t · 9.5s & 1v · 1{,}960t · 4.0s \\
+\hline
+status & 1v · 1{,}349t · 8.8s & 1v · 1{,}814t · 2.9s $\emptyset$ \\
+\hline
+logs & 1v · 3{,}108t · 9.0s & 1v · 3{,}800t · 4.0s \\
+\hline
+instant query & 1v · 2{,}125t · 12.1s & 1v · 2{,}494t · 2.6s \\
+\hline
+range query & 1v · 4{,}820t · 8.9s & 2v · 7{,}741t · 4.0s \\
+\hline
+loki errors & 3v · 9{,}904t · 27.5s & 10v · 49{,}921t · 19.7s $\emptyset$ \\
+\hline
+loki range & 2v · 4{,}730t · 22.0s & 13v L · 17{,}139t · 34.5s \\
+\hline
+\end{tabular}
+\caption{Per-case results, in-scope cases. v = valid tool calls, i = invalid (hallucinated) calls, t = total tokens; $\emptyset$ = empty final answer, L = call-limit exit.}
+\label{tab:per-case-inscope}
+\end{table}
+
+\begin{table}[H]
+\centering
+\footnotesize
+\begin{tabular}{|p{3.4cm}|p{5.6cm}|p{5.6cm}|}
+\hline
+\textbf{Out-of-scope case} & \textbf{gemma-4-31b-it} & \textbf{marconi-llm} \\
+\hline
+health, discovery only & 1v/1i · 5{,}224t · 267s & 1v · 1{,}783t · 2.7s \\
+\hline
+logs, status only & 0v · 677t · 7.3s & 1v · 2{,}780t · 9.9s \\
+\hline
+health, logs only & 1v/1i · 5{,}113t · 19.8s & 1v · 3{,}836t · 4.3s \\
+\hline
+trend, instant only & 7v · 10{,}507t · 34.3s & 1v · 2{,}681t · 4.8s \\
+\hline
+logs, prom only & 0v · 748t · 6.2s & 0v · 1{,}563t · 5.3s \\
+\hline
+CPU, loki only & 0v · 977t · 12.6s & 0v · 1{,}513t · 5.1s \\
+\hline
+health, loki only & 3v · 9{,}223t · 20.4s & 2v · 5{,}220t · 4.7s \\
+\hline
+\end{tabular}
+\caption{Per-case results, out-of-scope cases. Same legend as Table~\ref{tab:per-case-inscope}.}
+\label{tab:per-case-outscope}
+\end{table}
+
+\begin{table}[H]
+\centering
+\footnotesize
+\begin{tabular}{|p{3.4cm}|p{5.6cm}|p{5.6cm}|}
+\hline
+\textbf{Memory case} & \textbf{gemma-4-31b-it} & \textbf{marconi-llm} \\
+\hline
+broad "anything wrong?" & 12v L · 3{,}269t · 15.4s & 11v L · 3{,}695t · 3.4s \\
+\hline
+follow-up, same thread & 0v · 3{,}010t · 25.6s & 1v · 5{,}104t · 3.8s \\
+\hline
+follow-up, fresh thread & 0v · 1{,}585t · 11.3s & 11v L · 4{,}102t · 6.3s \\
+\hline
+\end{tabular}
+\caption{Per-case results, broad and follow-up (memory) cases. Same legend as Table~\ref{tab:per-case-inscope}.}
+\label{tab:per-case-memory}
+\end{table}
 
 \begin{table}[H]
 \centering
 \small
-\begin{tabular}{lrr}
-\toprule
+\begin{tabular}{|l|r|r|}
+\hline
  & \textbf{gemma-4-31b-it} & \textbf{marconi-llm} \\
-\midrule
+\hline
 Valid calls per run            & 2.00 & 3.41 \\
+\hline
 Hallucinated calls per run     & 0.12 (2 of 17 runs) & \textbf{0.00} \\
-Tokens per run                 & 3{,}982 & 6{,}891 (+73\%) \\
+\hline
+Tokens per run                 & 3{,}982 & 6{,}891 \\
+\hline
 Duration per run               & 30.5 s & \textbf{7.2 s} \\
+\hline
 Runs ending at the call limit  & 1 & 3 \\
-Empty final answers            & \textbf{0} & 2 (11.8\% of runs) \\
-\bottomrule
+\hline
+Empty final answers            & \textbf{0} & 2 \\
+\hline
 \end{tabular}
 \caption{Full-suite comparison, seventeen cases per model, live backends, 2026-08-27.}
 \label{tab:model-comparison}
 \end{table}
 
-The qualitative differences were larger than the averages suggest:
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{|l|r|r|}
+\hline
+\textbf{Operation} & \textbf{gemma avg · total} & \textbf{marconi avg · total} \\
+\hline
+\texttt{query\_loki} & 5{,}814 · 11.6k & \textbf{10{,}484 · 73.4k} \\
+\hline
+\texttt{query\_loki\_range} & 4{,}821 · 14.5k & 3{,}289 · 26.3k \\
+\hline
+\texttt{get\_loki\_label\_values} & 1{,}859 · 5.6k & 2{,}119 · 21.2k (10 calls) \\
+\hline
+\texttt{query\_prometheus} & 2{,}197 · 17.6k & 3{,}599 · 7.2k \\
+\hline
+\texttt{docker\_logs} & 3{,}676 · 7.4k & 3{,}634 · 7.3k \\
+\hline
+\texttt{query\_prometheus\_range} & 4{,}710 · 4.7k & 6{,}523 · 6.5k \\
+\hline
+\texttt{list\_services} & 1{,}506 · 6.0k & 2{,}572 · 10.3k \\
+\hline
+\texttt{list\_metric\_names} & 1{,}932 · 1.9k & 2{,}380 · 4.8k \\
+\hline
+\texttt{docker\_status} & 282 · 3.1k & 384 · 8.4k \\
+\hline
+\end{tabular}
+\caption{Average tokens per invocation and total tokens spent across the suite, by operation.}
+\label{tab:tool-cost}
+\end{table}
+
+The tables carry the numbers; four qualitative reads don't reduce to them:
 
 \begin{itemize}
-  \item \textbf{Boundary respect.} Asked for a thirty-minute trend while bound to
-        instant queries only, gemma improvised seven queries to approximate one;
-        marconi-llm answered once, correctly stating that its tools could not produce
-        a trend. Asked for logs while bound to metrics, both refused cleanly.
-  \item \textbf{Hallucination residue.} Even with the corrected prompt, gemma sampled
-        exactly one invented operation name before reading the error and complying;
-        the name changed between runs, which indicates a model prior rather than a
-        prompt defect. marconi-llm never invented a name.
-  \item \textbf{Budget exhaustion is a dead end for both.} On "is anything wrong in the
-        lab?", both models spent the entire budget calling the status operation once
-        per container and were cut off with no summary of what they had gathered. Ten
-        containers make per-item polling the natural but wrong strategy; the fix is
-        aggregate queries or a larger budget for broad questions.
-  \item \textbf{Loki operations dominate token cost.} A single \texttt{query\_loki}
-        call averaged 10.5k tokens under marconi-llm, because the operation returns
-        raw JSON including processing-statistics blocks no model needs. Trimming the
-        response is the highest-value tool optimisation available.
-  \item \textbf{An empty-answer defect in the marconi-llm path.} Twice in seventeen
-        runs the proxy returned a final message with \texttt{finish\_reason=stop} and
-        no text: the operator receives nothing. Suspected proxy or streaming quirk;
-        undiagnosed at the time of writing.
+  \item \textbf{Boundary respect.} Bound to instant queries only, gemma faked a
+        thirty-minute trend with seven improvised calls (case 04); marconi-llm named
+        the limit and stopped. Both refused a logs request cleanly when bound to
+        metrics.
+  \item \textbf{Hallucination residue.} gemma invented one operation name per run
+        before self-correcting, a different name each time --- a model prior, not a
+        prompt defect. marconi-llm invented none.
+  \item \textbf{Budget exhaustion.} Both models exhausted the ten-call budget polling
+        \texttt{docker\_status} once per container (case 08) and were cut off with no
+        summary. Fix: aggregate queries, or a larger budget for broad questions.
+  \item \textbf{Empty-answer defect.} marconi-llm returned
+        \texttt{finish\_reason=stop} with no text twice in seventeen runs. Suspected
+        proxy or streaming quirk; undiagnosed.
 \end{itemize}
 
 \noindent\textbf{Conclusion.} Adopt marconi-llm for the agent loop, conditional on
@@ -1495,123 +1074,62 @@ by nature; the suite should be repeated three times per model before the substit
 is final.
 
 % ================================================================ 14
-\section{Design decisions}
+\section{Design decisions and outcome}
 \label{sec:decisions}
 
-\subsection{Read only by construction}
-
-\begin{itemize}
-  \item \textbf{Decision.} Expose no operation capable of changing anything.
-  \item \textbf{Reasoning.} An agent that can act must be correct about when to act. An agent that can only observe must merely be useful. The gap between those two requirements is the difference between a system that can be deployed against a live environment now and one that needs an approval workflow, an audit trail and a rollback story first. Placing the constraint in the tool surface rather than in the instructions makes it verifiable by inspection.
-  \item \textbf{Cost.} Every remediation is manual. An operator reading a correct diagnosis at three in the morning still restarts the service by hand.
-\end{itemize}
-
-\subsection{The framework's harness, not a hand-written loop}
-
-\begin{itemize}
-  \item \textbf{Decision.} Build the agent with the framework's documented factory and configure its middleware, rather than writing the tool-calling loop, the budget, the error handling and the history trimming by hand.
-  \item \textbf{Reasoning.} All four behaviours were implemented here first, and all four were ordinary. Maintaining them meant owning bugs in code that is not this project's subject, and the hand-written versions had already drifted: the budget was expressed in graph steps rather than operations, and trimming bounded the prompt while leaving the stored history unbounded. The framework's versions are maintained, documented and correct on both counts.
-  \item \textbf{Cost.} The system now tracks a dependency's release cycle in a place where it previously tracked nothing, and behaviour that used to be readable in this repository is now a configuration flag whose meaning lives in someone else's documentation.
-\end{itemize}
-
-\subsection{Failure is always answered}
-
-\begin{itemize}
-  \item \textbf{Decision.} Every failure path terminates in a message to the operator.
-  \item \textbf{Reasoning.} Operation failures become model input. Model failures become a fallback message. Budget exhaustion becomes a partial summary. Alert dispatch failures are logged rather than raised, because they occur inside recurring tasks that a raised exception would silently stop, converting one failed alert into permanent monitoring loss. Message handling failures produce an explicit reply, for the reason given in Section~\ref{sec:silent}.
-  \item \textbf{Cost.} Failures are less conspicuous in aggregate. A backend that has been unreachable for a day produces a series of individually reasonable answers noting that it could not be checked, rather than one loud failure.
-\end{itemize}
-
-\subsection{Measured data, generated prose}
-
-\begin{itemize}
-  \item \textbf{Decision.} Report figures are rendered from recorded data and never passed through the model. Only summary narrative is generated.
-  \item \textbf{Reasoning.} The figures are already exact. A language model can preserve an exact number or corrupt it, and cannot improve it. Restricting generation to the parts where fluency helps, and excluding it from the parts where precision matters, takes the benefit without the risk.
-  \item \textbf{Cost.} Reports contain a section of dense rendered detail that reads less smoothly than a fully generated report would.
-\end{itemize}
-
-\subsection{Two storage files}
-
-\begin{itemize}
-  \item \textbf{Decision.} Operational state and conversation state live in separate files, each with exactly one opener.
-  \item \textbf{Reasoning.} They shared one file while a published report had to become conversation context, which required the publishing and answering components to see the same threads. That path was removed, and what remained was two connections contending for one write lock for no benefit. One writer per file means a watch-list write cannot block a model turn.
-  \item \textbf{Cost.} A backup is now two files rather than one, and anything wanting a consistent view of both has to take them together.
-\end{itemize}
-
-\subsection{One name-matching rule}
-
-\begin{itemize}
-  \item \textbf{Decision.} Every lookup uses the same separator-insensitive rule, with exact match taking precedence and ambiguity raising.
-  \item \textbf{Reasoning.} Consistency is the point. An operator who learns that partial names work when querying should find that they work identically when managing the watch list. Raising on ambiguity trades a round trip for the impossibility of a confidently mislabelled answer.
-  \item \textbf{Cost.} An operator with several similarly named services types more.
-\end{itemize}
-
 % ================================================================ 15
-\section{Limitations and extensions}
+\subsection{Limitations and extensions}
 
-\subsection{Limitations}
+\subsubsection{Limitations}
 
 \begin{enumerate}
-  \item \textbf{Answer quality tracks model quality.} The system supplies evidence and
-        structure; the reasoning is the model's. A smaller model will discover names
-        correctly and still draw a weak conclusion from them. The evaluation harness
-        exists precisely because this cannot be tested automatically.
-  \item \textbf{Memory does not span conversations.} A thread is a conversation, and
-        nothing is recalled across threads. An incident diagnosed in one channel
-        contributes nothing to a similar incident raised in another.
-  \item \textbf{Long conversations keep a summary, not a record.} Once a thread
-        exceeds the context budget its early turns are replaced by generated prose. A
-        detail mentioned once and never repeated survives only if the summarising
-        model judged it worth keeping.
-  \item \textbf{Monitoring has a blind interval.} Live state is in memory and the
-        first observation after a restart is a baseline, so a failure occurring while
-        the agent is down is never announced. It remains visible in the next report's
-        current-state section.
-  \item \textbf{Missed report firings are skipped.} There is no catch-up, so an agent
-        down at the scheduled hour omits that day's digest entirely.
-  \item \textbf{The deployment is single tenant.} There is no per-user authorisation
-        beyond what the chat workspace enforces. Anyone who can message the agent can
-        query every service it can see.
-  \item \textbf{Alerting observes state, not thresholds.} A service that is running
-        but degraded, serving slowly or returning errors, produces no alert unless an
-        HTTP probe happens to detect it.
+  \item \textbf{Answer quality tracks model quality.} The system supplies evidence
+        and structure; the reasoning is the model's. The evaluation harness exists
+        because this cannot be tested automatically.
+  \item \textbf{Memory does not span conversations.} A thread is a conversation;
+        nothing is recalled across threads.
+  \item \textbf{Long conversations keep a summary, not a record.} Past the context
+        budget, early turns are replaced by generated prose --- a detail mentioned
+        once survives only if the summarising model kept it.
+  \item \textbf{Monitoring has a blind interval.} The first observation after a
+        restart is a baseline, so a failure during downtime is never announced,
+        though it remains visible in the next report.
+  \item \textbf{Missed report firings are skipped.} No catch-up: an agent down at
+        the scheduled hour omits that day's digest.
+  \item \textbf{The deployment is single tenant.} Authorisation is whatever the chat
+        workspace enforces; anyone who can message the agent can query every service
+        it can see.
+  \item \textbf{Alerting observes state, not thresholds.} A service running but
+        degraded produces no alert unless an HTTP probe happens to catch it.
 \end{enumerate}
 
-\subsection{Possible extensions}
-
-Several extensions follow naturally from the existing structure.
+\subsubsection{Possible extensions}
 
 \begin{enumerate}
-  \item \textbf{Threshold alerting on metric data} would fill the degraded-but-running
-        gap. It would need care to avoid the correlated-failure problem described in
-        Section~\ref{sec:socket-vs-query}, most likely by suppressing metric-derived
-        alerts when the metrics server itself is the failing target.
-  \item \textbf{Persisting monitor state} would close the blind interval, letting the
-        agent compare its first observation after a restart against the last
-        observation before it and report a failure that occurred while it was down.
-  \item \textbf{Write operations}, if ever added, should be introduced as a distinct
-        tool set behind an explicit approval step rather than by adding mutating calls
-        to the existing surface. The value of the guarantee in
-        Section~\ref{sec:readonly} lies in it being absolute. An agent that can act
-        sometimes requires reasoning about every case in which it might.
-  \item \textbf{Additional backends} fit the existing pattern directly. A new backend
-        is a client, a set of query operations with descriptions written for the model,
-        and an entry in the tool list. Nothing in the agent changes.
+  \item \textbf{Threshold alerting} would fill the degraded-but-running gap, with
+        care to avoid the correlated-failure problem (Section~\ref{sec:socket-vs-query}).
+  \item \textbf{Persisting monitor state} would close the blind interval by comparing
+        the first post-restart observation against the last one before it.
+  \item \textbf{Write operations}, if ever added, belong in a distinct tool set
+        behind an explicit approval step, not folded into the existing surface --- the
+        value of Section~\ref{sec:readonly}'s guarantee is in it being absolute.
+  \item \textbf{Additional backends} fit the existing pattern: a client, a set of
+        query operations, an entry in the tool list. Nothing else changes.
 \end{enumerate}
 
 % ================================================================ 16
-\section{Conclusion}
+\subsection{Conclusion}
 
-The system automates a specific, repetitive part of operations work: gathering evidence
-from three separate systems and correlating it into an account of what happened. It
-does this through a language model given a fixed set of query operations, reached from
-the chat workspace an operator already uses.
+The system automates a repetitive part of operations work: gathering evidence from
+three separate systems and correlating it into an account of what happened, through a
+language model given a fixed set of query operations and reached from the chat
+workspace an operator already uses.
 
 Its most consequential property is what it cannot do. No operation available to the
-model changes anything, which places the guarantee in the composition of the tool set
-rather than in instructions the model may disregard. That single constraint is what
-allows an autonomous reasoning loop to run against a live environment while the worst
-available outcome remains an incorrect answer.
+model changes anything, placing the guarantee in the composition of the tool set
+rather than in instructions the model may disregard --- the constraint that lets an
+autonomous reasoning loop run against a live environment while the worst outcome
+stays an incorrect answer.
 
 The remaining design follows from taking failure seriously in a system whose central
 component is probabilistic:
@@ -1644,10 +1162,6 @@ costs alongside the reasoning.
 Python Software Foundation, ``Python 3.13 documentation.'' [Online].
 Available: \url{https://docs.python.org/3.13/}. [Accessed: Aug. 18, 2026].
 
-\bibitem{langgraph}
-LangChain, Inc., ``LangChain Python documentation: short-term memory.'' [Online].
-Available: \url{https://docs.langchain.com/oss/python/langchain/short-term-memory}. [Accessed: Aug. 25, 2026].
-
 \bibitem{langchain}
 LangChain, Inc., ``LangChain Python documentation: agents.'' [Online].
 Available: \url{https://docs.langchain.com/oss/python/langchain/agents}. [Accessed: Aug. 25, 2026].
@@ -1663,10 +1177,6 @@ Available: \url{https://discordpy.readthedocs.io/}. [Accessed: Aug. 18, 2026].
 \bibitem{discordapi}
 Discord, Inc., ``Discord Developer Portal: API reference.'' [Online].
 Available: \url{https://discord.com/developers/docs/}. [Accessed: Aug. 18, 2026].
-
-\bibitem{pydantic}
-Pydantic Services, Inc., ``Pydantic Settings documentation.'' [Online].
-Available: \url{https://docs.pydantic.dev/latest/concepts/pydantic_settings/}. [Accessed: Aug. 18, 2026].
 
 \bibitem{httpx}
 Encode OSS Ltd., ``HTTPX: a next-generation HTTP client for Python.'' [Online].
@@ -1704,10 +1214,6 @@ Available: \url{https://grafana.com/docs/loki/latest/query/}. [Accessed: Aug. 18
 Astral Software, Inc., ``uv: Python packaging documentation.'' [Online].
 Available: \url{https://docs.astral.sh/uv/}. [Accessed: Aug. 18, 2026].
 
-\bibitem{pytest}
-pytest Development Team, ``pytest documentation.'' [Online].
-Available: \url{https://docs.pytest.org/}. [Accessed: Aug. 18, 2026].
-
 \bibitem{jupyter}
 Project Jupyter, ``Jupyter documentation.'' [Online].
 Available: \url{https://docs.jupyter.org/}. [Accessed: Aug. 18, 2026].
@@ -1715,142 +1221,5 @@ Available: \url{https://docs.jupyter.org/}. [Accessed: Aug. 18, 2026].
 \end{thebibliography}
 \endgroup
 
-% ================================================================ APPENDIX
-\appendix
-\clearpage
-
-\section{Settings reference}
-\label{app:settings}
-
-\begin{longtable}{@{}p{0.34\textwidth}p{0.16\textwidth}p{0.42\textwidth}@{}}
-\toprule
-\textbf{Setting} & \textbf{Default} & \textbf{Meaning} \\
-\midrule
-\endfirsthead
-\toprule
-\textbf{Setting} & \textbf{Default} & \textbf{Meaning} \\
-\midrule
-\endhead
-\midrule
-\multicolumn{3}{r@{}}{\footnotesize\itshape continued on next page} \\
-\endfoot
-\bottomrule
-\endlastfoot
-
-\multicolumn{3}{@{}l}{\textbf{\color{accent}Chat workspace}} \\
-Bot token & none & Authentication credential. Required; startup fails without it \\
-Guild identifier & unset & Target workspace. When set, commands register there directly \\
-Alert channel & unset & Receives failure notifications \\
-Status channel & unset & Receives recovery notifications and the periodic snapshot \\
-Reports channel & unset & Receives scheduled digests. Unset disables them \\
-Log channel & unset & Receives forwarded application logs \\
-\addlinespace
-\multicolumn{3}{@{}l}{\textbf{\color{accent}Endpoint monitoring}} \\
-Monitored endpoints & empty & Comma-separated name and URL pairs \\
-Monitor interval & 60 s & Poll cycle period, floored at 10 seconds \\
-\addlinespace
-\multicolumn{3}{@{}l}{\textbf{\color{accent}Scheduled reports}} \\
-Report hour & 05 UTC & Hour at which the daily task fires. Expressed in UTC, not local time \\
-Weekly weekday & 0 (Monday) & Day on which the weekly roll-up also publishes \\
-Lookback days & 7 & Window covered by the weekly roll-up \\
-Status interval & 2 h & Period of the status snapshot, floored at one hour \\
-\addlinespace
-\multicolumn{3}{@{}l}{\textbf{\color{accent}Language model}} \\
-Provider & google & Selects the OpenAI-compatible or the Gemini family \\
-Model name & configured & Model identifier requested from that endpoint \\
-Summariser model & empty & Cheaper model for context compression. Empty reuses the main model \\
-Base URL & local default & Address of the OpenAI-compatible endpoint \\
-API key & empty & Credential, where the endpoint requires one \\
-Gemini key & empty & Credential for the Gemini provider \\
-\addlinespace
-\multicolumn{3}{@{}l}{\textbf{\color{accent}Observability backends}} \\
-Metrics URL & local default & Address of the metrics server \\
-Log store URL & local default & Address of the log store \\
-Metrics token & empty & Bearer credential, sent only when set \\
-Log store token & empty & Bearer credential, sent only when set \\
-\addlinespace
-\multicolumn{3}{@{}l}{\textbf{\color{accent}Container discovery}} \\
-Runtime address & local socket & Runtime API location \\
-Monitoring enabled & false & Whether containers are polled at all \\
-Name filter & empty & Scope substring. Empty places every container in scope \\
-\addlinespace
-\multicolumn{3}{@{}l}{\textbf{\color{accent}Loop limits}} \\
-Max tool steps & 10 & Operations permitted per question, counted per call \\
-Model request timeout & 30 s & Ceiling on one model request \\
-Investigation timeout & 60 s & Ceiling on a whole question, retries included \\
-Max context tokens & 12000 & Threshold above which history is compressed \\
-Log result limit & 500 & Maximum log lines returned by one query \\
-Range maximum & 6 h & Furthest back a range query may reach \\
-\addlinespace
-\multicolumn{3}{@{}l}{\textbf{\color{accent}Storage}} \\
-Database URL & local file & Location of the operational file. The conversation file is derived to sit beside it \\
-
-\end{longtable}
-
-\clearpage
-\section{Operation reference}
-\label{app:tools}
-
-\footnotesize
-\begin{longtable}{@{}p{0.30\textwidth}p{0.20\textwidth}p{0.42\textwidth}@{}}
-\toprule
-\textbf{Operation} & \textbf{Arguments} & \textbf{Behaviour and limits} \\
-\midrule
-\endfirsthead
-\toprule
-\textbf{Operation} & \textbf{Arguments} & \textbf{Behaviour and limits} \\
-\midrule
-\endhead
-\midrule
-\multicolumn{3}{r@{}}{\footnotesize\itshape continued on next page} \\
-\endfoot
-\bottomrule
-\endlastfoot
-
-\texttt{list\_services} & none &
-Container names plus configured endpoint names. Output capped. Returns a placeholder
-when the runtime is unreachable \\
-\addlinespace
-\texttt{docker\_status} & container name &
-State, status and image. Name matched loosely. Reports ambiguity rather than choosing \\
-\addlinespace
-\texttt{docker\_logs} & container name, line count &
-Recent combined output. Line count capped at 200. Stream framing parsed and
-non-printable bytes removed. Output capped \\
-\addlinespace
-\texttt{list\_metric\_names} & optional filter &
-Available metric names, optionally filtered by substring. Entry count capped \\
-\addlinespace
-\texttt{get\_label\_values} & label name &
-Values of one metric label. Label name validated before use. Entry count capped \\
-\addlinespace
-\texttt{query\_prometheus} & query expression &
-Instant query for current values. Output capped \\
-\addlinespace
-\texttt{query\_prometheus\_range} & query expression, minutes &
-Range query. Window clamped to the configured maximum. Resolution derived from window
-length for a roughly constant point count. Output capped \\
-\addlinespace
-\texttt{get\_loki\_label\_values} & label name &
-Values of one stream label. Label name validated before use. Entry count capped.
-Labels are those the log shipper defines \\
-\addlinespace
-\texttt{query\_loki} & query expression, limit &
-Log query over a short recent window. Implemented as a range query because the instant
-endpoint rejects plain stream selectors. Limit clamped. Output capped \\
-\addlinespace
-\texttt{query\_loki\_range} & query expression, minutes, limit &
-Log query over an explicit window. Window and limit both clamped. Output capped \\
-
-\end{longtable}
-\normalsize
-
-\vspace{1em}
-\begin{keybox}{Common properties}
-Every operation returns text and bounds what it returns. Every range and limit
-argument is clamped rather than rejected, so an over-large request yields usable data
-instead of an error. No operation accepts a parameter that would change state, and no
-operation is routed to a mutating endpoint.
-\end{keybox}
 
 \end{document}
