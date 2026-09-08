@@ -105,6 +105,40 @@
     display: flex;
     flex-direction: column;
     overflow-y: auto;
+    overflow-x: hidden;
+    isolation: isolate;
+  }
+  /* ---------- background depth layer (shared across every slide) ---------- */
+  .slide::before,
+  .slide::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+    z-index: -1;
+  }
+  .slide::before {
+    top: -22vh;
+    right: -16vw;
+    width: 62vmax;
+    height: 62vmax;
+    border-radius: 50%;
+    background: radial-gradient(circle, color-mix(in srgb, var(--accent) 16%, transparent) 0%, transparent 68%);
+    animation: glow-breathe 14s ease-in-out infinite;
+  }
+  .slide::after {
+    inset: 0;
+    background-image: radial-gradient(color-mix(in srgb, var(--ink-faint) 45%, transparent) 1px, transparent 1px);
+    background-size: 30px 30px;
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 12%, #000 75%, transparent);
+    mask-image: linear-gradient(to bottom, transparent, #000 12%, #000 75%, transparent);
+    opacity: 0.22;
+  }
+  @keyframes glow-breathe {
+    0%, 100% { transform: scale(1); opacity: 0.9; }
+    50% { transform: scale(1.12); opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .slide::before { animation: none; }
   }
 
   .eyebrow {
@@ -242,6 +276,29 @@
     font-family: "IBM Plex Mono", monospace;
     font-size: 15px; color: var(--ink-faint);
   }
+  .hero-graphic {
+    position: absolute;
+    right: 3vw;
+    top: 50%;
+    transform: translateY(-50%);
+    width: min(34vw, 460px);
+    z-index: 0;
+  }
+  .hero-pulse-ring {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: hero-ring 3.6s ease-in-out infinite;
+  }
+  @keyframes hero-ring {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.14); opacity: 0.55; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hero-pulse-ring { animation: none; }
+  }
+  @media (max-width: 980px) {
+    .hero-graphic { display: none; }
+  }
 
   /* ---------- terminal block ---------- */
   .terminal {
@@ -332,6 +389,27 @@
           <span>INTERNSHIP PROJECT</span>
           <span>2026</span>
         </div>
+        <svg class="hero-graphic" viewBox="0 0 420 420" role="img" aria-hidden="true" focusable="false">
+          <g fill="none" stroke="var(--border)" stroke-width="1.4">
+            <line x1="210" y1="210" x2="110" y2="100" />
+            <line x1="210" y1="210" x2="320" y2="100" />
+            <line x1="210" y1="210" x2="320" y2="320" />
+            <line x1="210" y1="210" x2="110" y2="320" />
+          </g>
+          <g font-family="IBM Plex Mono, monospace" font-size="11" letter-spacing="0.04em" fill="var(--ink-faint)">
+            <circle cx="110" cy="100" r="6" fill="var(--accent-2)" />
+            <text x="110" y="82" text-anchor="middle">DISCORD</text>
+            <circle cx="320" cy="100" r="6" fill="var(--accent-2)" />
+            <text x="320" y="82" text-anchor="middle">DOCKER</text>
+            <circle cx="320" cy="320" r="6" fill="var(--accent-2)" />
+            <text x="320" y="344" text-anchor="middle">PROMETHEUS</text>
+            <circle cx="110" cy="320" r="6" fill="var(--accent-2)" />
+            <text x="110" y="344" text-anchor="middle">LOKI</text>
+          </g>
+          <circle class="hero-pulse-ring" cx="210" cy="210" r="46" fill="color-mix(in srgb, var(--accent) 16%, var(--surface))" stroke="var(--accent)" stroke-width="1.6" />
+          <circle cx="210" cy="210" r="30" fill="var(--surface)" stroke="var(--accent)" stroke-width="1.2" />
+          <text x="210" y="215" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="600" fill="var(--accent)">AGENT</text>
+        </svg>
       </section>
 
       <!-- 2: THE PROBLEM -->
@@ -411,6 +489,20 @@
               <marker id="arrowAccent" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
                 <path d="M0,0 L8,4 L0,8 Z" fill="var(--accent)" />
               </marker>
+              <linearGradient id="nodeFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="var(--surface-2)" />
+                <stop offset="1" stop-color="color-mix(in srgb, var(--ink) 8%, var(--surface-2))" />
+              </linearGradient>
+              <linearGradient id="agentFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="color-mix(in srgb, var(--accent) 20%, var(--surface-2))" />
+                <stop offset="1" stop-color="color-mix(in srgb, var(--accent) 9%, var(--surface-2))" />
+              </linearGradient>
+              <filter id="nodeShadow" x="-30%" y="-40%" width="160%" height="180%">
+                <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000000" flood-opacity="0.16" />
+              </filter>
+              <filter id="agentGlow" x="-60%" y="-60%" width="220%" height="220%">
+                <feDropShadow dx="0" dy="0" stdDeviation="9" flood-color="var(--accent)" flood-opacity="0.4" />
+              </filter>
             </defs>
 
             <g stroke="var(--ink-faint)" stroke-width="1.4" fill="none">
@@ -435,44 +527,44 @@
 
             <!-- monitor -->
             <g>
-              <rect x="20" y="80" width="180" height="64" rx="9" fill="var(--surface-2)" stroke="var(--border)" />
+              <rect x="20" y="80" width="180" height="64" rx="9" fill="url(#nodeFill)" stroke="var(--border)" filter="url(#nodeShadow)" />
               <text x="110" y="108" text-anchor="middle" font-size="17" font-weight="600" fill="var(--ink)">Background Jobs</text>
               <text x="110" y="128" text-anchor="middle" font-size="12.5" fill="var(--ink-dim)" font-family="IBM Plex Mono, monospace">poll · alert · digest</text>
             </g>
             <!-- api -->
             <g>
-              <rect x="450" y="80" width="140" height="64" rx="9" fill="var(--surface-2)" stroke="var(--border)" stroke-dasharray="3 4" />
+              <rect x="450" y="80" width="140" height="64" rx="9" fill="url(#nodeFill)" stroke="var(--border)" stroke-dasharray="3 4" filter="url(#nodeShadow)" />
               <text x="520" y="108" text-anchor="middle" font-size="17" font-weight="600" fill="var(--ink)">HTTP API</text>
               <text x="520" y="128" text-anchor="middle" font-size="12.5" fill="var(--ink-dim)" font-family="IBM Plex Mono, monospace">optional</text>
             </g>
             <!-- discord -->
             <g>
-              <rect x="40" y="260" width="130" height="64" rx="9" fill="var(--surface-2)" stroke="var(--border)" />
+              <rect x="40" y="260" width="130" height="64" rx="9" fill="url(#nodeFill)" stroke="var(--border)" filter="url(#nodeShadow)" />
               <text x="105" y="289" text-anchor="middle" font-size="16" font-weight="600" fill="var(--ink)">Discord</text>
               <text x="105" y="309" text-anchor="middle" font-size="11.5" fill="var(--ink-dim)" font-family="IBM Plex Mono, monospace">DM · mention · slash</text>
             </g>
             <!-- bot -->
             <g>
-              <rect x="240" y="260" width="140" height="64" rx="9" fill="var(--surface-2)" stroke="var(--border)" />
+              <rect x="240" y="260" width="140" height="64" rx="9" fill="url(#nodeFill)" stroke="var(--border)" filter="url(#nodeShadow)" />
               <text x="310" y="289" text-anchor="middle" font-size="16" font-weight="600" fill="var(--ink)">Bot Layer</text>
               <text x="310" y="309" text-anchor="middle" font-size="11.5" fill="var(--ink-dim)" font-family="IBM Plex Mono, monospace">slash · nl · client</text>
             </g>
             <!-- workflows -->
             <g>
-              <rect x="450" y="260" width="140" height="64" rx="9" fill="var(--surface-2)" stroke="var(--border)" />
+              <rect x="450" y="260" width="140" height="64" rx="9" fill="url(#nodeFill)" stroke="var(--border)" filter="url(#nodeShadow)" />
               <text x="520" y="289" text-anchor="middle" font-size="16" font-weight="600" fill="var(--ink)">Workflows</text>
               <text x="520" y="309" text-anchor="middle" font-size="11.5" fill="var(--ink-dim)" font-family="IBM Plex Mono, monospace">investigate · report</text>
             </g>
             <!-- agent (emphasis) -->
             <g>
-              <rect x="655" y="252" width="210" height="80" rx="10" fill="color-mix(in srgb, var(--accent) 14%, var(--surface-2))" stroke="var(--accent)" stroke-width="1.6" />
+              <rect x="655" y="252" width="210" height="80" rx="10" fill="url(#agentFill)" stroke="var(--accent)" stroke-width="1.6" filter="url(#agentGlow)" />
               <text x="760" y="285" text-anchor="middle" font-size="19" font-weight="700" fill="var(--ink)">Agent</text>
               <text x="760" y="305" text-anchor="middle" font-size="12" fill="var(--ink-dim)" font-family="IBM Plex Mono, monospace">create_agent + middleware</text>
               <text x="760" y="321" text-anchor="middle" font-size="11.5" fill="var(--accent)" font-family="IBM Plex Mono, monospace">one shared instance</text>
             </g>
             <!-- tools -->
             <g>
-              <rect x="930" y="260" width="145" height="64" rx="9" fill="var(--surface-2)" stroke="var(--border)" />
+              <rect x="930" y="260" width="145" height="64" rx="9" fill="url(#nodeFill)" stroke="var(--border)" filter="url(#nodeShadow)" />
               <text x="1002" y="289" text-anchor="middle" font-size="16" font-weight="600" fill="var(--ink)">Tool Layer</text>
               <text x="1002" y="309" text-anchor="middle" font-size="11.5" fill="var(--ink-dim)" font-family="IBM Plex Mono, monospace">10 read-only tools</text>
             </g>
@@ -484,7 +576,7 @@
             </g>
             <!-- memory -->
             <g>
-              <rect x="678" y="398" width="165" height="60" rx="9" fill="var(--surface-2)" stroke="var(--border)" />
+              <rect x="678" y="398" width="165" height="60" rx="9" fill="url(#nodeFill)" stroke="var(--border)" filter="url(#nodeShadow)" />
               <text x="760" y="425" text-anchor="middle" font-size="15" font-weight="600" fill="var(--ink)">memory.db</text>
               <text x="760" y="443" text-anchor="middle" font-size="11.5" fill="var(--ink-dim)" font-family="IBM Plex Mono, monospace">SQLite checkpoints</text>
             </g>
