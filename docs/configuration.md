@@ -39,7 +39,7 @@ through the environment; see [architecture.md](architecture.md#the-model).
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `MAX_TOOL_STEPS` | `10` | Tool calls allowed per run. The call that would exceed it is not executed and the run ends. Counts **tool calls**, not model turns. |
+| `MAX_TOOL_STEPS` | `20` | Tool calls allowed per run. The call that would exceed it is not executed and the run ends. Counts **tool calls**, not model turns. |
 | `MAX_CONTEXT_TOKENS` | `12000` | Threshold at which `SummarizationMiddleware` compresses older turns into a summary. |
 | `LOKI_MAX_LIMIT` | `500` | Hard cap on log lines any Loki query may return. |
 | `RANGE_MAX_HOURS` | `6` | Hard cap on the window of any range query. |

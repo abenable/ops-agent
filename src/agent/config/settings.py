@@ -72,7 +72,7 @@ class Settings(BaseSettings):
     prometheus_token: str = ""
     loki_token: str = ""
 
-    max_tool_steps: int = 10
+    max_tool_steps: int = 20
     max_context_tokens: int = 12000
     loki_max_limit: int = 500
     range_max_hours: int = 6
