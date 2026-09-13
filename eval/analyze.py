@@ -1,44 +1,40 @@
 """Aggregate eval transcripts per model into comparison tables.
 
 Usage: analyze.py <model_tag> [<model_tag> ...]
-Reads eval/logs/<model_tag>/*.json.
+Reads eval/logs/<model_tag>/*.json. Every transcript counts: repeated runs of
+the same case are averaged, not discarded, because a single run of a
+non-deterministic model is an anecdote.
 """
-import glob
 import json
 import sys
 from collections import defaultdict
 from pathlib import Path
 
-LOGS = Path("/home/marconi/agent/eval/logs")
+LOGS = Path(__file__).resolve().parent / "logs"
 
 
 def load_runs(tag: str) -> list[dict]:
-    runs = []
-    for path in sorted(glob.glob(str(LOGS / tag / "*.json"))):
-        d = json.loads(Path(path).read_text())
-        # keep only the latest transcript per label
-        runs = [r for r in runs if r["label"] != d["label"]]
-        runs.append(d)
-    return sorted(runs, key=lambda r: r["label"])
+    runs = [json.loads(p.read_text()) for p in sorted((LOGS / tag).glob("*.json"))]
+    return sorted(runs, key=lambda r: (r["label"], r.get("thread_id", "")))
 
 
 def call_stats(d: dict) -> tuple[int, int, list[str], dict[str, int]]:
     """-> (valid, invalid, invalid_names, per-tool invocation counts)
 
-    Transcripts don't carry tool_call ids, so pair each tool message with the
-    oldest still-pending call in order (calls and results are sequential).
+    Transcripts carry the tool_call id on both sides, so match each result to
+    the call that produced it; parallel calls would defeat positional pairing.
     """
-    pending: list[str] = []
+    by_id: dict[str, str] = {}
     valid, invalid, invalid_names = 0, 0, []
     per_tool = defaultdict(int)
     for c in d["calls"]:
         r = c["response"]
         if r["role"] == "ai":
             for tc in r.get("tool_calls") or []:
-                pending.append(tc["name"])
+                by_id[tc.get("id")] = tc["name"]
                 per_tool[tc["name"]] += 1
-        elif r["role"] == "tool" and pending:
-            name = pending.pop(0)
+        elif r["role"] == "tool":
+            name = by_id.pop(r.get("tool_call_id"), "?")
             if "is not a valid tool" in r.get("content", ""):
                 invalid += 1
                 invalid_names.append(name)
@@ -87,22 +83,28 @@ def main() -> None:
                 agg["per_tool"][name][1] += sum(costs)
         per_model[tag] = agg
 
-    # per-notebook comparison
     labels = sorted({r["label"] for a in per_model.values() for r in a["runs"]})
-    print("== PER-CASE COMPARISON ==")
-    print(f"{'case':<44}" + "".join(f"{t[:26]:>28}" for t in tags))
+    print("== PER-CASE COMPARISON (mean over n runs) ==")
+    print(f"{'case':<40}" + "".join(f"{t[:30]:>32}" for t in tags))
     for label in labels:
         cells = []
         for tag in tags:
-            run = next((r for r in per_model[tag]["runs"] if r["label"] == label), None)
-            if not run:
-                cells.append(f"{'-':>28}")
+            runs = [r for r in per_model[tag]["runs"] if r["label"] == label]
+            if not runs:
+                cells.append("-")
                 continue
-            valid, invalid, inv_names, _ = call_stats(run)
-            u = run["total_usage"]
-            flag = f" [{','.join(sorted(set(inv_names)))}]" if inv_names else ""
-            cells.append(f"{valid}v/{invalid}i {u['total_tokens']:>5}t {run['duration_ms']:>6}ms{flag:>0}")
-        print(f"{label:<44}" + "".join(f"{c:>28}" for c in cells))
+            stats = [call_stats(r) for r in runs]
+            n = len(runs)
+            valid = sum(s[0] for s in stats) / n
+            invalid = sum(s[1] for s in stats) / n
+            inv_names = {name for s in stats for name in s[2]}
+            toks = sum(r["total_usage"]["total_tokens"] for r in runs) / n
+            ms = sum(r["duration_ms"] for r in runs) / n
+            errs = sum(1 for r in runs if r.get("error"))
+            flag = f" [{','.join(sorted(inv_names))}]" if inv_names else ""
+            flag += f" ERR{errs}" if errs else ""
+            cells.append(f"n={n} {valid:.1f}v/{invalid:.1f}i {toks:>6.0f}t {ms:>6.0f}ms{flag}")
+        print(f"{label:<40}" + "".join(f"{c:>32}" for c in cells))
 
     print("\n== MODEL AVERAGES ==")
     for tag, a in per_model.items():
@@ -110,6 +112,7 @@ def main() -> None:
         print(
             f"{tag:<18} runs={a['n']:>2}  valid_calls/run={a['valid']/n:.2f}  "
             f"invalid_calls/run={a['invalid']/n:.2f}  runs_with_hallucination={a['hallu_runs']}/{a['n']}  "
+            f"errored_runs={sum(1 for r in a['runs'] if r.get('error'))}/{a['n']}  "
             f"tokens/run={a['tokens']/n:.0f}  ms/run={a['ms']/n:.0f}"
         )
 

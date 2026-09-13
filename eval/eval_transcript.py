@@ -12,6 +12,8 @@ _HERE = Path(__file__).resolve().parent
 _REPO_ROOT = _HERE.parent
 TRANSCRIPT_DIR = _HERE / "logs"
 
+_MODEL_FAILURE = "Model call failed"
+
 _AGENT_SEEN: dict[str, int] = {}
 # Maps the caller's thread_id argument to the actual (suffixed) thread used, so
 # a later call with resume=True can find the thread an earlier call created.
@@ -128,17 +130,40 @@ async def run_agent_eval(
         if run_thread_id:
             _THREAD_ALIASES[thread_id] = run_thread_id
     started = time.monotonic()
-    final = await agent.ainvoke(
-        {"messages": [HumanMessage(content=question)]}, thread_config(run_thread_id)
-    )
+    zero = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+    base_meta = {
+        "thread_id": run_thread_id or thread_id,
+        "tool_calls": 0,
+        "tool_names": [],
+        "new_messages": 0,
+        "error": None,
+        "source": "production agent (agent.agent.get_agent)",
+    }
+    try:
+        final = await agent.ainvoke(
+            {"messages": [HumanMessage(content=question)]}, thread_config(run_thread_id)
+        )
+    except Exception as exc:
+        meta = base_meta | {
+            "duration_ms": round((time.monotonic() - started) * 1000),
+            "error": repr(exc),
+        }
+        path = _dump_transcript(
+            label, question, system_prompt, bound_tools, [], "", dict(zero), meta,
+            settings.model_id,
+        )
+        print(f"[transcript] {label}: FAILED after {meta['duration_ms']}ms — {exc!r}")
+        print(f"[transcript] saved to {path}")
+        raise
     messages = final["messages"]
-    seen = _AGENT_SEEN.get(thread_id, 0)
+    seen_key = run_thread_id or thread_id
+    seen = _AGENT_SEEN.get(seen_key, 0)
     new = messages[seen:]
-    _AGENT_SEEN[thread_id] = len(messages)
+    _AGENT_SEEN[seen_key] = len(messages)
 
     calls: list[dict] = []
     tool_names: list[str] = []
-    total = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+    total = dict(zero)
     for turn, m in enumerate(new, start=1):
         usage = _usage(m) if isinstance(m, AIMessage) else None
         if usage:
@@ -150,14 +175,12 @@ async def run_agent_eval(
         calls.append({"turn": turn, "response": _serialize_message(m), "usage": usage})
 
     answer = _text(messages[-1].content)
-    meta = {
-        "thread_id": run_thread_id or thread_id,
+    meta = base_meta | {
         "duration_ms": round((time.monotonic() - started) * 1000),
         "tool_calls": len(tool_names),
         "tool_names": tool_names,
         "new_messages": len(new),
-        "error": None,
-        "source": "production agent (agent.agent.get_agent)",
+        "error": answer if answer.startswith(_MODEL_FAILURE) else None,
     }
     print(
         f"[transcript] {label}: {len(new)} new message(s), {len(tool_names)} tool call(s), "

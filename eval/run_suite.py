@@ -1,15 +1,17 @@
 """Run every notebook's eval cases against the active model, sequentially.
 
-Usage: run_suite.py [label-substring ...]   (filter cases; default: all)
+Usage: run_suite.py [--runs N] [label-substring ...]
+       --runs N repeats every case N times (default 1); one run proves nothing.
+       label substrings filter which cases run (default: all).
 Model is chosen via LLM_PROVIDER/LLM_MODEL env vars, like production.
 """
 import asyncio
 import sys
+from pathlib import Path
 
-sys.path.insert(0, "/home/marconi/agent/eval")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from eval_transcript import run_agent_eval  # noqa: E402
-from agent.tools import configured_tools  # noqa: E402
 from agent.tools.docker import docker_logs, docker_status, list_services  # noqa: E402
 from agent.tools.loki import get_loki_label_values, query_loki, query_loki_range  # noqa: E402
 from agent.tools.prometheus import (  # noqa: E402
@@ -45,21 +47,41 @@ CASES = [
 ]
 
 
+def _parse_args(argv: list[str]) -> tuple[int, list[str]]:
+    runs, filters = 1, []
+    it = iter(argv)
+    for arg in it:
+        if arg == "--runs":
+            runs = int(next(it))
+        elif arg.startswith("--runs="):
+            runs = int(arg.split("=", 1)[1])
+        else:
+            filters.append(arg)
+    return runs, filters
+
+
 async def main() -> None:
-    filters = sys.argv[1:]
-    for case in CASES:
-        label, question, tools, resume = case[:4]
-        thread_id = case[4] if len(case) > 4 else label
-        if filters and not any(f in label for f in filters):
-            continue
-        print(f"\n=== {label} ===", flush=True)
-        try:
-            answer = await run_agent_eval(
-                label, question, thread_id=thread_id, tools=tools, resume=resume,
-            )
-            print(f"ANSWER: {answer[:300]}", flush=True)
-        except Exception as exc:
-            print(f"ERROR: {exc!r}", flush=True)
+    runs, filters = _parse_args(sys.argv[1:])
+    for rep in range(1, runs + 1):
+        if runs > 1:
+            print(f"\n######## repetition {rep}/{runs} ########", flush=True)
+        for case in CASES:
+            label, question, tools, resume = case[:4]
+            thread_id = case[4] if len(case) > 4 else label
+            if filters and not any(f in label for f in filters):
+                continue
+            print(f"\n=== {label} ===", flush=True)
+            try:
+                answer = await run_agent_eval(
+                    label,
+                    question,
+                    thread_id=f"{thread_id}#r{rep}",
+                    tools=tools,
+                    resume=resume,
+                )
+                print(f"ANSWER: {answer[:300]}", flush=True)
+            except Exception as exc:
+                print(f"ERROR: {exc!r}", flush=True)
 
 
 asyncio.run(main())

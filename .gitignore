@@ -29,6 +29,6 @@ data/aggregate/
 # regenerate with scripts/build_eval_dataset.sh)
 data/eval/
 
-# Per-run transcripts dumped by agent.eval_transcript.run_eval_loop
+# Per-run transcripts dumped by eval/eval_transcript.py
 eval/logs/
 eval/results/

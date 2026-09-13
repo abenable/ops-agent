@@ -3,6 +3,8 @@
 import asyncio
 import json
 
+import pytest
+
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
 
@@ -10,7 +12,7 @@ import eval_transcript as et
 
 from agent import agent as agent_mod
 from agent.tools import configured_tools
-from tests.conftest import QueueLLM, use_fake_llm
+from tests.conftest import DeadLLM, QueueLLM, use_fake_llm
 
 
 def _tool_call(name="docker_status", args=None, call_id="call-1"):
@@ -28,7 +30,7 @@ def _make_status_tool(output, calls):
 
 
 def _latest(tmp_path) -> dict:
-    return json.loads(sorted(tmp_path.glob("*.json"))[-1].read_text())
+    return json.loads(sorted(tmp_path.rglob("*.json"))[-1].read_text())
 
 
 def test_text_coerces_content_blocks():
@@ -49,7 +51,7 @@ def test_serialize_message_covers_every_role():
     ) == {
         "role": "ai",
         "content": "pong",
-        "tool_calls": [{"name": "f", "args": {"x": 1}}],
+        "tool_calls": [{"id": "1", "name": "f", "args": {"x": 1}}],
         "finish_reason": None,
     }
 
@@ -146,9 +148,60 @@ def test_run_agent_eval_measures_only_the_new_turn(monkeypatch, tmp_path):
     ]))
 
     asyncio.run(et.run_agent_eval("t:first", "q1", thread_id="shared-thread"))
-    asyncio.run(et.run_agent_eval("t:second", "q2", thread_id="shared-thread"))
+    asyncio.run(et.run_agent_eval("t:second", "q2", thread_id="shared-thread", resume=True))
 
     dumped = _latest(tmp_path)
     assert dumped["answer"] == "second answer"
     assert dumped["new_messages"] == 2  # this turn's Human + AI only, not q1's
+    assert dumped["total_usage"]["total_tokens"] == 34
+
+
+def test_an_exhausted_model_is_recorded_as_an_error(monkeypatch, tmp_path):
+    """ModelRetryMiddleware returns a message instead of raising."""
+    monkeypatch.setattr(et, "TRANSCRIPT_DIR", tmp_path)
+    use_fake_llm(monkeypatch, DeadLLM())
+
+    asyncio.run(et.run_agent_eval("t:dead", "q", thread_id="t-dead"))
+
+    dumped = _latest(tmp_path)
+    assert dumped["error"].startswith("Model call failed")
+
+
+def test_a_crashed_run_still_leaves_a_transcript(monkeypatch, tmp_path):
+    """A run that dies mid-invoke is still recorded."""
+    monkeypatch.setattr(et, "TRANSCRIPT_DIR", tmp_path)
+
+    class Exploding:
+        async def ainvoke(self, *a, **kw):
+            raise ConnectionError("endpoint down")
+
+    async def _get_agent(tools=None):
+        return Exploding()
+
+    monkeypatch.setattr(agent_mod, "get_agent", _get_agent)
+
+    with pytest.raises(ConnectionError):
+        asyncio.run(et.run_agent_eval("t:boom", "q", thread_id="t-boom"))
+
+    dumped = _latest(tmp_path)
+    assert dumped["label"] == "t:boom"
+    assert "endpoint down" in dumped["error"]
+    assert dumped["answer"] == ""
+    assert dumped["total_usage"]["total_tokens"] == 0
+
+
+def test_a_fresh_thread_is_measured_from_zero(monkeypatch, tmp_path):
+    """Same thread_id with resume=False is a new conversation, measured from zero."""
+    monkeypatch.setattr(et, "TRANSCRIPT_DIR", tmp_path)
+    use_fake_llm(monkeypatch, QueueLLM([
+        AIMessage(content="first", usage_metadata={"input_tokens": 10, "output_tokens": 2, "total_tokens": 12}),
+        AIMessage(content="second", usage_metadata={"input_tokens": 30, "output_tokens": 4, "total_tokens": 34}),
+    ]))
+
+    asyncio.run(et.run_agent_eval("t:one", "q1", thread_id="reused-id"))
+    asyncio.run(et.run_agent_eval("t:two", "q2", thread_id="reused-id"))
+
+    dumped = _latest(tmp_path)
+    assert dumped["answer"] == "second"
+    assert dumped["new_messages"] == 2
     assert dumped["total_usage"]["total_tokens"] == 34

@@ -57,9 +57,11 @@ conversation into the model's context. `resume=True` opts back into the thread
 a previous call with the same `thread_id` argument created — that is how the
 `08` memory case works.
 
-The dump is in a `finally`, so a run that dies from an endpoint 500, a context
-overflow, or a timeout still leaves the turns it completed, with the error
-recorded. Those are usually the runs worth reading.
+A run that dies mid-invoke still writes a transcript, with the exception in
+`error`. An exhausted endpoint does not raise at all — `ModelRetryMiddleware`
+returns "Model call failed after N attempts" as the answer — so that answer is
+recorded in `error` too. Without it a dead model scores as a clean, cheap,
+zero-tool run. Those are the runs worth reading.
 
 There is deliberately no automated grading in the harness. A substring check
 catches only the crudest failure, and the interesting failure modes — a
@@ -73,24 +75,29 @@ model the environment selects, exactly like production:
 
 ```bash
 cd eval
-LLM_PROVIDER=google LLM_MODEL=gemma-4-31b-it python run_suite.py
-LLM_PROVIDER=openai LLM_MODEL=marconi-llm python run_suite.py   # the proxy
+LLM_PROVIDER=google LLM_MODEL=gemma-4-31b-it python run_suite.py --runs 3
+LLM_PROVIDER=openai LLM_MODEL=marconi-llm python run_suite.py --runs 3   # the proxy
 ```
 
+`--runs N` repeats every case N times (default 1), each repetition on its own
+thread. A trailing label substring filters cases: `python run_suite.py 06 07`.
+
 `eval/analyze.py <model> [<model> ...]` reads the transcripts and prints a
-per-case comparison, per-model averages (valid vs hallucinated calls, tokens,
-duration), and tokens per tool — the calling turn's cost plus the next turn's
-input, which carries the tool result. It is how the Loki tools were identified
-as the dominant token sink.
+per-case comparison averaged over every run of that case, per-model averages
+(valid vs hallucinated calls, errored runs, tokens, duration), and tokens per
+tool — the calling turn's cost plus the next turn's input, which carries the
+tool result. It is how the Loki tools were identified as the dominant token
+sink.
 
 Results and conclusions from the 2026-08-27 run: `docs/model-comparison-20260827.md`.
-One run per case proves nothing — temperature 0 is not a determinism guarantee
-on any of these providers; re-run before deciding anything.
+That run was one run per case, which proves nothing — temperature 0 is not a
+determinism guarantee on any of these providers. Use `--runs 3` or more.
 
 ## Budget semantics
 
-The budget is production's: `ToolCallLimitMiddleware(run_limit=10,
-exit_behavior="end")` counts tool calls and ends the run when it is exhausted.
+The budget is production's: `ToolCallLimitMiddleware(run_limit=settings.max_tool_steps,
+exit_behavior="end")` — 20 tool calls by default, `MAX_TOOL_STEPS` to change it —
+counts tool calls and ends the run when it is exhausted.
 The transcript records the limit message as the final turn, which is also what
 an operator would see. Both models in the comparison reached the limit on
 "check everything" questions — see the comparison report's recommendations
