@@ -89,9 +89,13 @@ tool — the calling turn's cost plus the next turn's input, which carries the
 tool result. It is how the Loki tools were identified as the dominant token
 sink.
 
-Results and conclusions from the 2026-08-27 run: `docs/model-comparison-20260827.md`.
-That run was one run per case, which proves nothing — temperature 0 is not a
-determinism guarantee on any of these providers. Use `--runs 3` or more.
+Current results and conclusions: `docs/model-comparison-20260913.md` (2 runs
+per case, 68 runs) for the model choice, and
+`docs/tool-and-task-performance-20260913.md` for per-tool cost, tool failure
+root causes, and which shapes of task are actually hard. The earlier `docs/model-comparison-20260827.md` ran one
+sample per case and is superseded — several of its conclusions do not survive a
+second run. Temperature 0 is not a determinism guarantee on any of these
+providers, so use `--runs 2` at minimum.
 
 ## Budget semantics
 
