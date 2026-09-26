@@ -28,7 +28,7 @@ agent/bot/digest.py    daily/weekly reports ──────────> #rep
 ```
 
 A second entry point, `agent api`, serves the same workflows over HTTP; see
-[api.md](api.md). It is optional and not part of the reference deployment. The
+[api.md](api.md). Compose runs it alongside the bot, bound to loopback. The
 bot and the API import the same loop, tool layer, and stores rather than talking
 to each other, so neither is a client of the other and there is still one
 implementation of every behaviour.

@@ -8,8 +8,17 @@ docker compose up -d
 docker compose logs -f bot
 ```
 
-One service comes up: `bot`, named `marconi-agent-bot`, built from the local
-`Dockerfile`.
+Two services come up from one image, `marconi-agent:latest`, built from the
+local `Dockerfile`:
+
+| Service | Container | Runs |
+|---|---|---|
+| `bot` | `marconi-agent-bot` | The Discord bot: `python -m agent bot` |
+| `api` | `marconi-agent-api` | The HTTP API: `python -m agent api`, see [api.md](api.md) |
+
+The API binds `127.0.0.1` unless `API_HOST` is set, because host networking
+would otherwise expose it on every interface. It has a Compose healthcheck
+against `/health`. To run the bot alone, `docker compose up -d bot`.
 
 Prometheus and Loki are not part of this stack. The agent queries whatever
 metrics and log servers already exist in your environment, addressed by
@@ -18,10 +27,10 @@ unavailable and the agent works from the remaining backends.
 
 ### Networking
 
-The bot runs `network_mode: host`, so it reaches Prometheus, Loki, the Docker
+Both services run `network_mode: host`, so they reach Prometheus, Loki, the Docker
 daemon and the LLM endpoint wherever they run, with no ports to publish and no
 service names to resolve. Addresses that work from a shell on the host work
-unchanged from inside the container.
+unchanged from inside the containers.
 
 `MONITORED_ENDPOINTS` comes from `.env` along with everything else. Its values
 are whatever the host can reach:
@@ -32,7 +41,7 @@ MONITORED_ENDPOINTS=prometheus=http://localhost:9090/-/healthy,loki=http://local
 
 ### The Docker socket
 
-`/var/run/docker.sock` is mounted into the container so the Docker tools see
+`/var/run/docker.sock` is mounted into both containers so the Docker tools see
 host containers.
 
 `:ro` on that mount makes the socket *file* read only. It does not restrict the
@@ -74,12 +83,12 @@ The same environment variables apply, so `PROMETHEUS_URL`, `LOKI_URL`, and
 
 Compose mounts `./data:/app/data`. Nothing else in this stack is stateful.
 
-Back up with the bot stopped:
+Back up with both services stopped, since both open the files:
 
 ```bash
-docker compose stop bot
+docker compose stop
 cp -r data data.bak
-docker compose start bot
+docker compose start
 ```
 
 Or live, with SQLite's own backup:
@@ -99,7 +108,7 @@ without it, global sync can take up to an hour.
 ## Health checks
 
 ```bash
-docker compose ps                        # bot up?
+docker compose ps                        # bot and api up? api shows (healthy)
 docker compose logs -f bot               # bot logs
 curl -s "$PROMETHEUS_URL/-/healthy"      # metrics server, wherever it runs
 curl -s "$LOKI_URL/ready"                # log server
@@ -114,8 +123,8 @@ it reports the endpoints the monitor polls without probing them itself.
 
 ```bash
 git pull
-docker compose build bot
-docker compose up -d bot
+docker compose build
+docker compose up -d
 ```
 
 `data/` is untouched, so the watch list and conversation history carry over.

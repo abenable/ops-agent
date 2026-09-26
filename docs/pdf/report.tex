@@ -178,8 +178,9 @@ operator already watches.
         every read-only operation available, context retained per conversation.
   \item \textbf{Structured incident reporting.} The same loop on a fixed template:
         summary, observed behaviour, evidence, likely cause, next steps.
-  \item \textbf{Continuous monitoring.} Container and endpoint state polled on a
-        fixed cycle; transitions produce alerts and durable records.
+  \item \textbf{Continuous monitoring.} Container and endpoint state polled, and
+        configured metric rules evaluated, on a fixed cycle; transitions produce
+        alerts and durable records.
   \item \textbf{Scheduled reporting.} Daily and weekly digests of current state and
         the transitions recorded over the window.
 \end{enumerate}
@@ -191,8 +192,6 @@ operator already watches.
         deletes; the design constraint Section~\ref{sec:readonly} enforces.
   \item \textbf{Single tenant.} One environment, one chat workspace, no per-user
         authorisation beyond what the workspace provides.
-  \item \textbf{No alerting rule engine.} Alerts fire on state transitions, not
-        threshold expressions; metrics feed diagnosis only (Section~\ref{sec:socket-vs-query}).
   \item \textbf{No model training.} The model is an external service reached over
         a network API.
 \end{enumerate}
@@ -258,7 +257,8 @@ platform and split across messages past the length limit.
 A polling task on a fixed interval reads container state and probes each
 configured endpoint, comparing against the last cycle. A change (running/not,
 reachable/not) is a transition: logged durably and posted as an alert, with
-recoveries on a separate channel.
+recoveries on a separate channel. Configured metric rules follow the same pattern,
+and a rule that starts firing can also start an investigation.
 
 \subsubsection{The reporting path}
 
@@ -638,8 +638,8 @@ applies to watch list lookups.
 \subsection{The poll cycle}
 
 A single task runs on a configured interval with a floor applied, so a misconfigured
-interval cannot produce a tight polling loop. Each cycle reads all container states
-and probes each configured HTTP endpoint.
+interval cannot produce a tight polling loop. Each cycle reads all container states,
+probes each configured HTTP endpoint, and evaluates each configured metric rule.
 
 \subsection{Scope}
 
@@ -693,14 +693,24 @@ two reasons: a metrics-derived signal lags the scrape interval and reports the
 transition of a scrape rather than of a process, and if the metrics server itself
 restarts, every target it scrapes appears to fail at once, an alert built on metric
 queries would announce a total outage when the monitoring system just bounced.
-Metrics stay available to the reasoning loop for diagnosis; this decision only
-concerns what drives an alert.
+This decision concerns container liveness only; metric conditions can still drive
+alerts through explicitly configured rules.
 
 \subsection{Endpoint probing}
 
 Endpoint checks catch what runtime inspection cannot: a service on another host,
 behind a proxy, or a health path whose success depends on more than the process
 being alive.
+
+\subsection{Metric rules}
+
+Each configured rule is a named metrics query, and it fires when the query returns
+any series. Rules follow the same baseline-then-transition pattern as containers and
+endpoints. A query the metrics server rejects, or cannot answer, is skipped rather
+than read as resolved, since being unable to check is not evidence that the
+condition cleared. A rule that starts firing posts an alert and, when an incident
+channel is configured, starts an agent investigation of it outside the poll cycle,
+so a slow model cannot delay the next check.
 
 \subsection{The event log}
 
@@ -732,7 +742,9 @@ same current-state section the daily digest opens with.
 
 The daily digest gives current state plus every transition from the preceding
 twenty-four hours, in order. The weekly roll-up gives the same current state plus
-per-target totals: outage count and cumulative downtime over the window.
+per-target totals: outage count and cumulative downtime over the window. Any target
+that failed twice or more in the window is handed to the agent, whose investigation
+is added as a section explaining why.
 
 \subsubsection{Downtime accounting}
 
@@ -744,17 +756,15 @@ downtime at all.
 \subsubsection{Measured data and generated prose}
 
 Digests separate two kinds of content, and the boundary is enforced. The detail
-section is rendered directly from recorded events, the model never sees or rewrites
-it, passing an exact value through a language model can only preserve or damage it.
+section is rendered directly from recorded events and the model never rewrites it,
+passing an exact value through a language model can only preserve or damage it.
 A summary section is generated on top of it for a short narrative before the
 numbers, and degrades to the raw detail if the model is unavailable.
 
 \subsubsection{Publication and follow-up}
 
 A report publishes as one unit, one thread where the platform supports it, split
-only for the per-message size limit. The report body is written into that thread's
-conversation memory, so a reply asking why a service flapped lands in a conversation
-that already contains the report.
+only for the per-message size limit.
 
 % ================================================================ 10
 \section{Interface and configuration}
@@ -822,7 +832,7 @@ avoid the feedback loop of a sent message logging an event that sends a message;
 forwarding is asynchronous and batched for one second per message; the queue is
 bounded at a thousand records, beyond that records drop rather than growing memory.
 What reaches the channel is the operational trail, transitions, alerts, reports, and
-per-question call counts and duration, not debug noise. A drain failure is written to
+the operations each question called and its duration, not debug noise. A drain failure is written to
 standard error rather than logged, to avoid feeding the forwarder that failed.
 
 \subsection{Failure must be visible}
@@ -905,15 +915,11 @@ Transport-level logging stays pinned to warnings to avoid flooding both destinat
   \item \textbf{The deployment is single tenant.} Authorisation is whatever the chat
         workspace enforces; anyone who can message the agent can query every service
         it can see.
-  \item \textbf{Alerting observes state, not thresholds.} A service running but
-        degraded produces no alert unless an HTTP probe happens to catch it.
 \end{enumerate}
 
 \subsubsection{Possible extensions}
 
 \begin{enumerate}
-  \item \textbf{Threshold alerting} would fill the degraded-but-running gap, with
-        care to avoid the correlated-failure problem (Section~\ref{sec:socket-vs-query}).
   \item \textbf{Persisting monitor state} would close the blind interval by comparing
         the first post-restart observation against the last one before it.
   \item \textbf{Write operations}, if ever added, belong in a distinct tool set
@@ -944,8 +950,8 @@ component is probabilistic:
   \item \textbf{The reasoning loop is bounded}, and returns a partial summary instead
         of an error when the bound is reached.
   \item \textbf{Operation failures become evidence} rather than exceptions.
-  \item \textbf{Report figures are rendered from recorded data} and never passed
-        through the model, which restricts generation to the parts where fluency helps.
+  \item \textbf{Report figures are rendered from recorded data} and never rewritten
+        by the model, which restricts generation to the parts where fluency helps.
   \item \textbf{Monitoring baselines before it alerts}, because an alert stream that
         cries wolf on every restart is worse than none.
 \end{itemize}

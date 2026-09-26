@@ -43,7 +43,7 @@ header; leave it unset and the API is open.
 curl -s localhost:8000/status -H "X-API-Key: $API_KEY"
 ```
 
-Unset is the default because the reference deployment binds to a host that is
+Unset is the default because Compose binds the API to loopback, and the host is
 only reachable over the lab's mesh network. That assumption is the whole
 security model, so it stops holding the moment the port is exposed more widely —
 set a key before that happens, not after.
@@ -72,5 +72,5 @@ works, but two writers is a different shape from the single-writer design
 `thread_id`, and the bot uses Discord channel ids — pass API thread ids that
 cannot collide with those if you do not want the two surfaces sharing history.
 
-Nothing requires running both. The bot alone is the reference deployment, and
-[deployment.md](deployment.md) ships only that.
+Compose runs both by default. Nothing requires the API: `docker compose up -d
+bot` starts the bot alone.

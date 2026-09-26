@@ -33,7 +33,8 @@ uv sync
 uv run agent bot
 ```
 
-Compose builds and runs the bot only. Point `PROMETHEUS_URL` and `LOKI_URL` at
+Compose builds one image and runs two services from it: the bot, and the HTTP
+API bound to loopback (see [docs/api.md](docs/api.md)). Point `PROMETHEUS_URL` and `LOKI_URL` at
 your existing metrics and log servers; with either unset, those tools are simply
 unavailable.
 
@@ -47,7 +48,7 @@ The same thing is available as slash commands:
 | Command | Does |
 |---|---|
 | `/investigate <question>` | Free-form investigation |
-| `/status` | Container and endpoint health right now |
+| `/status` | Container state right now, plus the configured endpoints |
 | `/report <service>` | A structured incident report for one service |
 | `/digest [daily\|weekly]` | Render the scheduled infrastructure report on demand |
 | `/containers`, `/watching`, `/watchlist` | List what exists and what is being watched |

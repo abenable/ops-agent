@@ -20,7 +20,7 @@ error message: the bot never goes silent.
 | Command | What it does |
 |---|---|
 | `/investigate <question>` | Free-form investigation, same as mentioning it. Keyed to the channel, so it joins the conversation. |
-| `/status` | Current container and endpoint health, summarized. |
+| `/status` | Current container state and the configured endpoints, summarized. Endpoints are listed, not probed; `GET /status` on the API probes them. |
 | `/report <service>` | Structured incident report for one service: summary, what happened, evidence, likely cause, next steps. One-shot, so it does not join the channel conversation. |
 | `/digest [daily\|weekly] [post_to_reports]` | Render the scheduled report now. Previews in place by default; `post_to_reports:true` sends it to the reports channel. |
 | `/containers` | Docker containers grouped by status. |
@@ -62,7 +62,7 @@ because Discord renders neither.
 It cannot change anything. Every tool is a read, so it will recommend a restart
 but cannot perform one.
 
-A run has a tool budget, `MAX_TOOL_STEPS`, which defaults to 10 tool calls.
+A run has a tool budget, `MAX_TOOL_STEPS`, which defaults to 20 tool calls.
 Hitting it ends the run with an explanation instead of looping.
 
 Memory is per channel with no cross-thread recall, so it does not know what you

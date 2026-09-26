@@ -17,7 +17,6 @@ Blank is treated as unset for string settings, so a placeholder like
 | `DISCORD_STATUS_CHANNEL_ID` | unset | Where recovery notices and the periodic status snapshot go. Unset disables the snapshot. |
 | `DISCORD_REPORTS_CHANNEL_ID` | unset | Where scheduled digests go. Unset disables them. A forum channel works, and each digest opens its own thread. |
 | `DISCORD_INCIDENT_CHANNEL_ID` | unset | Where an agent investigation is posted when a PromQL rule starts firing. Unset skips the investigation entirely. |
-| `DISCORD_TEST_SCENARIOS_CHANNEL_ID` | unset | Where `scripts/run_scenario.py` posts its verdicts. |
 | `DISCORD_LOG_CHANNEL_ID` | unset | Mirror INFO+ logs into Discord, batched into one message per second. |
 
 ## LLM
@@ -27,7 +26,7 @@ Blank is treated as unset for string settings, so a placeholder like
 | `LLM_PROVIDER` | `google` | `openai` for any OpenAI-compatible endpoint, `google` for Gemini/Gemma. |
 | `LLM_MODEL` | `gemma-4-31b-it` | Model name, without a provider prefix. |
 | `LLM_SUMMARIZER_MODEL` | blank | Cheaper model for context summarization. Blank reuses `LLM_MODEL`. |
-| `LLM_BASE_URL` | `http://localhost:11434/v1` | `openai` provider only. Exported as `OPENAI_API_BASE`. |
+| `LLM_BASE_URL` | `http://100.64.0.7:4000/v1` | `openai` provider only. Exported as `OPENAI_API_BASE`. |
 | `LLM_API_KEY` | blank | `openai` provider only. Exported as `OPENAI_API_KEY`. Many self-hosted endpoints accept any value. |
 | `GEMINI_API_KEY` | blank | `google` provider only. Exported as `GOOGLE_API_KEY`. |
 
@@ -81,7 +80,7 @@ daily one, both at the same hour.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `API_HOST` | `0.0.0.0` | Interface `agent api` binds. |
+| `API_HOST` | `0.0.0.0` | Interface `agent api` binds. Compose overrides the default to `127.0.0.1`. |
 | `API_PORT` | `8000` | Port `agent api` binds. |
 | `API_KEY` | unset | When set, every route except `/health` requires a matching `X-API-Key`. Unset leaves the API open. |
 
