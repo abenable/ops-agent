@@ -23,7 +23,6 @@ agent = "agent.__main__:main"
 
 [dependency-groups]
 dev = [
-    "ipykernel>=7.3.0",
     "pytest>=8.0",
 ]
 
@@ -41,9 +40,6 @@ where = ["src"]
 # Integration tests hit the real LLM endpoint and Discord API, so they are
 # excluded by default; `pytest -m integration` overrides this.
 addopts = "-m 'not integration'"
-# eval/ holds the notebook harness (eval_transcript). It is not part of the
-# package, so put it on the path rather than importing it as agent.*.
-pythonpath = ["eval"]
 markers = [
     "integration: live external API checks (LLM, Discord, etc.)",
 ]

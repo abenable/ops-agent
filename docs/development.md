@@ -3,9 +3,9 @@
 ## Setup
 
 ```bash
-uv sync                    # includes the dev group (pytest, ipykernel)
+uv sync                    # includes the dev group (pytest)
 cp .env.example .env
-uv run pytest              # 89 tests, ~3s
+uv run pytest              # 107 tests, ~5s
 uv run agent bot
 ```
 
@@ -27,9 +27,7 @@ src/agent/
   bot/              slash commands, mentions, monitor, digests, status, client
   alerting/         Discord embeds for alerts and reports
   watchlist/        SQLite repository: watch list + event log
-eval/               eval notebooks + eval_transcript.py harness
 tests/              pytest suite
-scripts/            eval-dataset build helpers
 ```
 
 ### Boundaries worth keeping
@@ -42,9 +40,6 @@ about Discord, and the bot layer does the formatting.
 
 `memory.py` is the only opener of `memory.db`. Anything else that wants
 conversation state goes through `thread_config` and the agent.
-
-`eval/eval_transcript.py` sits beside the notebooks rather than in the package,
-because it is eval harness and not shipped code.
 
 ## Tests
 
@@ -80,11 +75,10 @@ The dict exists for exactly that.
 |---|---|
 | `test_investigate.py` | Tool call then answer, no-tool answer, a raising tool fed back, the tool-call limit, LLM failure, the report template, thread isolation |
 | `test_memory.py` | `thread_config`, and a thread surviving a closed connection |
-| `test_eval_transcript.py` | The eval harness: budget counting, crash transcripts, unknown tools, grading |
 | `test_monitor.py` | Baseline vs transition, scope, pruning, endpoint probes, event logging |
 | `test_digest.py` | Daily/weekly bodies, downtime pairing, flap narrative, scheduling, status snapshots |
 | `test_api.py` | Every HTTP route, the API-key gate, and the 503-not-500 rule when Docker is down |
-| `test_scenarios.py` | The staged-scenario grader (including the control case) and PromQL rule parsing |
+| `test_alert_rules.py` | PromQL rule parsing, firing checks, and the poll loop |
 | `test_docker_tools.py`, `test_services.py`, `test_normalize.py` | Tool behaviour, HTTP clients, name matching |
 | `test_summarize.py`, `test_alerting.py`, `test_bot.py`, `test_nl.py`, `test_watchlist.py` | Discord formatting, embeds, command wiring, mentions, the watch list |
 

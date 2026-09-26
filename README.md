@@ -79,7 +79,6 @@ them out. See [docs/architecture.md](docs/architecture.md#read-only-by-design).
 | [api.md](docs/api.md) | The HTTP API: routes, authentication, status codes |
 | [monitoring.md](docs/monitoring.md) | Alerts, the watch list, scheduled digests |
 | [development.md](docs/development.md) | Layout, tests, conventions |
-| [evaluation.md](docs/evaluation.md) | The eval notebooks and transcript harness |
 
 ## Requirements
 

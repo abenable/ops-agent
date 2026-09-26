@@ -484,8 +484,7 @@ of what it had established, and that partial answer is delivered normally.
 \subsubsection{Failure handling}
 
 An operation that raises returns its exception text as the result; a nonexistent
-operation the model names is reported as such rather than as a failure ---
-the distinction Section~\ref{sec:eval}'s notebooks measure. Retries bound both: a
+operation the model names is reported as such rather than as a failure. Retries bound both: a
 model call up to three times total, an operation twice. Two time ceilings bound the
 run: thirty seconds per model request, sixty seconds overall. The investigation
 workflow catches everything above the loop and returns the failure as its answer,
@@ -882,198 +881,6 @@ own output both carry informational records and above in real time; the containe
 output is where to look when the chat connection itself is the problem.
 Transport-level logging stays pinned to warnings to avoid flooding both destinations.
 
-% ================================================================ 13
-\section{Evaluation}
-
-\subsection{Model behaviour evaluation}
-\label{sec:eval}
-
-Tests verify the code, not whether a given model chooses sensible operations, and a
-model substitution changes that while leaving every test passing. A separate notebook
-harness~\cite{jupyter} addresses this, read by a human rather than asserted on. Seven
-notebooks each isolate one operation, binding it plus the discovery calls it requires
-and nothing else, driving the production agent through a shared instrumented entry
-point so every run's transcript records the same fields: system prompt, bound
-operations, each call and result, token cost, and duration.
-
-Each isolation notebook asks two questions: one answerable with the bound operations,
-and one requiring evidence from a backend that isn't bound --- the more informative
-case, since it measures whether the model states the limit or fabricates an answer
-(a service reported healthy from name enumeration alone, for instance). Runs are
-thread-isolated by default, so re-running a case can't replay a prior conversation
-into the model's context; continuing a thread is an explicit opt-in reserved for
-cases where memory is itself the subject.
-
-An eighth notebook drives the production agent directly with memory, exercising what
-isolation cannot: which backend the model selects when nothing is withheld, and
-whether context carries across a follow-up on the same thread versus a fresh one. A
-suite runner executes every notebook's cases in one process against whichever model
-is configured, and an analysis script reads the transcripts into a per-case
-comparison, per-model averages, and token cost by operation.
-
-\subsubsection{A conclusive model comparison}
-\label{sec:eval-comparison}
-
-After the tool-name hallucination incident described in Section~\ref{sec:silent} was
-traced to a stale in-process prompt and a workflow that mandated operations which were
-not bound, both defects were fixed, and the full suite --- seventeen cases: two per
-isolation notebook plus the three memory cases --- was run against the two candidate
-models with live backends. Tables~\ref{tab:per-case-inscope}--\ref{tab:per-case-memory} give the full per-case record;
-Table~\ref{tab:model-comparison} summarises it; Table~\ref{tab:tool-cost} attributes
-token cost to each operation.
-
-\begin{table}[H]
-\centering
-\footnotesize
-\begin{tabular}{|p{3.4cm}|p{5.6cm}|p{5.6cm}|}
-\hline
-\textbf{In-scope case} & \textbf{gemma-4-31b-it} & \textbf{marconi-llm} \\
-\hline
-list services & 1v · 1{,}326t · 9.5s & 1v · 1{,}960t · 4.0s \\
-\hline
-status & 1v · 1{,}349t · 8.8s & 1v · 1{,}814t · 2.9s $\emptyset$ \\
-\hline
-logs & 1v · 3{,}108t · 9.0s & 1v · 3{,}800t · 4.0s \\
-\hline
-instant query & 1v · 2{,}125t · 12.1s & 1v · 2{,}494t · 2.6s \\
-\hline
-range query & 1v · 4{,}820t · 8.9s & 2v · 7{,}741t · 4.0s \\
-\hline
-loki errors & 3v · 9{,}904t · 27.5s & 10v · 49{,}921t · 19.7s $\emptyset$ \\
-\hline
-loki range & 2v · 4{,}730t · 22.0s & 13v L · 17{,}139t · 34.5s \\
-\hline
-\end{tabular}
-\caption{Per-case results, in-scope cases. v = valid tool calls, i = invalid (hallucinated) calls, t = total tokens; $\emptyset$ = empty final answer, L = call-limit exit.}
-\label{tab:per-case-inscope}
-\end{table}
-
-\begin{table}[H]
-\centering
-\footnotesize
-\begin{tabular}{|p{3.4cm}|p{5.6cm}|p{5.6cm}|}
-\hline
-\textbf{Out-of-scope case} & \textbf{gemma-4-31b-it} & \textbf{marconi-llm} \\
-\hline
-health, discovery only & 1v/1i · 5{,}224t · 267s & 1v · 1{,}783t · 2.7s \\
-\hline
-logs, status only & 0v · 677t · 7.3s & 1v · 2{,}780t · 9.9s \\
-\hline
-health, logs only & 1v/1i · 5{,}113t · 19.8s & 1v · 3{,}836t · 4.3s \\
-\hline
-trend, instant only & 7v · 10{,}507t · 34.3s & 1v · 2{,}681t · 4.8s \\
-\hline
-logs, prom only & 0v · 748t · 6.2s & 0v · 1{,}563t · 5.3s \\
-\hline
-CPU, loki only & 0v · 977t · 12.6s & 0v · 1{,}513t · 5.1s \\
-\hline
-health, loki only & 3v · 9{,}223t · 20.4s & 2v · 5{,}220t · 4.7s \\
-\hline
-\end{tabular}
-\caption{Per-case results, out-of-scope cases. Same legend as Table~\ref{tab:per-case-inscope}.}
-\label{tab:per-case-outscope}
-\end{table}
-
-\begin{table}[H]
-\centering
-\footnotesize
-\begin{tabular}{|p{3.4cm}|p{5.6cm}|p{5.6cm}|}
-\hline
-\textbf{Memory case} & \textbf{gemma-4-31b-it} & \textbf{marconi-llm} \\
-\hline
-broad "anything wrong?" & 12v L · 3{,}269t · 15.4s & 11v L · 3{,}695t · 3.4s \\
-\hline
-follow-up, same thread & 0v · 3{,}010t · 25.6s & 1v · 5{,}104t · 3.8s \\
-\hline
-follow-up, fresh thread & 0v · 1{,}585t · 11.3s & 11v L · 4{,}102t · 6.3s \\
-\hline
-\end{tabular}
-\caption{Per-case results, broad and follow-up (memory) cases. Same legend as Table~\ref{tab:per-case-inscope}.}
-\label{tab:per-case-memory}
-\end{table}
-
-\begin{table}[H]
-\centering
-\small
-\begin{tabular}{|l|r|r|}
-\hline
- & \textbf{gemma-4-31b-it} & \textbf{marconi-llm} \\
-\hline
-Valid calls per run            & 2.00 & 3.41 \\
-\hline
-Hallucinated calls per run     & 0.12 (2 of 17 runs) & \textbf{0.00} \\
-\hline
-Tokens per run                 & 3{,}982 & 6{,}891 \\
-\hline
-Duration per run               & 30.5 s & \textbf{7.2 s} \\
-\hline
-Runs ending at the call limit  & 1 & 3 \\
-\hline
-Empty final answers            & \textbf{0} & 2 \\
-\hline
-\end{tabular}
-\caption{Full-suite comparison, seventeen cases per model, live backends, 2026-08-27.}
-\label{tab:model-comparison}
-\end{table}
-
-\begin{table}[H]
-\centering
-\small
-\begin{tabular}{|l|r|r|}
-\hline
-\textbf{Operation} & \textbf{gemma avg · total} & \textbf{marconi avg · total} \\
-\hline
-\texttt{query\_loki} & 5{,}814 · 11.6k & \textbf{10{,}484 · 73.4k} \\
-\hline
-\texttt{query\_loki\_range} & 4{,}821 · 14.5k & 3{,}289 · 26.3k \\
-\hline
-\texttt{get\_loki\_label\_values} & 1{,}859 · 5.6k & 2{,}119 · 21.2k (10 calls) \\
-\hline
-\texttt{query\_prometheus} & 2{,}197 · 17.6k & 3{,}599 · 7.2k \\
-\hline
-\texttt{docker\_logs} & 3{,}676 · 7.4k & 3{,}634 · 7.3k \\
-\hline
-\texttt{query\_prometheus\_range} & 4{,}710 · 4.7k & 6{,}523 · 6.5k \\
-\hline
-\texttt{list\_services} & 1{,}506 · 6.0k & 2{,}572 · 10.3k \\
-\hline
-\texttt{list\_metric\_names} & 1{,}932 · 1.9k & 2{,}380 · 4.8k \\
-\hline
-\texttt{docker\_status} & 282 · 3.1k & 384 · 8.4k \\
-\hline
-\end{tabular}
-\caption{Average tokens per invocation and total tokens spent across the suite, by operation.}
-\label{tab:tool-cost}
-\end{table}
-
-The tables carry the numbers; four qualitative reads don't reduce to them:
-
-\begin{itemize}
-  \item \textbf{Boundary respect.} Bound to instant queries only, gemma faked a
-        thirty-minute trend with seven improvised calls (case 04); marconi-llm named
-        the limit and stopped. Both refused a logs request cleanly when bound to
-        metrics.
-  \item \textbf{Hallucination residue.} gemma invented one operation name per run
-        before self-correcting, a different name each time --- a model prior, not a
-        prompt defect. marconi-llm invented none.
-  \item \textbf{Budget exhaustion.} Both models exhausted the ten-call budget polling
-        \texttt{docker\_status} once per container (case 08) and were cut off with no
-        summary. Fix: aggregate queries, or a larger budget for broad questions.
-  \item \textbf{Empty-answer defect.} marconi-llm returned
-        \texttt{finish\_reason=stop} with no text twice in seventeen runs. Suspected
-        proxy or streaming quirk; undiagnosed.
-\end{itemize}
-
-\noindent\textbf{Conclusion.} Adopt marconi-llm for the agent loop, conditional on
-diagnosing and defending against the empty-answer defect (a retry-on-empty rule makes
-the failure survivable even before the cause is found); retain gemma as fallback. The
-token advantage of gemma's shorter runs is outweighed by marconi-llm's 4.3$\times$
-speed, its perfect boundary behaviour, and its zero operation hallucinations. The
-comparison is a single snapshot per case, and the empty-answer defect is intermittent
-by nature; the suite should be repeated three times per model before the substitution
-is final.
-
-% ================================================================ 14
 \section{Design decisions and outcome}
 \label{sec:decisions}
 
@@ -1084,8 +891,7 @@ is final.
 
 \begin{enumerate}
   \item \textbf{Answer quality tracks model quality.} The system supplies evidence
-        and structure; the reasoning is the model's. The evaluation harness exists
-        because this cannot be tested automatically.
+        and structure; the reasoning is the model's, and no automated test covers it.
   \item \textbf{Memory does not span conversations.} A thread is a conversation;
         nothing is recalled across threads.
   \item \textbf{Long conversations keep a summary, not a record.} Past the context
@@ -1213,10 +1019,6 @@ Available: \url{https://grafana.com/docs/loki/latest/query/}. [Accessed: Aug. 18
 \bibitem{uv}
 Astral Software, Inc., ``uv: Python packaging documentation.'' [Online].
 Available: \url{https://docs.astral.sh/uv/}. [Accessed: Aug. 18, 2026].
-
-\bibitem{jupyter}
-Project Jupyter, ``Jupyter documentation.'' [Online].
-Available: \url{https://docs.jupyter.org/}. [Accessed: Aug. 18, 2026].
 
 \end{thebibliography}
 \endgroup

@@ -22,13 +22,3 @@ data/log_cursors.json
 # Env backups (secrets)
 .env*
 
-# Aggregate extracts (large, local-only)
-data/aggregate/
-
-# Combined eval dataset built from the aggregate extracts (large, local-only,
-# regenerate with scripts/build_eval_dataset.sh)
-data/eval/
-
-# Per-run transcripts dumped by eval/eval_transcript.py
-eval/logs/
-eval/results/

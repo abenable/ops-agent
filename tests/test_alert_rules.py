@@ -1,44 +1,8 @@
-"""Tests for the staged-scenario grader and the PromQL alert rules."""
-
-import importlib.util
-from pathlib import Path
+"""Tests for the PromQL alert rules."""
 
 import pytest
 
 from agent.bot import monitor
-
-_SPEC = importlib.util.spec_from_file_location(
-    "run_scenario", Path(__file__).resolve().parents[1] / "scripts" / "run_scenario.py"
-)
-run_scenario = importlib.util.module_from_spec(_SPEC)
-_SPEC.loader.exec_module(run_scenario)
-
-
-@pytest.mark.parametrize(
-    ("scenario", "answer", "expected"),
-    [
-        ("container_down", "The container has exited and is not running.", True),
-        ("container_down", "It is running normally.", False),
-        ("healthy", "The container is up and running.", True),
-        # the control case: an agent that always cries "down" must fail here
-        ("healthy", "It has exited.", False),
-    ],
-)
-def test_grader_separates_a_real_diagnosis_from_a_reflex(scenario, answer, expected):
-    spec = run_scenario.SCENARIOS[scenario]
-    assert run_scenario._grade(answer, spec)["passed"] is expected
-
-
-def test_healthy_scenario_rejects_down_words_even_alongside_up_words():
-    """'running' appearing anywhere must not rescue an answer that says exited."""
-    spec = run_scenario.SCENARIOS["healthy"]
-    graded = run_scenario._grade("It was running, but it has exited.", spec)
-    assert graded["passed"] is False
-    assert graded["rejected"] == ["exited"]
-
-
-def test_scenario_target_is_not_a_real_lab_container():
-    assert run_scenario.TARGET.startswith("marconi-scenario-")
 
 
 def test_alert_rules_split_on_the_first_equals_only(monkeypatch):
