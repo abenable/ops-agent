@@ -72,6 +72,14 @@ def test_empty_docker_host_env_falls_back_to_default_socket(monkeypatch):
     assert docker._docker_host() == "tcp://docker:2375"
 
 
+def test_tcp_docker_host_is_reached_over_http(monkeypatch):
+    """Regression: httpx has no tcp:// transport, so a tcp:// DOCKER_HOST made every Docker call fail."""
+    from agent.tools import docker
+
+    monkeypatch.setenv("DOCKER_HOST", "tcp://docker:2375")
+    assert str(docker._docker_client().base_url) == "http://docker:2375"
+
+
 def test_unconfigured_backends_are_left_out_of_the_tool_set(monkeypatch):
     """A tool that cannot work is not offered: the model would read its failure
     as the backend being down rather than never configured."""

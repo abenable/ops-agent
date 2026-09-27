@@ -24,7 +24,7 @@ def _docker_client() -> httpx.AsyncClient:
             base_url="http://localhost", transport=transport, timeout=10
         )
     parsed = urlparse(docker_host)
-    base_url = f"{parsed.scheme}://{parsed.hostname}:{parsed.port or 2375}"
+    base_url = f"http://{parsed.hostname}:{parsed.port or 2375}"
     return httpx.AsyncClient(base_url=base_url, timeout=10)
 
 
