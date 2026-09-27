@@ -1,0 +1,46 @@
+name: lab
+services:
+  api:
+    build: ./labapp
+    container_name: lab-api
+    environment: {APP_NAME: api, APP_VERSION: "2.4.1", DEPENDS_ON: "cache:6379"}
+    depends_on: {cache: {condition: service_healthy}}
+    restart: unless-stopped
+  worker:
+    build: ./labapp
+    container_name: lab-worker
+    environment: {APP_NAME: worker, APP_VERSION: "1.9.0"}
+    restart: unless-stopped
+  cache:
+    image: redis:7-alpine
+    container_name: lab-cache
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      retries: 30
+    restart: unless-stopped
+  prometheus:
+    build: ./prometheus
+    container_name: lab-prometheus
+    ports: ["9090:9090"]
+    restart: unless-stopped
+  loki:
+    image: grafana/loki:3.5.0
+    container_name: lab-loki
+    ports: ["3100:3100"]
+    restart: unless-stopped
+  alloy:
+    build: ./alloy
+    container_name: lab-alloy
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock:ro"]
+    restart: unless-stopped
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    container_name: lab-cadvisor
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    restart: unless-stopped

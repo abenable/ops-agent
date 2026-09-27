@@ -1,0 +1,34 @@
+services:
+  dind:
+    image: docker:28-dind
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: ""
+    healthcheck:
+      test: ["CMD", "docker", "info"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  setup:
+    image: docker:28-cli
+    depends_on:
+      dind: {condition: service_healthy}
+    environment:
+      DOCKER_HOST: tcp://dind:2375
+    volumes:
+      - ./lab:/lab:ro
+      - ./scenario:/scenario:ro
+      - ./setup.sh:/setup.sh:ro
+    command: ["sh", "-c", "sh /setup.sh && touch /tmp/ready && sleep infinity"]
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 25m
+
+  main:
+    depends_on:
+      setup: {condition: service_healthy}
+    volumes: ["/tmp/oracle-uv-cache:/root/.cache/uv"]

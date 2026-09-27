@@ -22,3 +22,6 @@ data/log_cursors.json
 # Env backups (secrets)
 .env*
 
+# Evaluation: generated tasks and Harbor job output
+eval/tasks/
+jobs/
