@@ -102,8 +102,9 @@ def test_api_key_gates_every_route_except_health(monkeypatch, client):
     guarded = [
         ("get", "/services"), ("get", "/containers"), ("get", "/status"),
         ("get", "/events"), ("get", "/digest/daily"), ("get", "/watchlist"),
-        ("post", "/investigate"), ("post", "/report"), ("post", "/watchlist"),
-        ("delete", "/watchlist/loki"),
+        ("post", "/investigate"), ("post", "/investigate/stream"), ("post", "/report"),
+        ("post", "/watchlist"), ("delete", "/watchlist/loki"),
+        ("get", "/threads"), ("get", "/threads/any"), ("get", "/tools"),
     ]
     for method, path in guarded:
         kwargs = {"json": {}} if method == "post" else {}

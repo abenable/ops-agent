@@ -20,7 +20,11 @@ If the service looks healthy, say so plainly in the Summary and keep the rest sh
 )
 
 
+def report_question(service: str) -> str:
+    """The incident-report prompt for one service, as the question the agent is asked."""
+    return _REPORT_TEMPLATE.format_messages(service=service)[0].content
+
+
 async def report(service: str) -> str:
     """Generate a structured incident report for one service (always one-shot)."""
-    question = _REPORT_TEMPLATE.format_messages(service=service)[0].content
-    return await investigate(question)
+    return await investigate(report_question(service))

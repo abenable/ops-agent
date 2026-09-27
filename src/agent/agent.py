@@ -2,6 +2,7 @@
 
 from langchain.agents import create_agent
 from langchain.agents.middleware import (
+    HumanInTheLoopMiddleware,
     ModelRetryMiddleware,
     SummarizationMiddleware,
     ToolCallLimitMiddleware,
@@ -49,12 +50,19 @@ async def _tool_error(exc: Exception, request) -> str:
     return f"(tool '{request.tool_call['name']}' failed: {exc})"
 
 
-def _build_agent(saver, tools: list):
+def _build_agent(saver, tools: list, approval: bool = False):
+    # Approval pauses the run before any tool executes until a person approves or rejects each call.
+    approve = (
+        [HumanInTheLoopMiddleware({t.name: {"allowed_decisions": ["approve", "reject"]} for t in tools})]
+        if approval
+        else []
+    )
     return create_agent(
         model=init_chat_model(settings.model_id, timeout=_LLM_TIMEOUT),
         tools=tools,
         system_prompt=_SYSTEM_PROMPT,
         middleware=[
+            *approve,
             ModelRetryMiddleware(max_retries=2),
             ToolCallLimitMiddleware(
                 run_limit=settings.max_tool_steps,
@@ -72,16 +80,20 @@ def _build_agent(saver, tools: list):
     )
 
 
-async def get_agent(tools: list | None = None):
-    """The Oracle agent: real system prompt, middleware, model, and checkpointer."""
+async def get_agent(tools: list | None = None, approval: bool = False):
+    """The Oracle agent: real system prompt, middleware, model, and checkpointer.
+
+    ``tools`` narrows it to those tools (names or tool objects); ``approval`` makes every
+    tool call wait for a person's decision. Either builds a fresh agent; the default is cached.
+    """
     global _AGENT
     saver = await checkpointer()
-    if tools is not None:
+    if tools is not None or approval:
         resolved = [
             _TOOLS_BY_NAME.get(t, t) if isinstance(t, str) else _TOOLS_BY_NAME.get(t.name, t)
-            for t in tools
+            for t in (tools if tools is not None else configured_tools())
         ]
-        return _build_agent(saver, resolved)
+        return _build_agent(saver, resolved, approval)
     if _AGENT is None or _AGENT[0] is not saver:
         _AGENT = (saver, _build_agent(saver, [_TOOLS_BY_NAME[t.name] for t in configured_tools()]))
     return _AGENT[1]

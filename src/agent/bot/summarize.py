@@ -17,6 +17,22 @@ _ROW_RE = re.compile(r"^\|.*\|\s*$")
 _SEP_RE = re.compile(r"^\|[\s:|-]+\|\s*$")
 
 
+def _joined(content) -> str:
+    """An LLM message content (str or content-block list) as unstripped text."""
+    if isinstance(content, str):
+        return content
+    return "".join(
+        block if isinstance(block, str) else block.get("text", "")
+        for block in content
+        if isinstance(block, str | dict)
+    )
+
+
+def _text(content) -> str:
+    """Coerce an LLM message content (str or content-block list) to plain text."""
+    return _joined(content).strip()
+
+
 def _sanitize(value: str) -> str:
     """Collapse whitespace and cap length so user input cannot inject prompt lines."""
     return " ".join(str(value).split())[:200]
@@ -106,7 +122,7 @@ async def clean(raw: str, *, service: str, action: str) -> str:
     ).to_messages()
 
     try:
-        result = (await init_chat_model(settings.model_id).ainvoke(messages)).content.strip()
+        result = _text((await init_chat_model(settings.model_id).ainvoke(messages)).content)
     except Exception as exc:  # noqa: BLE001
         return _fit(
             f"*LLM clean unavailable ({exc}); showing raw output:*\n"

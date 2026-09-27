@@ -7,6 +7,7 @@
 | [deployment.md](deployment.md) | Docker Compose, the bot image, volumes and backups |
 | [usage.md](usage.md) | Slash commands, DMs and mentions, what to expect back |
 | [api.md](api.md) | The HTTP API: routes, authentication, running it alongside the bot |
+| [web.md](web.md) | The web app: chat, conversation history, transcripts, running and deploying it |
 | [monitoring.md](monitoring.md) | The background monitor, alerts, the watch list, scheduled digests |
 | [development.md](development.md) | Repository layout, running the tests, conventions |
 

@@ -21,11 +21,15 @@ Interactive docs are at `/docs`, the schema at `/openapi.json`.
 | `GET` | `/status` | Current health of containers and endpoints, with `containers_down` / `endpoints_down` called out. |
 | `GET` | `/events?hours=24` | Recorded up/down transitions. `hours` is 1–2160 (the event log keeps 90 days). |
 | `POST` | `/investigate` | `{"question": "...", "thread_id": "..."}` → the agent's answer. |
+| `POST` | `/investigate/stream` | Same body, answered as server-sent events: `token`, `tool_call`, `tool_result`, `error`, then `done`. Optional `tools` (names from `/tools`) narrows the agent; `approval: true` pauses before every tool call with an `approval_required` event, and the run resumes when you send `{"thread_id": ..., "decisions": {"<tool call id>": true or false}, "approval": true}`. Send `report` (a service name) instead of `question` to ask the `/report` incident-report question. |
+| `GET` | `/tools` | The tools the agent can use here, with a one-line description and backend each. |
 | `POST` | `/report` | `{"service": "..."}` → a structured incident report. |
 | `GET` | `/digest/{daily\|weekly}` | Render a digest without waiting for its scheduled hour. |
 | `GET` | `/watchlist` | Containers pinned into monitoring scope. |
 | `POST` | `/watchlist` | `{"container": "..."}` pins one. |
 | `DELETE` | `/watchlist/{name}` | Unpins one. Matching is separator-agnostic. |
+| `GET` | `/threads` | Every stored conversation, most recent first: opening question, turns, first and last activity. |
+| `GET` | `/threads/{thread_id}` | One conversation's full transcript: messages, tool calls with arguments, tool results, token usage, and when each message appeared, plus `awaiting_approval`: tool calls a paused run is holding. |
 
 ```bash
 curl -s localhost:8000/status | jq '.containers_down'
@@ -60,7 +64,7 @@ pinning a container changes what gets monitored, never the container.
 | Code | When |
 |---|---|
 | `401` | `API_KEY` is set and the header is missing or wrong. |
-| `404` | Unpinning a container that is not on the watch list. |
+| `404` | Unpinning a container that is not on the watch list, or reading a thread that does not exist. |
 | `422` | A malformed body, an unknown digest kind, or `hours` out of range. |
 | `503` | Docker is unreachable. A dependency being down is not a bug in the API, so it is not a `500`. |
 

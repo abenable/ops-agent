@@ -119,3 +119,9 @@ def test_thread_id_keeps_history_and_isolates_threads(monkeypatch):
     assert seen[0][1:] == ["first question"]
     assert "first question" in seen[1]
     assert "first question" not in seen[2]
+
+
+def test_text_keeps_plain_string_blocks_next_to_thinking():
+    """Regression: Gemma with thinking returns [thinking dict, answer str]; the str was dropped."""
+    content = [{"type": "thinking", "thinking": "hidden", "index": 0}, "`api` exited."]
+    assert investigate._text(content) == "`api` exited."

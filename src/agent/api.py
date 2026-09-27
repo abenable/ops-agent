@@ -1,14 +1,16 @@
 """HTTP API exposing the same read-only workflows the Discord bot runs."""
 
+import json
 from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends, FastAPI, Header, HTTPException
-from pydantic import BaseModel, Field
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from agent.bot import digest
 from agent.bot.monitor import get_monitored_endpoints, in_scope, probe
 from agent.config.settings import settings
-from agent.tools import docker
+from agent.tools import DOCKER_TOOLS, PROMETHEUS_TOOLS, configured_tools, docker
 from agent.watchlist.repository import (
     add_watched_container,
     events_since,
@@ -16,8 +18,9 @@ from agent.watchlist.repository import (
     list_watched_containers,
     remove_watched_container,
 )
-from agent.workflows.investigate import investigate
-from agent.workflows.report import report
+from agent.workflows.conversations import awaiting_approval, list_threads, read_thread
+from agent.workflows.investigate import investigate, stream_investigation
+from agent.workflows.report import report, report_question
 
 MAX_EVENT_HOURS = 24 * 90
 
@@ -39,6 +42,26 @@ guarded = [Depends(require_key)]
 class Question(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     thread_id: str | None = Field(default=None, max_length=100)
+
+
+class StreamRequest(BaseModel):
+    # A client asking for approval must never be silently ignored, so unknown fields are an error.
+    model_config = ConfigDict(extra="forbid")
+
+    question: str | None = Field(default=None, min_length=1, max_length=2000)
+    thread_id: str | None = Field(default=None, max_length=100)
+    tools: list[str] | None = Field(default=None, max_length=50)
+    approval: bool = False
+    decisions: dict[str, bool] | None = None
+    report: str | None = Field(default=None, min_length=1, max_length=200)
+
+    @model_validator(mode="after")
+    def _one_request(self):
+        if sum(x is not None for x in (self.question, self.decisions, self.report)) != 1:
+            raise ValueError("send exactly one of question, decisions, or report")
+        if self.decisions is not None and not self.thread_id:
+            raise ValueError("decisions need the thread_id of the paused run")
+        return self
 
 
 class ServiceRequest(BaseModel):
@@ -127,6 +150,50 @@ async def run_investigation(body: Question) -> Answer:
     return Answer(answer=await investigate(body.question, thread_id=body.thread_id))
 
 
+@app.get("/tools", dependencies=guarded, tags=["agent"])
+async def tools() -> dict:
+    """The tools the agent can use here, for narrowing a streamed investigation."""
+
+    def backend(tool) -> str:
+        return "docker" if tool in DOCKER_TOOLS else "prometheus" if tool in PROMETHEUS_TOOLS else "loki"
+
+    return {
+        "tools": [
+            {"name": t.name, "description": t.description.strip().split("\n")[0], "backend": backend(t)}
+            for t in configured_tools()
+        ]
+    }
+
+
+@app.post("/investigate/stream", dependencies=guarded, tags=["agent"])
+async def stream_investigate(body: StreamRequest) -> StreamingResponse:
+    """The same investigation as ``/investigate``, streamed as server-sent events.
+
+    ``tools`` narrows the agent to those tools. With ``approval`` the run pauses before
+    every tool call (event ``approval_required``); resume it by sending ``decisions``.
+    ``report`` (a service name) asks the ``/report`` incident-report question instead.
+    """
+    available = {t.name for t in configured_tools()}
+    if unknown := sorted(set(body.tools or []) - available):
+        raise HTTPException(status_code=422, detail=f"unknown or unconfigured tools: {', '.join(unknown)}")
+
+    async def events():
+        async for event, data in stream_investigation(
+            report_question(body.report) if body.report else body.question,
+            thread_id=body.thread_id,
+            tools=body.tools,
+            approval=body.approval,
+            decisions=body.decisions,
+        ):
+            yield f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @app.post("/report", dependencies=guarded, response_model=Answer, tags=["agent"])
 async def run_report(body: ServiceRequest) -> Answer:
     """Generate a structured incident report for one service."""
@@ -141,6 +208,26 @@ async def render_digest(kind: str) -> dict:
     now = datetime.now(UTC)
     body = await (digest.build_weekly(now) if kind == "weekly" else digest.build_daily(now))
     return {"kind": kind, "generated_at": now.isoformat(), "body": body}
+
+
+@app.get("/threads", dependencies=guarded, tags=["conversations"])
+async def threads() -> dict:
+    """Every stored conversation (Discord channels, DMs, and API threads), most recent first."""
+    found = await list_threads()
+    return {"count": len(found), "threads": found}
+
+
+@app.get("/threads/{thread_id}", dependencies=guarded, tags=["conversations"])
+async def thread(thread_id: str) -> dict:
+    """The full transcript of one conversation, and any tool calls still awaiting approval."""
+    messages = await read_thread(thread_id)
+    if messages is None:
+        raise HTTPException(status_code=404, detail=f"no conversation '{thread_id}'")
+    return {
+        "thread_id": thread_id,
+        "messages": messages,
+        "awaiting_approval": await awaiting_approval(thread_id),
+    }
 
 
 @app.get("/watchlist", dependencies=guarded, tags=["watchlist"])

@@ -104,3 +104,10 @@ def test_discordify_leaves_table_inside_code_fence_untouched():
     src = "```\n| a | b |\n|---|---|\n| 1 | 2 |\n```"
     out = summarize.discordify(src)
     assert "| a | b |" in out
+
+
+def test_clean_reads_a_thinking_models_list_content():
+    """Regression: Gemma with thinking returns [thinking dict, text]; .strip() on it raised."""
+    reply = [{"type": "thinking", "thinking": "hidden"}, "all containers up"]
+    with patch("agent.bot.summarize.init_chat_model", return_value=FakeLLM(reply)):
+        assert asyncio.run(summarize.clean("raw", service="s", action="a")) == "all containers up"

@@ -34,3 +34,19 @@ def test_memory_persists_across_connections(monkeypatch, tmp_database):
 
     assert "first question" in seen
     assert "second question" in seen
+
+
+def test_concurrent_first_use_opens_one_connection(monkeypatch, tmp_path):
+    """Regression: two requests on a cold API each opened a saver; the loser's got closed mid-use."""
+    monkeypatch.setattr(memory, "MEMORY_DB_PATH", tmp_path / "memory.db")
+    monkeypatch.setattr(memory, "_CHECKPOINTER", None)
+
+    async def scenario():
+        try:
+            a, b = await asyncio.gather(memory.checkpointer(), memory.checkpointer())
+            assert a is b
+            assert [item async for item in a.alist(None)] == []
+        finally:
+            await memory.close_memory()
+
+    asyncio.run(scenario())
