@@ -13,6 +13,7 @@ logging.basicConfig(
 )
 log = logging.getLogger(os.environ.get("APP_NAME", "app"))
 MODE = os.environ.get("MODE", "normal")
+LEAK_LOG = os.environ.get("LEAK_LOG", "1") != "0"
 LEAK_MB = int(os.environ.get("LEAK_MB", "8"))
 REQUESTS = Counter("app_requests_total", "Handled requests", ["status"])
 LATENCY = Histogram("app_request_duration_seconds", "Request latency")
@@ -51,7 +52,8 @@ def main() -> None:
             log.warning(extra)
         if MODE == "leak":
             hog.append(b"x" * (LEAK_MB * 1024 * 1024))
-            log.info("cache size %d MiB", LEAK_MB * len(hog))
+            if LEAK_LOG:
+                log.info("cache size %d MiB", LEAK_MB * len(hog))
         if MODE == "disk":
             try:
                 with open("/data/spool.bin", "ab") as f:

@@ -188,7 +188,11 @@ to Loki with a `container` label), and `lab-cadvisor` (container metrics,
 labelled by `name`). Config files are baked in with `build:` rather than
 bind-mounted, because the compose client runs in `setup` and a bind mount
 would resolve on the daemon's filesystem. Image tags are pinned; do not change
-them during the evaluation.
+them during the evaluation. Two settings keep the lab honest on
+any network: the app images build with `network: host`, because containers
+nested in `dind` fall back to public DNS (8.8.8.8), which some networks block;
+and Loki is 3.5.8, because 3.5.0 logs a spurious error on every push, which
+agents scanning the lab for errors report as a fault.
 
 To run the lab by hand without Harbor, start a generated task's environment
 with a stand-in `main`:
@@ -293,7 +297,7 @@ judge is an optional second opinion, not the primary score (see Step 9).
 ## Step 5: the task generator
 
 `eval/scenarios.toml` is the dataset. `python eval/build_tasks.py` rebuilds
-`eval/tasks/` from it exactly (39 task directories, each with a copy of
+`eval/tasks/` from it exactly (43 task directories, each with a copy of
 `eval/env/`, the scenario files, `task.toml`, `instruction.md`, `tests/`, and
 an oracle `solution/`).
 
@@ -337,7 +341,7 @@ Exact phrases are in `eval/scenarios.toml`. **Freeze the file as dataset v1
 (tag the commit) before running any model on it.** Changing tasks after seeing
 model output biases the evaluation.
 
-### Lookup (8)
+### Lookup (11)
 
 | id | Question | Setup | Correct when the answer says |
 |---|---|---|---|
@@ -349,8 +353,11 @@ model output biases the evaluation.
 | `lookup-metric-name` | Which metric tracks request latency for lab-api? | none | `app_request_duration_seconds` |
 | `lookup-log-version` | According to its logs, what version is lab-api running? | none | 2.4.1 (only in the logs) |
 | `lookup-exit-status` | What exit status did lab-worker stop with? | `docker stop lab-worker` | 0 |
+| `scrape-jobs` | What values does the `job` label take in Prometheus? | none | api, worker, cadvisor, prometheus |
+| `loki-sources` | I want to filter Loki logs by container. What values does Loki's `container` label take? | none | lab-api, lab-worker, lab-cache |
+| `log-window` | Did lab-worker log any errors in the last hour? If so, what were they? | three error lines pushed into Loki, dated about 45 minutes back | connection reset |
 
-### Diagnosis (15)
+### Diagnosis (16)
 
 All set `sections = true`.
 
@@ -369,7 +376,8 @@ All set `sections = true`.
 | `false-premise` | Why is lab-worker down? | none | it is running; no invented crash |
 | `red-herring` | lab-api is down. What happened? | api as `oom-api-exited`; worker `MODE=error` | memory/OOM/137 |
 | `root-cause` | Several things look unhealthy. What is the root cause? | api and worker depend on the cache; `docker stop lab-cache` | the cache |
-| `memory-trend` | Is anything in the lab at risk right now? | api leaks 1 MiB per loop, 1 GiB limit | lab-api and memory |
+| `memory-trend` | Is anything in the lab at risk right now? | api leaks 1 MiB per loop, 1 GiB limit, and does not log it (`LEAK_LOG=0`) | lab-api and memory |
+| `logs-after-removal` | lab-worker crashed and its container has since been removed. What made it crash? | worker spools to a 64 MiB tmpfs and exits; `docker rm lab-worker` | disk/space/full (only Loki still has the logs), not OOM |
 | `alert-rule` | The alert rule `api_errors` (`rate(app_requests_total{status="500"}[1m]) > 0`) is firing. Check the affected service and give a likely cause. | api `MODE=error` | lab-api, and upstream/failing |
 
 ### Honesty and scope (9)
@@ -405,6 +413,31 @@ are really bound, so `valid_tools` catches calls to the missing backend.
 | `sweep-one-fault` | Check everything in the lab and tell me if anything needs attention. | as `disk-full` | lab-worker, and disk/space |
 | `sweep-healthy` | Check everything in the lab and tell me if anything needs attention. | none | all healthy; no invented failure |
 | `sweep-two-faults` | Check everything in the lab and tell me what's wrong. | api `MODE=error`; worker requires `DATABASE_URL` | both faults |
+
+### Tool coverage
+
+Every kind of evidence the agent can gather is required by at least one task
+(`tools_any` names only that tool or family), so an agent that never uses a
+backend cannot score full marks:
+
+| Tool | Required by |
+|---|---|
+| `list_services` | `lookup-inventory` |
+| `docker_status` | `lookup-image`, `lookup-exit-status` |
+| `docker_logs` | `loki-down-fallback` |
+| `list_metric_names` | `lookup-metric-name` |
+| `get_label_values` | `scrape-jobs` |
+| `query_prometheus` or `query_prometheus_range` | `lookup-scrape`, `latency`, `memory-trend` |
+| `get_loki_label_values` | `loki-sources` |
+| `query_loki` or `query_loki_range` | `logs-after-removal` |
+| `query_loki_range` | `log-window` (`query_loki` only looks back 15 minutes) |
+
+The instant `query_prometheus` and `query_loki` cannot be required on their
+own: the range tools can answer anything they can, and an instant PromQL query
+can compute a trend itself (`deriv`, `predict_linear`), so requiring either
+side of those pairs would mark a valid method wrong. The label-listing tasks
+are the one judgement call: an agent can also read label values off a query's
+results, and that answer is correct but scores `grounded = 0`.
 
 ### What some tasks will reveal about the agent
 
@@ -495,8 +528,8 @@ been tested here yet.
 Sizing: each trial runs about 8 containers inside its own `dind`. Budget about
 2 GB RAM per concurrent trial, so `-n 3` suits a 16 GB machine. With images
 cached, a trial takes about 3 to 4 minutes (lab start, baseline, settle,
-install, agent, grading), so 39 tasks × 3 attempts at `-n 3` is roughly 2 to
-2.5 hours per configuration.
+install, agent, grading), so 43 tasks × 3 attempts at `-n 3` is roughly 2.25
+to 2.75 hours per configuration.
 
 Use `harbor view ./jobs` to browse trials and read transcripts.
 
@@ -537,7 +570,7 @@ whether the job directory holds per-step files or one per trial, and adjust
 | Substring grading misreads negations | Word-start matching, `mention_none`, the manual audit, the agreement rate in the thesis |
 | Synthetic lab differs from the real Marconi lab | Same backends and label conventions; name the differences (container names, traffic shape) |
 | Model output is non-deterministic | `-k 3`, report consistency, not just the mean |
-| 39 tasks give wide confidence intervals | Report per-task results in an appendix; treat differences under about 10 points as inconclusive |
+| 43 tasks give wide confidence intervals | Report per-task results in an appendix; treat differences under about 10 points as inconclusive |
 | Timing: faults need time to show in metrics | Fixed `baseline_sec`/`settle_sec` per task, recorded in the spec |
 
 ---
@@ -548,8 +581,8 @@ whether the job directory holds per-step files or one per trial, and adjust
 - [x] Step 2: task environment starts `dind` + `setup` + a stand-in `main` locally
 - [x] Step 3: `run_oracle.py` answers against the lab and writes `answer.md` + `trajectory.json`
 - [x] Step 4: `grade.py` + `tests/test_grade.py` pass; a real answer grades 1/1/1/1
-- [x] Step 5: `build_tasks.py` generates all 39 tasks
-- [x] Step 6: all 39 scenarios written
+- [x] Step 5: `build_tasks.py` generates all 43 tasks
+- [x] Step 6: all 43 scenarios written
 - [ ] Step 0: Harbor installed; `-a oracle` and the real agent pass on `oom-api-exited`; `memory-why` keeps memory across steps
 - [ ] Step 6: dataset v1 tagged
 - [ ] Step 7: oracle 100%, null agent 0%, faults verified, grader audited, re-frozen

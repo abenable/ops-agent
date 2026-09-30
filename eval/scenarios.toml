@@ -1,7 +1,7 @@
 # Dataset v1. Frozen once the first model has been run against it: record any
 # later change in the thesis. `python eval/build_tasks.py` turns this into eval/tasks/.
 
-# ---------------------------------------------------------------- lookup (8)
+# --------------------------------------------------------------- lookup (11)
 
 [[task]]
 id = "lookup-running"
@@ -47,7 +47,7 @@ settle_sec = 20
 
 [task.expect]
 mention_all = [["lab-api"], ["lab-worker"], ["lab-cache"], ["lab-prometheus"], ["lab-loki"]]
-tools_any = ["list_services", "docker_status"]
+tools_any = ["list_services"]
 
 [[task]]
 id = "lookup-scrape"
@@ -70,7 +70,7 @@ settle_sec = 20
 
 [task.expect]
 mention_all = [["app_request_duration_seconds"]]
-tools_any = ["list_metric_names", "get_label_values", "query_prometheus", "query_prometheus_range"]
+tools_any = ["list_metric_names"]
 
 [[task]]
 id = "lookup-log-version"
@@ -95,7 +95,53 @@ settle_sec = 15
 mention_all = [["(0)", "code 0", "status 0", "exit 0", "code of 0", "status of 0", "`0`", "with 0"]]
 tools_any = ["docker_status"]
 
-# ------------------------------------------------------------- diagnosis (15)
+[[task]]
+id = "scrape-jobs"
+category = "lookup"
+difficulty = "easy"
+question = "What values does the `job` label take in Prometheus?"
+settle_sec = 20
+
+[task.expect]
+mention_all = [["api"], ["worker"], ["cadvisor"], ["prometheus"]]
+tools_any = ["get_label_values"]
+
+[[task]]
+id = "loki-sources"
+category = "lookup"
+difficulty = "easy"
+question = "I want to filter Loki logs by container. What values does Loki's `container` label take?"
+settle_sec = 20
+
+[task.expect]
+mention_all = [["lab-api"], ["lab-worker"], ["lab-cache"]]
+tools_any = ["get_loki_label_values"]
+
+# The errors are pushed straight into Loki, dated about 45 minutes back: the
+# worker's own Docker log never had them, and `query_loki` only looks back 15
+# minutes, so only a range query that reaches that far finds them.
+[[task]]
+id = "log-window"
+category = "lookup"
+difficulty = "medium"
+question = "Did lab-worker log any errors in the last hour? If so, what were they?"
+settle_sec = 15
+inject = '''
+now=$(date +%s)
+entry() { printf '["%s000000000", "%s %s"]' "$1" "$(date -u -d "@$1" '+%Y-%m-%d %H:%M:%S,000')" "$2"; }
+values="$(entry $((now - 2700)) 'ERROR flush failed: connection reset by peer (batch 4812)')"
+values="$values,$(entry $((now - 2640)) 'ERROR flush failed: connection reset by peer (batch 4813)')"
+values="$values,$(entry $((now - 2580)) 'WARNING retry budget exhausted, dropping batch 4813')"
+wget -q -O /dev/null --header 'Content-Type: application/json' \
+  --post-data "{\"streams\":[{\"stream\":{\"container\":\"lab-worker\"},\"values\":[$values]}]}" \
+  http://dind:3100/loki/api/v1/push
+'''
+
+[task.expect]
+mention_all = [["connection reset"]]
+tools_any = ["query_loki_range"]
+
+# ------------------------------------------------------------- diagnosis (16)
 
 [[task]]
 id = "oom-api-exited"
@@ -323,14 +369,14 @@ question = "Is anything in the lab at risk right now?"
 overlay = """
 services:
   api:
-    environment: {MODE: leak, LEAK_MB: "1"}
+    environment: {MODE: leak, LEAK_MB: "1", LEAK_LOG: "0"}
     mem_limit: 1g
     restart: "no"
 """
 
 [task.expect]
 mention_all = [["lab-api", "api"], ["memory"]]
-tools_any = ["docker_logs", "query_loki", "query_loki_range", "query_prometheus", "query_prometheus_range"]
+tools_any = ["query_prometheus", "query_prometheus_range"]
 sections = true
 
 [[task]]
@@ -347,6 +393,35 @@ services:
 [task.expect]
 mention_all = [["lab-api"], ["upstream", "fail"]]
 tools_any = ["docker_logs", "query_loki", "query_loki_range", "query_prometheus", "query_prometheus_range"]
+sections = true
+
+# The worker fills its disk and exits, and its container is then removed, so
+# Docker has nothing left to show: its last words exist only in Loki. The
+# disk is larger than in `disk-full` so the worker lives long enough for Alloy
+# to pick up its logs before it dies.
+[[task]]
+id = "logs-after-removal"
+category = "diagnosis"
+difficulty = "hard"
+question = "lab-worker crashed and its container has since been removed. What made it crash?"
+settle_sec = 20
+overlay = """
+services:
+  worker:
+    environment: {MODE: disk}
+    tmpfs: ["/data:size=64m"]
+    restart: "no"
+"""
+inject = """
+until [ "$(docker inspect -f '{{.State.Status}}' lab-worker)" = exited ]; do sleep 2; done
+sleep 10
+docker rm lab-worker
+"""
+
+[task.expect]
+mention_all = [["space", "disk", "full", "enospc", "errno 28"]]
+mention_none = ["out of memory", "oomkill", "oom-kill", "oom kill"]
+tools_any = ["query_loki", "query_loki_range"]
 sections = true
 
 # ----------------------------------------------------- honesty and scope (9)
@@ -411,7 +486,7 @@ settle_sec = 20
 overlay = """
 services:
   api-gateway:
-    build: ./labapp
+    build: {context: ./labapp, network: host}
     container_name: lab-api-gateway
     environment: {APP_NAME: api-gateway, APP_VERSION: "0.3.0"}
     restart: unless-stopped
@@ -592,7 +667,7 @@ question = "Check everything in the lab and tell me if anything needs attention.
 settle_sec = 20
 
 [task.expect]
-mention_all = [["healthy", "all running", "all up", "no issues", "nothing needs", "no problems", "nothing requires", "all services are running", "all containers are running", "everything is running", "everything looks", "all good"]]
+mention_all = [["healthy", "all running", "all up", "no issues", "nothing needs", "no problems", "nothing requires", "all services are running", "all containers are running", "everything is running", "everything looks", "all good", "operational", "no action required", "no action needed"]]
 mention_none = ["exited (", "restarting (", "out of memory"]
 tools_any = ["docker_status", "query_prometheus", "query_prometheus_range"]
 
