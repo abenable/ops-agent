@@ -74,7 +74,7 @@ def find_watched_container(name: str) -> str | None:
 
 
 def record_event(target: str, kind: str, state: str) -> None:
-    """Log a monitor transition. ``kind`` is 'container' or 'endpoint', ``state`` is 'down' or 'up'. Timestamps are SQLite UTC."""
+    """Log a monitor transition. ``kind`` is 'container', 'endpoint', 'node' or 'rule', ``state`` is 'down' or 'up'. Timestamps are SQLite UTC."""
     init_db()
     with _connect() as conn:
         conn.execute(

@@ -49,6 +49,18 @@ Engine API behind it, and socket access is root-equivalent on the host. The
 read-only guarantee comes from the tool surface, since `agent/tools/` exposes no
 mutating call. It does not come from the flag.
 
+### Other nodes
+
+With `NODES` set, the agent reaches every other machine's Docker over SSH, so the
+image ships an ssh client. Put a key the nodes accept in `data/ssh/` (mode 600)
+and set `NODE_SSH_KEY=/app/data/ssh/id_ed25519` and `NODE_SSH_USER=admin`; the
+node's user must be in its `docker` group (the testbed's `bootstrap.sh` does
+this). The machine the agent runs on keeps the mounted socket:
+
+```
+NODES="ctl=unix:///var/run/docker.sock pi1=192.168.88.11 pi2=192.168.88.12 pi3=192.168.88.13 jetson=192.168.88.14"
+```
+
 ## The image
 
 `Dockerfile` is a single stage on `python:3.13-slim-bookworm` using `uv`.

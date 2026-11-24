@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { z } from 'zod'
-import { Chat } from '@/components/chat'
+import { Chat, threadTitle } from '@/components/chat'
 import { Skeleton } from '@/components/ui/skeleton'
 import { sourceOf, toUIMessages } from '@/lib/transcript'
 import { getThread, listTools } from '@/server/functions'
@@ -24,7 +24,10 @@ export const Route = createFileRoute('/c/$threadId')({
     ])
     return { messages: toUIMessages(thread?.messages ?? [], thread?.awaiting_approval), tools }
   },
-  head: () => ({ meta: [{ title: 'Oracle · Conversation' }] }),
+  head: ({ loaderData }) => {
+    const title = loaderData && threadTitle(loaderData.messages)
+    return { meta: [{ title: title ? `${title.slice(0, 60)} · Oracle` : 'New conversation · Oracle' }] }
+  },
   pendingComponent: ChatSkeleton,
   component: ChatRoute,
 })

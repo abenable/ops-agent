@@ -18,7 +18,8 @@ Interactive docs are at `/docs`, the schema at `/openapi.json`.
 | `GET` | `/health` | Liveness. The only route that never needs a key. |
 | `GET` | `/services` | Container names and monitored endpoints — the names the agent resolves against. |
 | `GET` | `/containers` | Every in-scope container with state, status text, and image. |
-| `GET` | `/status` | Current health of containers and endpoints, with `containers_down` / `endpoints_down` called out. |
+| `GET` | `/status` | Current health of nodes, containers and endpoints, with `nodes_down` / `containers_down` / `endpoints_down` called out. `nodes` is empty unless `NODES` is set. |
+| `GET` | `/nodes` | Every node with its health: `down`, `docker_reachable`, container counts, and the latest CPU, memory, temperature, Pi undervoltage/throttling and Jetson power readings (null where unknown). |
 | `GET` | `/events?hours=24` | Recorded up/down transitions. `hours` is 1–2160 (the event log keeps 90 days). |
 | `POST` | `/investigate` | `{"question": "...", "thread_id": "..."}` → the agent's answer. |
 | `POST` | `/investigate/stream` | Same body, answered as server-sent events: `token`, `tool_call`, `tool_result`, `error`, then `done`. Optional `tools` (names from `/tools`) narrows the agent; `approval: true` pauses before every tool call with an `approval_required` event, and the run resumes when you send `{"thread_id": ..., "decisions": {"<tool call id>": true or false}, "approval": true}`. Send `report` (a service name) instead of `question` to ask the `/report` incident-report question. |

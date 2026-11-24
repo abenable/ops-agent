@@ -3,6 +3,7 @@ import { getCookie } from '@tanstack/react-start/server'
 import { z } from 'zod'
 import type { AgentTool, Thread, TranscriptMessage } from '@/lib/transcript'
 import { sourceOf } from '@/lib/transcript'
+import type { AgentNode } from '@/components/node-table'
 import { AgentApiError, agentJson } from './agent-api.server'
 
 export const listThreads = createServerFn()
@@ -56,6 +57,10 @@ export const getDigest = createServerFn()
       return { error: (error as Error).message }
     }
   })
+
+export const listNodes = createServerFn().handler(
+  async () => (await agentJson<{ nodes: Array<AgentNode> }>('/nodes')).nodes,
+)
 
 export const listContainers = createServerFn().handler(
   async () => (await agentJson<{ containers: Array<{ name: string; state: string; status: string }> }>('/containers')).containers,

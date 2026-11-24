@@ -85,6 +85,13 @@ class Settings(BaseSettings):
     docker_monitor: bool = False
     docker_name_filter: str = ""
 
+    # "name=target" pairs, one per machine, as in the testbed's hosts.env. A target is a
+    # Docker URL (unix://, tcp://, ssh://) or a bare host, reached as ssh://NODE_SSH_USER@host.
+    # Empty: one unnamed node at DOCKER_HOST, and container names stay unqualified.
+    nodes: str = ""
+    node_ssh_user: str = ""
+    node_ssh_key: str = ""
+
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     api_key: str = Field(default="", validation_alias="API_KEY")

@@ -41,7 +41,7 @@ def test_docker_logs_returns_lines():
 def test_docker_logs_caps_tail_at_200():
     captured = {}
 
-    async def fake_logs(container_id, tail=20):
+    async def fake_logs(container_id, tail=20, node=None):
         captured["tail"] = tail
         return "ok"
 
@@ -88,7 +88,9 @@ def test_unconfigured_backends_are_left_out_of_the_tool_set(monkeypatch):
 
     monkeypatch.setattr(settings, "prometheus_url", "http://prom:9090")
     monkeypatch.setattr(settings, "loki_url", "http://loki:3100")
+    monkeypatch.setattr(settings, "nodes", "ctl=unix:///var/run/docker.sock")
     assert configured_tools() == ALL_TOOLS
+    monkeypatch.setattr(settings, "nodes", "")
 
     monkeypatch.setattr(settings, "loki_url", "")
     names = [t.name for t in configured_tools()]

@@ -25,7 +25,7 @@ const Decided = z.object({
 const Approved = z.object({
   type: z.literal('dynamic-tool'),
   toolCallId: z.string(),
-  toolName: z.enum(['status', 'containers', 'watch', 'unwatch']),
+  toolName: z.enum(['status', 'nodes', 'containers', 'watch', 'unwatch']),
   state: z.literal('approval-responded'),
   input: z.object({ container: z.string().min(1).max(200).optional() }),
   approval: z.object({ id: z.string(), approved: z.boolean() }),
@@ -134,7 +134,9 @@ async function runAgent(
 }
 
 type Status = {
-  containers: Array<{ name: string; state: string; status: string; image: string }>
+  nodes?: Array<{ name: string; down: boolean }>
+  nodes_down?: Array<string>
+  containers: Array<{ name: string; node?: string | null; state: string; status: string; image: string }>
   containers_down: Array<string>
   endpoints: Array<{ name: string; url: string; reachable: boolean }>
   endpoints_down: Array<string>
@@ -144,6 +146,7 @@ async function runCommand(writer: Writer, name: string, arg: string, chat: Chat,
   const code = (items: Array<string>) => items.map((i) => `\`${i}\``).join(', ')
   switch (name) {
     case 'status':
+    case 'nodes':
     case 'containers':
       askFirst(writer, name, {})
       return
@@ -182,6 +185,7 @@ async function runCommand(writer: Writer, name: string, arg: string, chat: Chat,
 async function runLocal(name: z.infer<typeof Approved>['toolName'], container?: string) {
   if (name === 'status') return agentJson<Status>('/status')
   if (name === 'containers') return agentJson('/containers')
+  if (name === 'nodes') return agentJson('/nodes')
   if (!container) throw new Error('No container was given.')
   return name === 'watch'
     ? agentJson('/watchlist', { method: 'POST', body: JSON.stringify({ container }) })
@@ -189,10 +193,11 @@ async function runLocal(name: z.infer<typeof Approved>['toolName'], container?: 
 }
 
 function statusLine(status: Status) {
-  const down = [...status.containers_down, ...status.endpoints_down]
+  const down = [...(status.nodes_down ?? []), ...status.containers_down, ...status.endpoints_down]
+  const nodes = status.nodes?.length ? `${status.nodes.length} nodes, ` : ''
   return down.length
     ? `**${down.length} down:** ${down.map((i) => `\`${i}\``).join(', ')}`
-    : `All ${status.containers.length} containers and ${status.endpoints.length} endpoints are up.`
+    : `All ${nodes}${status.containers.length} containers and ${status.endpoints.length} endpoints are up.`
 }
 
 async function resolveApprovals(writer: Writer, message: UIMessage, chat: Chat, signal: AbortSignal) {

@@ -105,6 +105,14 @@
     @apply font-sans antialiased;
     font-feature-settings: "cv01", "cv05", "cv09", "cv11", "ss03";
     }
+  /* x-height / em of each web font, so the fallback shown before it loads is the same size (no shift on swap).
+     Numbers, not from-font: from-font reads the fallback while the web font is still loading. */
+  html, .font-sans {
+    font-size-adjust: 0.546; /* Inter */
+    }
+  h1, h2, h3, .font-heading, .font-mono, code, pre, kbd, samp {
+    font-size-adjust: 0.53; /* Geist, Geist Mono */
+    }
   h1, h2, h3 {
     @apply font-heading;
     letter-spacing: -0.03em;
@@ -112,4 +120,13 @@
   ::selection {
     @apply bg-white text-black;
     }
+}
+
+/* Focus rings are box-shadows, which forced-colors mode removes, and outline-none leaves nothing else.
+   Unlayered so it beats the outline-none utility. */
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
 }

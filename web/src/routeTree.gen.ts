@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ConversationsRouteImport } from './routes/conversations'
+import { Route as NodesRouteImport } from './routes/nodes'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
 import { Route as CThreadIdRouteImport } from './routes/c/$threadId'
@@ -24,6 +25,11 @@ const IndexRoute = IndexRouteImport.update({
 const ConversationsRoute = ConversationsRouteImport.update({
   id: '/conversations',
   path: '/conversations',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NodesRoute = NodesRouteImport.update({
+  id: '/nodes',
+  path: '/nodes',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ReportsRoute = ReportsRouteImport.update({
@@ -50,6 +56,7 @@ const TranscriptsThreadIdRoute = TranscriptsThreadIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/conversations': typeof ConversationsRoute
+  '/nodes': typeof NodesRoute
   '/reports': typeof ReportsRoute
   '/api/chat': typeof ApiChatRoute
   '/c/$threadId': typeof CThreadIdRoute
@@ -58,6 +65,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/conversations': typeof ConversationsRoute
+  '/nodes': typeof NodesRoute
   '/reports': typeof ReportsRoute
   '/api/chat': typeof ApiChatRoute
   '/c/$threadId': typeof CThreadIdRoute
@@ -67,6 +75,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/conversations': typeof ConversationsRoute
+  '/nodes': typeof NodesRoute
   '/reports': typeof ReportsRoute
   '/api/chat': typeof ApiChatRoute
   '/c/$threadId': typeof CThreadIdRoute
@@ -77,6 +86,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/conversations'
+    | '/nodes'
     | '/reports'
     | '/api/chat'
     | '/c/$threadId'
@@ -85,6 +95,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/conversations'
+    | '/nodes'
     | '/reports'
     | '/api/chat'
     | '/c/$threadId'
@@ -93,6 +104,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/conversations'
+    | '/nodes'
     | '/reports'
     | '/api/chat'
     | '/c/$threadId'
@@ -102,6 +114,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ConversationsRoute: typeof ConversationsRoute
+  NodesRoute: typeof NodesRoute
   ReportsRoute: typeof ReportsRoute
   ApiChatRoute: typeof ApiChatRoute
   CThreadIdRoute: typeof CThreadIdRoute
@@ -122,6 +135,13 @@ declare module '@tanstack/react-router' {
       path: '/conversations'
       fullPath: '/conversations'
       preLoaderRoute: typeof ConversationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/nodes': {
+      id: '/nodes'
+      path: '/nodes'
+      fullPath: '/nodes'
+      preLoaderRoute: typeof NodesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reports': {
@@ -158,6 +178,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ConversationsRoute: ConversationsRoute,
+  NodesRoute: NodesRoute,
   ReportsRoute: ReportsRoute,
   ApiChatRoute: ApiChatRoute,
   CThreadIdRoute: CThreadIdRoute,

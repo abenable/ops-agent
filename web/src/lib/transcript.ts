@@ -25,7 +25,7 @@ export type TranscriptMessage = {
   status?: 'success' | 'error'
 }
 
-export type AgentTool = { name: string; description: string; backend: 'docker' | 'prometheus' | 'loki' }
+export type AgentTool = { name: string; description: string; backend: 'docker' | 'nodes' | 'prometheus' | 'loki' }
 
 export type Source = 'web' | 'discord' | 'other'
 

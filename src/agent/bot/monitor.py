@@ -8,13 +8,14 @@ from discord.ext import tasks
 
 from agent.alerting import discord as discord_alert
 from agent.config.settings import settings
-from agent.tools import docker, prometheus
+from agent.tools import docker, nodes, prometheus
 from agent.watchlist.repository import list_watched_containers, record_event
 
 logger = logging.getLogger(__name__)
 
 _container_state: dict[str, str] = {}
 _endpoint_state: dict[str, bool] = {}
+_node_state: dict[str, bool] = {}
 _rule_state: dict[str, bool] = {}
 # ponytail: strong refs so the loop's own tasks are not garbage collected mid-run
 _incident_tasks: set[asyncio.Task] = set()
@@ -60,9 +61,13 @@ def get_monitored_endpoints() -> dict[str, str]:
 
 
 def in_scope(name: str, watched: set[str]) -> bool:
-    """True when a container is alerted on: matches ``docker_name_filter`` or is explicitly watched."""
+    """True when a container is alerted on: matches ``docker_name_filter`` or is explicitly watched.
+
+    A watched bare name (``loki``) covers that container on every node (``pi1/loki``).
+    """
     name_filter = settings.docker_name_filter.lower()
-    return (not name_filter) or (name_filter in name.lower()) or (name in watched)
+    bare = name.rsplit("/", 1)[-1]
+    return (not name_filter) or (name_filter in name.lower()) or (name in watched) or (bare in watched)
 
 
 async def _poll_containers(bot) -> None:
@@ -111,6 +116,45 @@ async def _poll_containers(bot) -> None:
     for name in list(_container_state):
         if name not in seen:
             del _container_state[name]
+
+
+async def _poll_nodes(bot) -> None:
+    """Alert when a node goes down or comes back, separately from its containers.
+
+    A node that is down also drops its containers out of the container poll, so this
+    alert is the one that says why they went missing.
+    """
+    if not settings.nodes:
+        return
+    try:
+        rows = await nodes.node_rows()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("node poll failed: %s", exc)
+        return
+    for row in rows:
+        name, up = row["name"], not row["down"]
+        prev = _node_state.get(name)
+        _node_state[name] = up
+        if prev is None or prev == up:
+            continue
+        logger.info("node %s: %s", name, "up" if up else "down")
+        record_event(name, "node", "up" if up else "down")
+        if not up and settings.discord_alert_channel_id:
+            await discord_alert.send_alert(
+                settings.discord_alert_channel_id,
+                f"Node `{name}` is down: its metrics stopped and its containers can't be checked",
+                bot,
+                severity="critical",
+                title="Node down",
+            )
+        elif up and settings.discord_status_channel_id:
+            await discord_alert.send_alert(
+                settings.discord_status_channel_id,
+                f"Node `{name}` is back up",
+                bot,
+                severity="info",
+                title="Node up",
+            )
 
 
 async def probe(url: str) -> bool:
@@ -244,6 +288,7 @@ def start_monitor(bot):
 
     @tasks.loop(seconds=max(settings.monitor_interval_seconds, 10))
     async def _poll():
+        await _poll_nodes(bot)
         await _poll_containers(bot)
         await _poll_endpoints(bot)
         await _poll_alert_rules(bot)

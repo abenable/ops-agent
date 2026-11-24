@@ -975,7 +975,8 @@ export const PromptInputTextarea = ({
       }
 
       if (e.key === "Enter") {
-        if (isComposing || e.nativeEvent.isComposing) {
+        // keyCode 229: Safari fires compositionend before the confirming Enter, so isComposing is already false.
+        if (isComposing || e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) {
           return;
         }
         if (e.shiftKey) {

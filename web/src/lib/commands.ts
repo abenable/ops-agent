@@ -1,5 +1,6 @@
 export const COMMANDS = [
-  { name: 'status', usage: '/status', description: 'Health of every container and endpoint' },
+  { name: 'status', usage: '/status', description: 'Health of every node, container and endpoint' },
+  { name: 'nodes', usage: '/nodes', description: 'Every node (machine) with its health' },
   { name: 'containers', usage: '/containers', description: 'Every in-scope container with its state' },
   { name: 'watchlist', usage: '/watchlist', description: 'Containers pinned into monitoring' },
   { name: 'report', usage: '/report <service>', description: 'Structured incident report for one service' },

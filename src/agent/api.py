@@ -10,7 +10,14 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from agent.bot import digest
 from agent.bot.monitor import get_monitored_endpoints, in_scope, probe
 from agent.config.settings import settings
-from agent.tools import DOCKER_TOOLS, PROMETHEUS_TOOLS, configured_tools, docker
+from agent.tools import (
+    DOCKER_TOOLS,
+    NODE_TOOLS,
+    PROMETHEUS_TOOLS,
+    configured_tools,
+    docker,
+    nodes,
+)
 from agent.watchlist.repository import (
     add_watched_container,
     events_since,
@@ -85,6 +92,7 @@ async def _containers() -> list[dict]:
     return [
         {
             "name": docker.container_name(c),
+            "node": c.get("Node"),
             "state": c.get("State", "unknown"),
             "status": c.get("Status", ""),
             "image": c.get("Image", ""),
@@ -125,13 +133,23 @@ async def status() -> dict:
         {"name": name, "url": url, "reachable": await probe(url)}
         for name, url in sorted(endpoints.items())
     ]
+    node_rows = await nodes.node_rows() if settings.nodes else []
     return {
         "checked_at": datetime.now(UTC).isoformat(),
+        "nodes": node_rows,
+        "nodes_down": [n["name"] for n in node_rows if n["down"]],
         "containers": found,
         "containers_down": [c["name"] for c in found if c["state"] != "running"],
         "endpoints": probed,
         "endpoints_down": [e["name"] for e in probed if not e["reachable"]],
     }
+
+
+@app.get("/nodes", dependencies=guarded, tags=["inventory"])
+async def list_nodes() -> dict:
+    """Every node with its health: up/down, Docker reachability, container counts and latest metrics."""
+    found = await nodes.node_rows()
+    return {"count": len(found), "nodes": found}
 
 
 @app.get("/events", dependencies=guarded, tags=["inventory"])
@@ -155,6 +173,8 @@ async def tools() -> dict:
     """The tools the agent can use here, for narrowing a streamed investigation."""
 
     def backend(tool) -> str:
+        if tool in NODE_TOOLS:
+            return "nodes"
         return "docker" if tool in DOCKER_TOOLS else "prometheus" if tool in PROMETHEUS_TOOLS else "loki"
 
     return {

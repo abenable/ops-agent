@@ -2,7 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import type { MotionProps } from "motion/react";
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import type { CSSProperties, ElementType, JSX } from "react";
 import { memo, useMemo } from "react";
 
@@ -46,6 +46,16 @@ const ShimmerComponent = ({
     () => (children?.length ?? 0) * spread,
     [children, spread]
   );
+  // Animates backgroundPosition, which motion's own reducedMotion setting leaves running.
+  const reduceMotion = useReducedMotion();
+
+  if (reduceMotion) {
+    return (
+      <Component className={cn("text-muted-foreground", className)}>
+        {children}
+      </Component>
+    );
+  }
 
   return (
     <MotionComponent

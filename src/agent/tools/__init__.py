@@ -3,6 +3,7 @@
 from agent.config.settings import settings
 from agent.tools.docker import docker_logs, docker_status, list_services
 from agent.tools.loki import get_loki_label_values, query_loki, query_loki_range
+from agent.tools.nodes import list_nodes, node_status
 from agent.tools.prometheus import (
     get_label_values,
     list_metric_names,
@@ -13,8 +14,9 @@ from agent.tools.prometheus import (
 DOCKER_TOOLS = [list_services, docker_status, docker_logs]
 PROMETHEUS_TOOLS = [query_prometheus, list_metric_names, get_label_values, query_prometheus_range]
 LOKI_TOOLS = [get_loki_label_values, query_loki, query_loki_range]
+NODE_TOOLS = [list_nodes, node_status]
 
-ALL_TOOLS = [*DOCKER_TOOLS, *PROMETHEUS_TOOLS, *LOKI_TOOLS]
+ALL_TOOLS = [*DOCKER_TOOLS, *NODE_TOOLS, *PROMETHEUS_TOOLS, *LOKI_TOOLS]
 
 
 def configured_tools() -> list:
@@ -26,6 +28,7 @@ def configured_tools() -> list:
     """
     return [
         *DOCKER_TOOLS,
+        *(NODE_TOOLS if settings.nodes else []),
         *(PROMETHEUS_TOOLS if settings.prometheus_url else []),
         *(LOKI_TOOLS if settings.loki_url else []),
     ]
@@ -34,6 +37,7 @@ __all__ = [
     "ALL_TOOLS",
     "DOCKER_TOOLS",
     "LOKI_TOOLS",
+    "NODE_TOOLS",
     "PROMETHEUS_TOOLS",
     "configured_tools",
     "docker_logs",
@@ -41,7 +45,9 @@ __all__ = [
     "get_label_values",
     "get_loki_label_values",
     "list_metric_names",
+    "list_nodes",
     "list_services",
+    "node_status",
     "query_loki",
     "query_loki_range",
     "query_prometheus",

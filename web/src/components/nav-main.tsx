@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { ChevronRightIcon, ClipboardListIcon, HistoryIcon, MessageSquarePlusIcon } from 'lucide-react'
+import { ChevronRightIcon, ClipboardListIcon, HistoryIcon, MessageSquarePlusIcon, ServerIcon } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   SidebarGroup,
@@ -62,6 +62,14 @@ export function NavMain() {
             </CollapsibleContent>
           </SidebarMenuItem>
         </Collapsible>
+        <SidebarMenuItem>
+          <SidebarMenuButton asChild tooltip="Nodes">
+            <Link to="/nodes" activeProps={{ 'data-active': true }}>
+              <ServerIcon />
+              <span>Nodes</span>
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
         <SidebarMenuItem>
           <SidebarMenuButton asChild tooltip="Reports">
             <Link to="/reports" activeOptions={{ includeSearch: false }} activeProps={{ 'data-active': true }}>

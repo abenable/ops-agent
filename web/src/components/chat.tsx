@@ -29,6 +29,8 @@ import {
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import { Suggestion, Suggestions } from '@/components/ai-elements/suggestion'
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/components/ai-elements/tool'
+import type { AgentNode } from '@/components/node-table'
+import { NodeTable } from '@/components/node-table'
 import { PageHeader } from '@/components/page-header'
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import {
@@ -63,22 +65,27 @@ import { cn } from '@/lib/utils'
 
 const SUGGESTIONS = ['What is down right now?', 'Why did a container restart recently?', '/status', '/containers']
 
-type Container = { name: string; state: string; status: string; image?: string }
+type Container = { name: string; node?: string | null; state: string; status: string; image?: string }
 
 function ContainerTable({ containers }: { containers: Array<Container> }) {
+  // On a cluster the agent names containers node/name; the Node column carries the prefix instead.
+  const byNode = containers.some((c) => c.node)
   return (
     <Table>
+      <caption className="sr-only">Containers and their state</caption>
       <TableHeader>
         <TableRow>
-          <TableHead>Container</TableHead>
-          <TableHead>State</TableHead>
-          <TableHead>Status</TableHead>
+          {byNode && <TableHead scope="col">Node</TableHead>}
+          <TableHead scope="col">Container</TableHead>
+          <TableHead scope="col">State</TableHead>
+          <TableHead scope="col">Status</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {containers.map((c) => (
           <TableRow key={c.name}>
-            <TableCell className="font-mono">{c.name}</TableCell>
+            {byNode && <TableCell className="font-mono text-muted-foreground">{c.node}</TableCell>}
+            <TableCell className="font-mono">{c.node ? c.name.slice(c.node.length + 1) : c.name}</TableCell>
             <TableCell className={c.state === 'running' ? undefined : 'text-destructive'}>{c.state}</TableCell>
             <TableCell className="text-muted-foreground">{c.status}</TableCell>
           </TableRow>
@@ -90,14 +97,24 @@ function ContainerTable({ containers }: { containers: Array<Container> }) {
 
 function output(part: DynamicToolUIPart) {
   if (part.state !== 'output-available') return undefined
-  const value = part.output as { containers?: Array<Container> } | string
-  if (typeof value === 'object' && Array.isArray(value.containers) && typeof value.containers[0] === 'object') {
-    return <ContainerTable containers={value.containers} />
+  const value = part.output as { containers?: Array<Container>; nodes?: Array<AgentNode> } | string
+  if (typeof value === 'object') {
+    const nodes = Array.isArray(value.nodes) && value.nodes.length > 0 ? <NodeTable nodes={value.nodes} /> : null
+    const containers =
+      Array.isArray(value.containers) && typeof value.containers[0] === 'object' ? <ContainerTable containers={value.containers} /> : null
+    if (nodes || containers) return <div className="flex flex-col gap-4">{nodes}{containers}</div>
   }
   return typeof value === 'string' ? <pre className="p-3 font-mono whitespace-pre-wrap">{value}</pre> : value
 }
 
 type Approve = (response: { id: string; approved: boolean }) => void
+
+// The thread's first question that isn't a /command.
+export const threadTitle = (messages: Array<UIMessage>) =>
+  messages
+    .filter((m) => m.role === 'user')
+    .flatMap((m) => m.parts.flatMap((p) => (p.type === 'text' ? [p.text] : [])))
+    .find((text) => !parseCommand(text))
 
 const hasContent = (m: UIMessage) => m.parts.some((p) => (p.type === 'text' && p.text) || p.type === 'dynamic-tool')
 
@@ -105,8 +122,9 @@ function ask(part: DynamicToolUIPart) {
   const container = <code className="font-mono">{(part.input as { container?: string } | undefined)?.container}</code>
   if (part.toolName === 'watch') return <>Pin {container} into monitoring? Status updates will include it.</>
   if (part.toolName === 'unwatch') return <>Stop watching {container}? It drops out of status updates.</>
-  if (part.toolName === 'status') return <>Check the health of every container and endpoint?</>
+  if (part.toolName === 'status') return <>Check the health of every node, container and endpoint?</>
   if (part.toolName === 'containers') return <>List every container and its state?</>
+  if (part.toolName === 'nodes') return <>Check the health of every node?</>
   return (
     <>
       Run <code className="font-mono">{part.toolName}</code>? It only reads.
@@ -167,6 +185,7 @@ function ChatMessage({ message, animating, onApprove }: { message: UIMessage; an
       <RoleAvatar role={message.role} />
       <Message from={message.role} className="min-w-0">
       <MessageContent>
+        <span className="sr-only">{message.role === 'user' ? 'You said:' : 'Oracle said:'}</span>
         {message.parts.map((part, i) => {
           if (part.type === 'text') {
             return message.role === 'user' ? (
@@ -188,21 +207,24 @@ function ChatMessage({ message, animating, onApprove }: { message: UIMessage; an
   )
 }
 
+const commandMatches = (typed: string) =>
+  typed.startsWith('/') && !typed.includes(' ') ? COMMANDS.filter((c) => `/${c.name}`.startsWith(typed.toLowerCase())) : []
+
+const completion = (c: (typeof COMMANDS)[number]) => (/[<[]/.test(c.usage) ? `/${c.name} ` : `/${c.name}`)
+
 function CommandHints() {
   const { textInput } = usePromptInputController()
-  const typed = textInput.value
-  if (!typed.startsWith('/') || typed.includes(' ')) return null
-  const matches = COMMANDS.filter((c) => `/${c.name}`.startsWith(typed.toLowerCase()))
+  const matches = commandMatches(textInput.value)
   if (!matches.length) return null
   return (
     <Command shouldFilter={false} className="mb-2 h-auto rounded-xl border animate-in fade-in-0 slide-in-from-bottom-1">
       <CommandList>
-        <CommandGroup heading="Commands">
+        <CommandGroup heading="Commands · Tab completes the first">
           {matches.map((c) => (
             <CommandItem
               key={c.name}
               value={c.name}
-              onSelect={() => textInput.setInput(/[<[]/.test(c.usage) ? `/${c.name} ` : `/${c.name}`)}
+              onSelect={() => textInput.setInput(completion(c))}
             >
               <span className="font-mono">{c.usage}</span>
               <span className="truncate text-muted-foreground">{c.description}</span>
@@ -214,6 +236,28 @@ function CommandHints() {
   )
 }
 
+// The hint list never takes focus (cmdk's root is tabIndex=-1), so Tab in the textarea is the keyboard path to it.
+function MessageInput({ pending }: { pending: boolean }) {
+  const { textInput } = usePromptInputController()
+  return (
+    <PromptInputTextarea
+      aria-label="Message Oracle"
+      placeholder={pending ? 'Approve or deny the pending tool calls first' : 'Ask about a container, or type / for commands'}
+      maxLength={2000}
+      onKeyDown={(e) => {
+        if (e.key !== 'Tab' || e.shiftKey) return
+        const typed = textInput.value
+        const matches = commandMatches(typed)
+        // An exact name wins, so "/watch" + Tab doesn't become "/watchlist".
+        const pick = matches.find((c) => `/${c.name}` === typed.toLowerCase()) ?? matches[0]
+        if (!pick || completion(pick) === typed) return
+        e.preventDefault()
+        textInput.setInput(completion(pick))
+      }}
+    />
+  )
+}
+
 function Intro({ onPick }: { onPick: (text: string) => void }) {
   return (
     <Empty className="min-h-[60dvh]">
@@ -221,7 +265,9 @@ function Intro({ onPick }: { onPick: (text: string) => void }) {
         <EmptyMedia variant="icon">
           <SparklesIcon />
         </EmptyMedia>
-        <EmptyTitle className="font-heading text-3xl tracking-tight">Ask Oracle about the lab</EmptyTitle>
+        <EmptyTitle className="font-heading text-3xl tracking-tight">
+          <h2>Ask Oracle about the lab</h2>
+        </EmptyTitle>
         <EmptyDescription>
           It reads Docker, Prometheus, and Loki to answer, and never changes anything. Type <Kbd>/</Kbd> for commands.
         </EmptyDescription>
@@ -282,7 +328,7 @@ function ApprovalDialog({ pending, onApprove }: { pending: Array<DynamicToolUIPa
   )
 }
 
-const BACKENDS = { docker: 'Docker', prometheus: 'Prometheus', loki: 'Loki' } as const
+const BACKENDS = { docker: 'Docker', nodes: 'Nodes', prometheus: 'Prometheus', loki: 'Loki' } as const
 const TOOLS_KEY = 'oracle.tools'
 
 function initialTools(tools: Array<AgentTool>) {
@@ -416,10 +462,7 @@ export function Chat({
     last?.role === 'assistant'
       ? last.parts.filter((p): p is DynamicToolUIPart => p.type === 'dynamic-tool' && p.state === 'approval-requested')
       : []
-  const title = messages
-    .filter((m) => m.role === 'user')
-    .flatMap((m) => m.parts.flatMap((p) => (p.type === 'text' ? [p.text] : [])))
-    .find((text) => !parseCommand(text))
+  const title = threadTitle(messages)
 
   return (
     <div className="flex h-dvh flex-col">
@@ -433,7 +476,9 @@ export function Chat({
           </Button>
         )}
       </PageHeader>
-      <Conversation>
+      <h1 className="sr-only">{title ?? 'New conversation'}</h1>
+      {/* role="log" is a live region: busy while streaming so the answer is read once, not token by token. */}
+      <Conversation aria-busy={status === 'submitted' || status === 'streaming'}>
         <ConversationContent className="mx-auto w-full max-w-3xl">
           {messages.length === 0 ? (
             <Intro onPick={(text) => tools && send(text)} />
@@ -487,10 +532,7 @@ export function Chat({
             }}
           >
             <PromptInputBody>
-              <PromptInputTextarea
-                placeholder={pending.length ? 'Approve or deny the pending tool calls first' : 'Ask about a container, or type / for commands'}
-                maxLength={2000}
-              />
+              <MessageInput pending={pending.length > 0} />
             </PromptInputBody>
             <PromptInputFooter>
               <PromptInputTools>

@@ -111,7 +111,7 @@ read or delete a stored thread.
 
 ## Tools
 
-Ten tools, grouped by backend, all read-only. Each carries a description telling
+Ten tools, plus two node tools on a multi-node cluster, grouped by backend, all read-only. Each carries a description telling
 the model when to reach for it and which discovery call to make first.
 
 | Backend | Tools |
@@ -119,6 +119,20 @@ the model when to reach for it and which discovery call to make first.
 | Docker | `list_services`, `docker_status`, `docker_logs` |
 | Prometheus | `list_metric_names`, `get_label_values`, `query_prometheus`, `query_prometheus_range` |
 | Loki | `get_loki_label_values`, `query_loki`, `query_loki_range` |
+| Nodes (only with `NODES` set) | `list_nodes`, `node_status` |
+
+**Nodes.** With `NODES` set, every machine has its own Docker endpoint and the
+Docker tools query all of them. Container names become `node/container`
+(`pi1/cadvisor`), so every node's cAdvisor stays distinct. Remote nodes are
+reached the way the Docker CLI reaches `ssh://` hosts: ssh runs
+`docker system dial-stdio` on the node and the Engine API is spoken over that
+pipe (`agent/tools/docker.py`, `command_transport`). The node's name is also
+the `node` label on its Prometheus targets and its Loki streams, so one name
+joins a node's containers, metrics and logs. `list_nodes` reads both sides: a
+node is down when Prometheus can't scrape its node-exporter, or, without
+Prometheus, when its Docker can't be reached. The monitor alerts on that
+separately from container alerts, since a node that goes down takes its
+containers out of the container poll with it.
 
 Discovery tools exist because the model otherwise invents metric and label
 names. `list_services` returns real container names; `list_metric_names` and
